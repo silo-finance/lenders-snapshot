@@ -2,7 +2,7 @@
 """
 Trevee lender snapshot.
 
-Builds a block-pinned snapshot of all lenders of a single Silo:
+Builds block-pinned snapshots of all lenders for configured Silos:
   - direct lenders (every account holding collateral and/or protected shares), and
   - SiloVault depositors (holders of any SiloVault that itself lends into the Silo),
     attributed by their fraction of the vault.
@@ -13,8 +13,8 @@ at the snapshot block. The subgraph is only used to enumerate addresses.
 All historical reads are batched through Multicall3 (aggregate3, allowFailure=true)
 with eth_call pinned at BLOCK. eth_getCode is issued in JSON-RPC batches.
 
-Secrets (RPC_URL, THE_GRAPH_API_KEY) are read ONLY from the environment or a local
-gitignored `.env` next to this script. They must never be committed.
+Secrets ({CHAIN}_RPC_URL/RPC_URL, THE_GRAPH_API_KEY) are read ONLY from the environment
+or a local gitignored `.env` next to this script. They must never be committed.
 
     python3 scripts/tasks/lender-snapshot/snapshot_lenders.py
 """
@@ -39,12 +39,34 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # --------------------------------------------------------------------------------------
 # HARDCODED (non-secret) configuration
 # --------------------------------------------------------------------------------------
-BLOCK = 54144258
-SILO_ADDRESS = "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64"
-CHAIN = "sonic"
-CHAIN_ID = 146
+DEFAULT_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/8wcbzcdNirQvk1ETh25wpVzb5GWs8DvugpbwrYnTCcxj"
 
-SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/8wcbzcdNirQvk1ETh25wpVzb5GWs8DvugpbwrYnTCcxj"
+TARGETS: list[dict[str, Any]] = [
+    {
+        "chain": "sonic",
+        "chain_id": 146,
+        "subgraph_url": DEFAULT_SUBGRAPH_URL,
+        "silos": [
+            {
+                "address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64",
+                "block": 54144258,
+            }
+        ],
+    },
+    {
+        "chain": "ethereum",
+        "chain_id": 1,
+        "subgraph_url": DEFAULT_SUBGRAPH_URL,
+        # Placeholder until Ethereum silo addresses and snapshot blocks are supplied.
+        "silos": [],
+    },
+]
+
+BLOCK = 0
+SILO_ADDRESS = ""
+CHAIN = ""
+CHAIN_ID = 0
+SUBGRAPH_URL = DEFAULT_SUBGRAPH_URL
 
 OUTPUT_JSON = str(SCRIPT_DIR / "distribution_snapshot.json")
 
@@ -73,11 +95,15 @@ def _sel(signature: str) -> bytes:
 SEL_BALANCE_OF = _sel("balanceOf(address)")
 SEL_TOTAL_SUPPLY = _sel("totalSupply()")
 SEL_DECIMALS = _sel("decimals()")
+SEL_SYMBOL = _sel("symbol()")
 SEL_ASSET = _sel("asset()")
+SEL_TOTAL_ASSETS = _sel("totalAssets()")
 SEL_INCENTIVES_MODULE = _sel("INCENTIVES_MODULE()")
 SEL_PREVIEW_REDEEM_ERC4626 = _sel("previewRedeem(uint256)")
 SEL_PREVIEW_REDEEM_SILO = _sel("previewRedeem(uint256,uint8)")
 SEL_CONFIG = _sel("config(address)")
+SEL_SILO_CONFIG = _sel("config()")
+SEL_SILO_ID = _sel("SILO_ID()")
 
 
 # --------------------------------------------------------------------------------------
@@ -104,8 +130,6 @@ def load_secrets() -> None:
     RPC_URL = os.environ.get("RPC_URL", "").strip()
     THE_GRAPH_API_KEY = os.environ.get("THE_GRAPH_API_KEY", "").strip()
     missing = []
-    if not RPC_URL:
-        missing.append("RPC_URL")
     if not THE_GRAPH_API_KEY:
         missing.append("THE_GRAPH_API_KEY")
     if missing:
@@ -115,6 +139,26 @@ def load_secrets() -> None:
             + f". Set them in the environment or in {SCRIPT_DIR / '.env'} "
             "(see .env.example)."
         )
+
+
+def resolve_rpc_url(chain: str) -> str:
+    chain_key = f"{chain.upper()}_RPC_URL"
+    rpc_url = os.environ.get(chain_key, "").strip() or RPC_URL
+    if not rpc_url:
+        raise SystemExit(
+            f"Missing required env var for {chain}: set {chain_key} or RPC_URL "
+            f"in the environment or in {SCRIPT_DIR / '.env'} (see .env.example)."
+        )
+    return rpc_url
+
+
+def configure_context(target: dict[str, Any], silo: dict[str, Any]) -> None:
+    global BLOCK, SILO_ADDRESS, CHAIN, CHAIN_ID, SUBGRAPH_URL
+    CHAIN = str(target["chain"]).lower()
+    CHAIN_ID = int(target["chain_id"])
+    SUBGRAPH_URL = str(target.get("subgraph_url") or DEFAULT_SUBGRAPH_URL)
+    SILO_ADDRESS = norm(str(silo["address"]))
+    BLOCK = int(silo["block"])
 
 
 # --------------------------------------------------------------------------------------
@@ -261,8 +305,16 @@ def call_decimals() -> bytes:
     return SEL_DECIMALS
 
 
+def call_symbol() -> bytes:
+    return SEL_SYMBOL
+
+
 def call_asset() -> bytes:
     return SEL_ASSET
+
+
+def call_total_assets() -> bytes:
+    return SEL_TOTAL_ASSETS
 
 
 def call_incentives_module() -> bytes:
@@ -281,6 +333,14 @@ def call_config(market: str) -> bytes:
     return SEL_CONFIG + abi_encode(["address"], [cs(market)])
 
 
+def call_silo_config() -> bytes:
+    return SEL_SILO_CONFIG
+
+
+def call_silo_id() -> bytes:
+    return SEL_SILO_ID
+
+
 def dec_uint(data: bytes) -> int:
     return abi_decode(["uint256"], data)[0]
 
@@ -292,6 +352,14 @@ def dec_address(data: bytes) -> str:
 def dec_config(data: bytes) -> tuple[int, bool, int]:
     cap, enabled, removable_at = abi_decode(["uint184", "bool", "uint64"], data)
     return int(cap), bool(enabled), int(removable_at)
+
+
+def dec_string(data: bytes) -> str:
+    try:
+        return str(abi_decode(["string"], data)[0])
+    except Exception:
+        raw = abi_decode(["bytes32"], data)[0]
+        return bytes(raw).split(b"\x00", 1)[0].decode("utf-8", errors="replace")
 
 
 # --------------------------------------------------------------------------------------
@@ -310,7 +378,7 @@ def graph_query(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     return res.get("data", {})
 
 
-Q_LENDERS = """
+Q_LENDERS_TEMPLATE = """
 query Lenders($m:String!,$first:Int!,$skip:Int!){
   positions(
     block:{number:%d}
@@ -325,15 +393,15 @@ query Lenders($m:String!,$first:Int!,$skip:Int!){
     spTokenBalance
   }
 }
-""" % BLOCK
+"""
 
-Q_IS_VAULT = """
+Q_IS_VAULT_TEMPLATE = """
 query IsVault($v:String!){
   vault(id:$v, block:{number:%d}){ id name }
 }
-""" % BLOCK
+"""
 
-Q_VAULT_DEPOSITORS = """
+Q_VAULT_DEPOSITORS_TEMPLATE = """
 query VaultDepositors($v:String!,$first:Int!,$skip:Int!){
   vaultPositions(
     block:{number:%d}
@@ -345,7 +413,7 @@ query VaultDepositors($v:String!,$first:Int!,$skip:Int!){
     shares
   }
 }
-""" % BLOCK
+"""
 
 
 def fetch_lenders(market: str) -> tuple[list[str], str | None]:
@@ -355,7 +423,7 @@ def fetch_lenders(market: str) -> tuple[list[str], str | None]:
     sp_token: str | None = None
     skip = 0
     while True:
-        data = graph_query(Q_LENDERS, {"m": market, "first": SUBGRAPH_PAGE, "skip": skip})
+        data = graph_query(Q_LENDERS_TEMPLATE % BLOCK, {"m": market, "first": SUBGRAPH_PAGE, "skip": skip})
         rows = data.get("positions", [])
         if not rows:
             break
@@ -373,7 +441,7 @@ def fetch_lenders(market: str) -> tuple[list[str], str | None]:
 
 
 def fetch_vault_indexed(vault: str) -> dict[str, Any] | None:
-    data = graph_query(Q_IS_VAULT, {"v": vault})
+    data = graph_query(Q_IS_VAULT_TEMPLATE % BLOCK, {"v": vault})
     return data.get("vault")
 
 
@@ -383,7 +451,7 @@ def fetch_vault_depositors(vault: str) -> list[str]:
     seen: set[str] = set()
     skip = 0
     while True:
-        data = graph_query(Q_VAULT_DEPOSITORS, {"v": vault, "first": SUBGRAPH_PAGE, "skip": skip})
+        data = graph_query(Q_VAULT_DEPOSITORS_TEMPLATE % BLOCK, {"v": vault, "first": SUBGRAPH_PAGE, "skip": skip})
         rows = data.get("vaultPositions", [])
         if not rows:
             break
@@ -460,20 +528,41 @@ def fetch_silo_metadata(rpc: RpcClient, mc: Multicall, protected_token: str) -> 
             (SILO_ADDRESS, call_asset()),
             (SILO_ADDRESS, call_total_supply()),
             (protected_token, call_total_supply()),
+            (SILO_ADDRESS, call_total_assets()),
+            (SILO_ADDRESS, call_silo_config()),
         ]
     )
     asset_addr = dec_address(res[0][1]) if res[0][0] else None
     collateral_total_supply = dec_uint(res[1][1]) if res[1][0] else 0
     protected_total_supply = dec_uint(res[2][1]) if res[2][0] else 0
+    total_assets = dec_uint(res[3][1]) if res[3][0] else None
+    config_addr = dec_address(res[4][1]) if res[4][0] else None
 
     decimals = None
+    symbol = None
     if asset_addr:
-        d = mc.aggregate([(asset_addr, call_decimals())])
+        d = mc.aggregate([(asset_addr, call_decimals()), (asset_addr, call_symbol())])
         if d[0][0]:
             decimals = dec_uint(d[0][1])
+        if d[1][0]:
+            try:
+                symbol = dec_string(d[1][1])
+            except Exception:
+                symbol = None
+
+    silo_id = None
+    if config_addr:
+        sid = mc.aggregate([(config_addr, call_silo_id())])
+        if sid[0][0]:
+            try:
+                silo_id = str(dec_uint(sid[0][1]))
+            except Exception:
+                silo_id = None
 
     return {
-        "input_token": {"address": asset_addr, "decimals": decimals},
+        "silo_id": silo_id,
+        "input_token": {"address": asset_addr, "decimals": decimals, "symbol": symbol},
+        "total_assets": total_assets,
         "collateral_total_supply": collateral_total_supply,
         "protected_total_supply": protected_total_supply,
     }
@@ -593,8 +682,8 @@ def expand_vault(
     return entry
 
 
-def build_snapshot() -> dict[str, Any]:
-    rpc = RpcClient(RPC_URL, BLOCK)
+def build_snapshot(rpc_url: str) -> dict[str, Any]:
+    rpc = RpcClient(rpc_url, BLOCK)
     mc = Multicall(rpc, MULTICALL3, MULTICALL_BATCH)
 
     print(f"[info] fetching lenders for silo {SILO_ADDRESS} at block {BLOCK} ...")
@@ -642,8 +731,10 @@ def build_snapshot() -> dict[str, Any]:
 
     silo_entry: dict[str, Any] = {
         "snapshot_block": BLOCK,
+        "silo_id": meta["silo_id"],
         "input_token": meta["input_token"],
         "protected_share_token": sp_token,
+        "total_assets": str(meta["total_assets"]) if meta["total_assets"] is not None else None,
         "collateral_total_supply": str(meta["collateral_total_supply"]),
         "protected_total_supply": str(meta["protected_total_supply"]),
         "direct_lenders": direct_lenders,
@@ -655,7 +746,7 @@ def build_snapshot() -> dict[str, Any]:
 # --------------------------------------------------------------------------------------
 # Output (incremental, per-chain)
 # --------------------------------------------------------------------------------------
-def write_output(silo_entry: dict[str, Any]) -> None:
+def write_output(silo_entry: dict[str, Any], chain: str, chain_id: int, silo_address: str) -> None:
     path = Path(OUTPUT_JSON)
     root: dict[str, Any] = {}
     if path.exists():
@@ -666,16 +757,16 @@ def write_output(silo_entry: dict[str, Any]) -> None:
         except json.JSONDecodeError:
             root = {}
 
-    chain_obj = root.get(CHAIN)
+    chain_obj = root.get(chain)
     if not isinstance(chain_obj, dict):
         chain_obj = {}
-    chain_obj["chain_id"] = CHAIN_ID
+    chain_obj["chain_id"] = chain_id
     silos = chain_obj.get("silos")
     if not isinstance(silos, dict):
         silos = {}
-    silos[norm(SILO_ADDRESS)] = silo_entry
+    silos[norm(silo_address)] = silo_entry
     chain_obj["silos"] = silos
-    root[CHAIN] = chain_obj
+    root[chain] = chain_obj
 
     path.write_text(json.dumps(root, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"[ok] wrote {path}")
@@ -683,11 +774,23 @@ def write_output(silo_entry: dict[str, Any]) -> None:
 
 def main() -> int:
     load_secrets()
-    silo_entry = build_snapshot()
-    write_output(silo_entry)
-    direct = len(silo_entry["direct_lenders"])
-    vaults = len(silo_entry["vaults"])
-    print(f"[done] silo={SILO_ADDRESS} direct_lenders={direct} vaults={vaults}")
+    completed = 0
+    for target in TARGETS:
+        silos = target.get("silos") or []
+        if not silos:
+            print(f"[skip] chain={target['chain']} has no configured silos")
+            continue
+        rpc_url = resolve_rpc_url(str(target["chain"]))
+        for silo in silos:
+            configure_context(target, silo)
+            silo_entry = build_snapshot(rpc_url)
+            write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS)
+            direct = len(silo_entry["direct_lenders"])
+            vaults = len(silo_entry["vaults"])
+            print(f"[done] chain={CHAIN} silo={SILO_ADDRESS} direct_lenders={direct} vaults={vaults}")
+            completed += 1
+    if completed == 0:
+        print("[done] no silos configured")
     return 0
 
 
