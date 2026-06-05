@@ -1,19 +1,25 @@
 import { useState } from "react";
+import {
+  type ChainSnapshot,
+  type DirectLender,
+  type SiloSnapshot,
+  type SortKey,
+  type VaultDepositor,
+  type VaultSnapshot,
+  chains,
+  compareBigIntAsc,
+  compareBigIntDesc,
+  explorerAddressUrl,
+  formatCompactUnits,
+  formatRawInteger,
+  formatUnits,
+  shortAddress,
+  sortLenders,
+} from "./snapshot";
 
-const chains = ["Sonic", "Ethereum"];
+type SortDirection = "asc" | "desc";
 
-const holders = [
-  { address: "0x8f4...b91a", type: "EOA", shares: "7,492,104.87", assets: "7,614.29" },
-  { address: "0xc24...a8d0", type: "SiloVault", shares: "2,902,551.10", assets: "2,948.55" },
-  { address: "0x19b...7c45", type: "Contract", shares: "881,440.00", assets: "895.21" },
-  { address: "0x51a...02ef", type: "EOA", shares: "419,770.54", assets: "426.44" },
-];
-
-const depositors = [
-  { address: "0x2a0...913d", type: "EOA", shares: "1,004.20", assets: "1,018.84" },
-  { address: "0xab4...33f8", type: "EOA", shares: "803.54", assets: "815.26" },
-  { address: "0xd91...e3ad", type: "Contract", shares: "240.19", assets: "243.69" },
-];
+const DEFAULT_EXPANDED_LIMIT = 2;
 
 function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
@@ -25,48 +31,185 @@ function MetricCard({ label, value, hint }: { label: string; value: string; hint
   );
 }
 
-function DataTable({
-  title,
-  rows,
-  isDepositor,
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-6 text-center text-sm text-slate-400">
+      {message}
+    </div>
+  );
+}
+
+function AddressLink({ chain, address }: { chain: string; address: string }) {
+  return (
+    <a
+      className="font-mono text-emerald-200 transition hover:text-emerald-100"
+      href={explorerAddressUrl(chain, address)}
+      rel="noreferrer"
+      target="_blank"
+      title={address}
+    >
+      {shortAddress(address)}
+    </a>
+  );
+}
+
+function SortButton({
+  active,
+  direction,
+  label,
+  onClick,
 }: {
-  title: string;
-  rows: typeof holders;
-  isDepositor?: boolean;
+  active: boolean;
+  direction: SortDirection;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`rounded-full border px-3 py-1 transition ${
+        active ? "border-emerald-300/40 text-emerald-200" : "border-white/10 text-slate-400 hover:bg-white/10"
+      }`}
+      type="button"
+      onClick={onClick}
+    >
+      {label} {active ? (direction === "asc" ? "↑" : "↓") : ""}
+    </button>
+  );
+}
+
+function HolderTable({
+  chain,
+  rows,
+  silo,
+  sortKey,
+  sortDirection,
+  onSort,
+}: {
+  chain: string;
+  rows: DirectLender[];
+  silo: SiloSnapshot;
+  sortKey: SortKey;
+  sortDirection: SortDirection;
+  onSort: (key: SortKey) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
-      <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-        <h3 className="font-semibold text-white">{title}</h3>
-        <div className="flex gap-2 text-xs text-slate-400">
-          <button className="rounded-full border border-emerald-300/30 px-3 py-1 text-emerald-200">
-            Sort shares
-          </button>
-          <button className="rounded-full border border-white/10 px-3 py-1">Sort assets</button>
+      <div className="flex flex-col gap-3 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="font-semibold text-white">Direct lenders</h3>
+        <div className="flex gap-2 text-xs">
+          <SortButton
+            active={sortKey === "shares"}
+            direction={sortDirection}
+            label="Shares"
+            onClick={() => onSort("shares")}
+          />
+          <SortButton
+            active={sortKey === "assets"}
+            direction={sortDirection}
+            label="Assets"
+            onClick={() => onSort("assets")}
+          />
         </div>
       </div>
+      {rows.length === 0 ? (
+        <EmptyState message="No direct lenders match the current address filter." />
+      ) : (
+        <div className="max-h-[38rem] overflow-auto">
+          <table className="min-w-full divide-y divide-white/10 text-sm">
+            <thead className="sticky top-0 bg-slate-950 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+              <tr>
+                <th className="px-5 py-3 font-medium">Address</th>
+                <th className="px-5 py-3 font-medium">Type</th>
+                <th className="px-5 py-3 text-right font-medium">Shares</th>
+                <th className="px-5 py-3 text-right font-medium">Assets</th>
+                <th className="px-5 py-3 text-right font-medium">Reward</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10 text-slate-200">
+              {rows.map((row) => (
+                <tr key={row.address} className="hover:bg-white/[0.03]">
+                  <td className="px-5 py-4">
+                    <AddressLink address={row.address} chain={chain} />
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">
+                      {row.addressType}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 text-right tabular-nums">{formatRawInteger(row.totalShares)}</td>
+                  <td className="px-5 py-4 text-right tabular-nums">
+                    {formatUnits(row.totalAssets, silo.inputToken.decimals)} {silo.inputToken.symbol}
+                  </td>
+                  <td className="px-5 py-4 text-right text-slate-500">{row.isVault ? "N/A" : "--"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function sortDepositors(rows: VaultDepositor[], sortKey: SortKey, direction: SortDirection): VaultDepositor[] {
+  return [...rows].sort((a, b) => {
+    const left = sortKey === "shares" ? a.vaultShares : a.attributedSiloAssets;
+    const right = sortKey === "shares" ? b.vaultShares : b.attributedSiloAssets;
+    return direction === "asc" ? compareBigIntAsc(left, right) : compareBigIntDesc(left, right);
+  });
+}
+
+function DepositorTable({
+  chain,
+  rows,
+  silo,
+  sortKey,
+  sortDirection,
+  addressFilter,
+}: {
+  chain: string;
+  rows: VaultDepositor[];
+  silo: SiloSnapshot;
+  sortKey: SortKey;
+  sortDirection: SortDirection;
+  addressFilter: string;
+}) {
+  const needle = addressFilter.trim().toLowerCase();
+  const visibleRows = needle ? rows.filter((row) => row.address.toLowerCase().includes(needle)) : rows;
+  const filteredRows = sortDepositors(visibleRows, sortKey, sortDirection);
+
+  if (filteredRows.length === 0) {
+    return <EmptyState message="No vault depositors match the current address filter." />;
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-white/10 text-sm">
           <thead className="bg-white/[0.03] text-left text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
               <th className="px-5 py-3 font-medium">Address</th>
               <th className="px-5 py-3 font-medium">Type</th>
-              <th className="px-5 py-3 text-right font-medium">{isDepositor ? "Vault shares" : "Shares"}</th>
-              <th className="px-5 py-3 text-right font-medium">
-                {isDepositor ? "Attributed assets" : "Assets"}
-              </th>
+              <th className="px-5 py-3 text-right font-medium">Vault shares</th>
+              <th className="px-5 py-3 text-right font-medium">Attributed assets</th>
               <th className="px-5 py-3 text-right font-medium">Reward</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10 text-slate-200">
-            {rows.map((row) => (
+            {filteredRows.map((row) => (
               <tr key={row.address} className="hover:bg-white/[0.03]">
-                <td className="px-5 py-4 font-mono text-emerald-200">{row.address}</td>
                 <td className="px-5 py-4">
-                  <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">{row.type}</span>
+                  <AddressLink address={row.address} chain={chain} />
                 </td>
-                <td className="px-5 py-4 text-right tabular-nums">{row.shares}</td>
-                <td className="px-5 py-4 text-right tabular-nums">{row.assets}</td>
+                <td className="px-5 py-4">
+                  <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">
+                    {row.addressType}
+                  </span>
+                </td>
+                <td className="px-5 py-4 text-right tabular-nums">{formatRawInteger(row.vaultShares)}</td>
+                <td className="px-5 py-4 text-right tabular-nums">
+                  {formatUnits(row.attributedSiloAssets, silo.inputToken.decimals)} {silo.inputToken.symbol}
+                </td>
                 <td className="px-5 py-4 text-right text-slate-500">--</td>
               </tr>
             ))}
@@ -77,8 +220,132 @@ function DataTable({
   );
 }
 
+function isVaultWarning(vault: VaultSnapshot): boolean {
+  return vault.status !== "ok" || !vault.indexedInSubgraph || !vault.inWithdrawQueue;
+}
+
+function warningLabel(vault: VaultSnapshot): string {
+  if (!vault.inWithdrawQueue) {
+    return "Vault is not in the withdraw queue";
+  }
+  if (!vault.indexedInSubgraph || vault.status === "vault_not_indexed") {
+    return "Vault not indexed";
+  }
+  return `Vault status: ${vault.status}`;
+}
+
+function VaultCard({
+  chain,
+  vault,
+  silo,
+  expanded,
+  onToggle,
+  sortKey,
+  sortDirection,
+  addressFilter,
+}: {
+  chain: string;
+  vault: VaultSnapshot;
+  silo: SiloSnapshot;
+  expanded: boolean;
+  onToggle: () => void;
+  sortKey: SortKey;
+  sortDirection: SortDirection;
+  addressFilter: string;
+}) {
+  const hasWarning = isVaultWarning(vault);
+
+  return (
+    <div
+      className={`rounded-3xl border p-5 ${
+        hasWarning ? "border-amber-300/30 bg-amber-300/[0.08]" : "border-emerald-300/20 bg-emerald-300/[0.06]"
+      }`}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className={hasWarning ? "font-semibold text-amber-100" : "font-semibold text-emerald-100"}>
+            {vault.name || "Unnamed SiloVault"}
+          </h3>
+          <div className="mt-1">
+            <AddressLink address={vault.address} chain={chain} />
+          </div>
+          <p className={hasWarning ? "mt-2 text-sm text-amber-100/70" : "mt-2 text-sm text-emerald-100/70"}>
+            Vault assets: {formatUnits(vault.vaultSiloAssets, silo.inputToken.decimals)} {silo.inputToken.symbol}
+          </p>
+        </div>
+        {hasWarning ? (
+          <span className="rounded-full bg-amber-300/20 px-3 py-1 text-sm text-amber-100">{warningLabel(vault)}</span>
+        ) : (
+          <button
+            className="rounded-full bg-emerald-300/20 px-3 py-1 text-sm text-emerald-100 transition hover:bg-emerald-300/30"
+            type="button"
+            onClick={onToggle}
+          >
+            {expanded ? "Collapse" : "Expand"} depositors
+          </button>
+        )}
+      </div>
+      {hasWarning ? (
+        <p className="mt-4 max-w-2xl text-sm leading-6 text-amber-100/75">
+          Depositors cannot be enumerated for this vault. Its assets are shown here so reward calculations can surface
+          the non-attributable amount.
+        </p>
+      ) : expanded ? (
+        <div className="mt-4">
+          <DepositorTable
+            addressFilter={addressFilter}
+            chain={chain}
+            rows={vault.depositors}
+            silo={silo}
+            sortDirection={sortDirection}
+            sortKey={sortKey}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function getInitialChain(): ChainSnapshot {
+  return chains.find((chain) => chain.silos.length > 0) ?? chains[0];
+}
+
 export default function App() {
-  const [selectedChain, setSelectedChain] = useState("Sonic");
+  const initialChain = getInitialChain();
+  const [selectedChainName, setSelectedChainName] = useState(initialChain.chain);
+  const [selectedSiloAddress, setSelectedSiloAddress] = useState(initialChain.silos[0]?.address ?? "");
+  const [addressFilter, setAddressFilter] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("assets");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>({});
+
+  const selectedChain = chains.find((chain) => chain.chain === selectedChainName) ?? initialChain;
+  const selectedSilo = selectedChain.silos.find((silo) => silo.address === selectedSiloAddress) ?? selectedChain.silos[0];
+
+  const lenderNeedle = addressFilter.trim().toLowerCase();
+  const filteredLenders = selectedSilo
+    ? lenderNeedle
+      ? selectedSilo.directLenders.filter((lender) => lender.address.toLowerCase().includes(lenderNeedle))
+      : selectedSilo.directLenders
+    : [];
+  const visibleLenders = selectedSilo ? sortLenders(filteredLenders, sortKey, sortDirection) : [];
+
+  const vaultWarnings = selectedSilo?.vaults.filter(isVaultWarning).length ?? 0;
+
+  function selectChain(chain: ChainSnapshot) {
+    setSelectedChainName(chain.chain);
+    setSelectedSiloAddress(chain.silos[0]?.address ?? "");
+    setExpandedVaults({});
+  }
+
+  function handleSort(nextKey: SortKey) {
+    if (sortKey === nextKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection("desc");
+  }
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
@@ -99,16 +366,16 @@ export default function App() {
             <div className="grid grid-cols-2 gap-2">
               {chains.map((chain) => (
                 <button
-                  key={chain}
+                  key={chain.chain}
                   className={`rounded-xl px-5 py-3 text-sm font-semibold transition ${
-                    selectedChain === chain
+                    selectedChain.chain === chain.chain
                       ? "bg-emerald-300 text-slate-950 shadow-lg shadow-emerald-500/20"
                       : "text-slate-300 hover:bg-white/10"
                   }`}
                   type="button"
-                  onClick={() => setSelectedChain(chain)}
+                  onClick={() => selectChain(chain)}
                 >
-                  {chain}
+                  {chain.label}
                 </button>
               ))}
             </div>
@@ -121,42 +388,71 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Chain</p>
-                  <h2 className="mt-1 text-xl font-semibold">{selectedChain}</h2>
+                  <h2 className="mt-1 text-xl font-semibold">{selectedChain.label}</h2>
                 </div>
-                <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">1 silo</span>
+                <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">
+                  {selectedChain.silos.length} silo{selectedChain.silos.length === 1 ? "" : "s"}
+                </span>
               </div>
               <div className="mt-5 space-y-3">
-                <button className="w-full rounded-2xl border border-emerald-300/40 bg-emerald-300/10 p-4 text-left shadow-lg shadow-emerald-950/30">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">USDC Silo</span>
-                    <span className="rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">Selected</span>
+                {selectedChain.silos.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-slate-500">
+                    No silos are currently bundled for this chain.
                   </div>
-                  <p className="mt-2 font-mono text-xs text-emerald-100/80">0x0000...0000</p>
-                  <p className="mt-3 text-sm text-slate-400">Snapshot block 54,144,258</p>
-                </button>
-                <div className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-slate-500">
-                  Additional silos will appear here when the bundled JSON includes them.
-                </div>
+                ) : (
+                  selectedChain.silos.map((silo) => (
+                    <button
+                      key={silo.address}
+                      className={`w-full rounded-2xl border p-4 text-left shadow-lg shadow-emerald-950/30 ${
+                        selectedSilo?.address === silo.address
+                          ? "border-emerald-300/40 bg-emerald-300/10"
+                          : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                      }`}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSiloAddress(silo.address);
+                        setExpandedVaults({});
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">{silo.inputToken.symbol} Silo</span>
+                        {selectedSilo?.address === silo.address ? (
+                          <span className="rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">Selected</span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 font-mono text-xs text-emerald-100/80">{shortAddress(silo.address)}</p>
+                      <p className="mt-3 text-sm text-slate-400">
+                        Snapshot block {new Intl.NumberFormat("en-US").format(silo.snapshotBlock)}
+                      </p>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           </aside>
 
-          <section className="space-y-6">
+          {selectedSilo ? (
+            <section className="space-y-6">
             <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-slate-950/40">
               <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
                 <div>
-                  <p className="text-sm font-medium text-emerald-200">USDC / Silo #--</p>
+                  <p className="text-sm font-medium text-emerald-200">
+                    {selectedSilo.inputToken.symbol} / Silo {selectedSilo.siloId ? `#${selectedSilo.siloId}` : "#--"}
+                  </p>
                   <h2 className="mt-2 text-3xl font-semibold">Silo lender details</h2>
-                  <a className="mt-3 inline-flex font-mono text-sm text-slate-400 hover:text-emerald-200" href="#">
-                    0x0000000000000000000000000000000000000000
-                  </a>
+                  <div className="mt-3">
+                    <AddressLink address={selectedSilo.address} chain={selectedChain.chain} />
+                  </div>
+                  <p className="mt-3 text-sm text-slate-400">
+                    Snapshot block {new Intl.NumberFormat("en-US").format(selectedSilo.snapshotBlock)}
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
                   <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Reward amount</p>
                   <div className="mt-3 flex gap-3">
                     <input
                       className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-slate-300 outline-none placeholder:text-slate-600"
-                      placeholder="0.00 USDC"
+                      placeholder={`0.00 ${selectedSilo.inputToken.symbol}`}
                       readOnly
                     />
                     <button className="rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold text-slate-400">
@@ -168,9 +464,26 @@ export default function App() {
               </div>
 
               <div className="mt-6 grid gap-4 md:grid-cols-3">
-                <MetricCard label="Total shares" value="264.37B" hint="Collateral + protected supply" />
-                <MetricCard label="Total assets" value="283,410.42" hint="Redeemable silo assets" />
-                <MetricCard label="Vault assets" value="2,948.55" hint="Attributable through vault depositors" />
+                <MetricCard
+                  label="Total shares"
+                  value={formatCompactUnits(selectedSilo.totalShares, 0)}
+                  hint="Collateral + protected supply"
+                />
+                <MetricCard
+                  label="Total assets"
+                  value={`${formatUnits(selectedSilo.totalAssets, selectedSilo.inputToken.decimals)} ${
+                    selectedSilo.inputToken.symbol
+                  }`}
+                  hint="Redeemable silo assets"
+                />
+                <MetricCard
+                  label="Vault assets"
+                  value={`${formatUnits(
+                    selectedSilo.vaults.reduce((sum, vault) => sum + vault.vaultSiloAssets, 0n),
+                    selectedSilo.inputToken.decimals,
+                  )} ${selectedSilo.inputToken.symbol}`}
+                  hint="Attributable through vault depositors"
+                />
               </div>
             </div>
 
@@ -182,46 +495,57 @@ export default function App() {
                 id="filter"
                 className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 font-mono text-sm text-slate-300 outline-none placeholder:text-slate-600"
                 placeholder="Search by address substring"
-                readOnly
+                value={addressFilter}
+                onChange={(event) => setAddressFilter(event.target.value)}
               />
             </div>
 
-            <DataTable title="Direct lenders" rows={holders} />
+            <HolderTable
+              chain={selectedChain.chain}
+              rows={visibleLenders}
+              silo={selectedSilo}
+              sortDirection={sortDirection}
+              sortKey={sortKey}
+              onSort={handleSort}
+            />
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold">Vaults</h2>
-                <span className="text-sm text-slate-400">1 indexed, 1 warning</span>
+                <span className="text-sm text-slate-400">
+                  {selectedSilo.vaults.length - vaultWarnings} indexed, {vaultWarnings} warning
+                  {vaultWarnings === 1 ? "" : "s"}
+                </span>
               </div>
-              <div className="rounded-3xl border border-emerald-300/20 bg-emerald-300/[0.06] p-5">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="font-semibold text-emerald-100">SiloVault Alpha</h3>
-                    <p className="mt-1 font-mono text-xs text-emerald-100/70">0xc24...a8d0</p>
-                  </div>
-                  <span className="rounded-full bg-emerald-300/20 px-3 py-1 text-sm text-emerald-100">
-                    Expanded
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <DataTable title="Vault depositors" rows={depositors} isDepositor />
-                </div>
-              </div>
-              <div className="rounded-3xl border border-amber-300/30 bg-amber-300/[0.08] p-5">
-                <div className="flex items-start gap-4">
-                  <div className="mt-1 h-2.5 w-2.5 rounded-full bg-amber-300" />
-                  <div>
-                    <h3 className="font-semibold text-amber-100">Vault not indexed</h3>
-                    <p className="mt-1 text-sm leading-6 text-amber-100/75">
-                      Depositors cannot be enumerated for this vault. Its total assets will be highlighted as
-                      undistributed once rewards are calculated.
-                    </p>
-                    <p className="mt-3 text-sm text-amber-100/70">Vault assets: 412.90 USDC</p>
-                  </div>
-                </div>
-              </div>
+              {selectedSilo.vaults.length === 0 ? (
+                <EmptyState message="No vault lender contracts are present in this snapshot." />
+              ) : (
+                selectedSilo.vaults.map((vault, index) => (
+                  <VaultCard
+                    key={vault.address}
+                    addressFilter={addressFilter}
+                    chain={selectedChain.chain}
+                    expanded={expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT}
+                    silo={selectedSilo}
+                    sortDirection={sortDirection}
+                    sortKey={sortKey}
+                    vault={vault}
+                    onToggle={() =>
+                      setExpandedVaults((current) => ({
+                        ...current,
+                        [vault.address]: !(current[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT),
+                      }))
+                    }
+                  />
+                ))
+              )}
             </div>
           </section>
+          ) : (
+            <section>
+              <EmptyState message="Select a chain with bundled silo data to view snapshot details." />
+            </section>
+          )}
         </div>
       </section>
     </main>
