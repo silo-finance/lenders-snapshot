@@ -1,0 +1,29 @@
+name: Snapshot QA
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - scripts/lender-snapshot/distribution_snapshot.json
+
+jobs:
+  qa:
+    name: Validate snapshot JSON
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: scripts/lender-snapshot/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r scripts/lender-snapshot/requirements.txt
+
+      - name: Run QA
+        run: python scripts/lender-snapshot/qa_check.py
