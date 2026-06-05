@@ -1,6 +1,6 @@
 # Lender snapshot (Trevee)
 
-Builds a block-pinned snapshot of all lenders of a single Silo, splitting them into:
+Builds block-pinned snapshots of all lenders for configured Silos, splitting them into:
 
 - **direct lenders** – every account holding collateral and/or protected shares of the Silo, and
 - **SiloVault depositors** – holders of any SiloVault that itself lends into the Silo, attributed by their share of the vault.
@@ -16,37 +16,43 @@ Redeemable `assets` per address are computed purely via on-chain `previewRedeem`
 
 ## Configuration
 
-Non-secret parameters are hardcoded near the top of `snapshot_lenders.py`:
+Non-secret parameters are hardcoded near the top of `snapshot_lenders.py` in `TARGETS`:
 
-- `BLOCK`, `SILO_ADDRESS`, `CHAIN`, `CHAIN_ID`
-- `SUBGRAPH_URL` (public subgraph id), `OUTPUT_JSON`
+- `chain`, `chain_id`, `subgraph_url`
+- `silos[]` entries with `address` and `block`
+- `OUTPUT_JSON`
 - `MULTICALL3` address and `MULTICALL_BATCH`
+
+Sonic is configured with the current silo/block. Ethereum is present as a placeholder with
+`silos: []` until silo addresses and snapshot blocks are supplied.
 
 Secrets are read **only** from the environment (or a local, gitignored `.env`):
 
-- `RPC_URL` – archive RPC endpoint (must support `eth_call` at the historical block).
+- `SONIC_RPC_URL` – archive RPC endpoint for Sonic (must support `eth_call` at the historical block).
+- `ETHEREUM_RPC_URL` – future archive RPC endpoint for Ethereum once Ethereum silos are configured.
+- `RPC_URL` – optional fallback used if a chain-specific URL is not set.
 - `THE_GRAPH_API_KEY` – The Graph gateway Bearer token.
 
 ```bash
-cp scripts/tasks/lender-snapshot/.env.example scripts/tasks/lender-snapshot/.env
-# edit .env and fill RPC_URL and THE_GRAPH_API_KEY
+cp scripts/lender-snapshot/.env.example scripts/lender-snapshot/.env
+# edit .env and fill SONIC_RPC_URL and THE_GRAPH_API_KEY
 ```
 
-The script auto-loads `scripts/tasks/lender-snapshot/.env` if present; you can also export the variables in your shell.
+The script auto-loads `scripts/lender-snapshot/.env` if present; you can also export the variables in your shell.
 
 ## Usage
 
 ```bash
-python3 -m pip install -r scripts/tasks/lender-snapshot/requirements.txt
+python3 -m pip install -r scripts/lender-snapshot/requirements.txt
 
-# Produce / refresh the snapshot for the configured Silo:
-python3 scripts/tasks/lender-snapshot/snapshot_lenders.py
+# Produce / refresh snapshots for all configured chain/silo targets:
+python3 scripts/lender-snapshot/snapshot_lenders.py
 
 # Validate the JSON invariants (zero tolerance, exact wei equality):
-python3 scripts/tasks/lender-snapshot/qa_check.py
+python3 scripts/lender-snapshot/qa_check.py
 
 # Optionally re-confirm stored total supplies against the chain:
-python3 scripts/tasks/lender-snapshot/qa_check.py --verify-onchain
+python3 scripts/lender-snapshot/qa_check.py --verify-onchain
 ```
 
 Re-running for the same Silo **overwrites** that Silo's entry under its chain key; other Silos and other chains are preserved.
@@ -64,8 +70,10 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
     "silos": {
       "<silo_address>": {
         "snapshot_block": 54144258,
-        "input_token": { "address": "0x..", "decimals": 6 },
+        "silo_id": "12",
+        "input_token": { "address": "0x..", "decimals": 6, "symbol": "USDC" },
         "protected_share_token": "0x..",
+        "total_assets": "…",              // raw integer string from silo.totalAssets()
         "collateral_total_supply": "…",   // raw integer string
         "protected_total_supply": "…",
         "direct_lenders": {

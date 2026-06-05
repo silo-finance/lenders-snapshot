@@ -8,7 +8,7 @@
 #   ./run.sh qa_check.py --verify-onchain
 #
 # Secrets: the script auto-loads ./.env (mounted into the container). You may
-# alternatively export RPC_URL / THE_GRAPH_API_KEY in your shell and they will
+# alternatively export {CHAIN}_RPC_URL / RPC_URL / THE_GRAPH_API_KEY in your shell and they will
 # be forwarded into the container (and take precedence over .env).
 set -euo pipefail
 
@@ -21,6 +21,8 @@ docker build -t "$IMAGE" "$HERE" 1>&2
 # Forward secrets from the host environment if present (optional; .env also works).
 ENV_ARGS=()
 if [ -n "${RPC_URL:-}" ]; then ENV_ARGS+=(-e "RPC_URL=${RPC_URL}"); fi
+if [ -n "${SONIC_RPC_URL:-}" ]; then ENV_ARGS+=(-e "SONIC_RPC_URL=${SONIC_RPC_URL}"); fi
+if [ -n "${ETHEREUM_RPC_URL:-}" ]; then ENV_ARGS+=(-e "ETHEREUM_RPC_URL=${ETHEREUM_RPC_URL}"); fi
 if [ -n "${THE_GRAPH_API_KEY:-}" ]; then ENV_ARGS+=(-e "THE_GRAPH_API_KEY=${THE_GRAPH_API_KEY}"); fi
 
 SCRIPT="${1:-snapshot_lenders.py}"

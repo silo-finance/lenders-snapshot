@@ -17,9 +17,9 @@ expected/actual/diff report per contract.
 Vaults flagged vault_not_indexed or with in_withdraw_queue == false are reported
 as warnings (their depositors are intentionally not enumerated), not errors.
 
-Optional: --verify-onchain re-reads the *_total_supply values from the chain at
-the snapshot block (reuses the main script's RPC client / Multicall layer) to
-confirm the stored totals match the chain.
+Optional: --verify-onchain re-reads the *_total_supply values from each chain at
+the snapshot block (reuses the main script's per-chain RPC client / Multicall
+layer) to confirm the stored totals match the chain.
 
     python3 scripts/tasks/lender-snapshot/qa_check.py
     python3 scripts/tasks/lender-snapshot/qa_check.py --verify-onchain
@@ -147,9 +147,10 @@ def verify_onchain(root: dict[str, Any], chain_filter: set[str], report: Report)
         silos = chain_obj.get("silos", {})
         if not isinstance(silos, dict):
             continue
+        rpc_url = mod.resolve_rpc_url(chain)
         for silo_addr, silo in silos.items():
             block = int(silo.get("snapshot_block"))
-            rpc = mod.RpcClient(mod.RPC_URL, block)
+            rpc = mod.RpcClient(rpc_url, block)
             mc = mod.Multicall(rpc, mod.MULTICALL3, mod.MULTICALL_BATCH)
             sp_token = silo.get("protected_share_token")
 
