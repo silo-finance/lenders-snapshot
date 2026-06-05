@@ -13,6 +13,8 @@ import {
   formatCompactUnits,
   formatRawInteger,
   formatUnits,
+  formatUnitsPlain,
+  parseUnits,
   shortAddress,
   sortLenders,
 } from "./snapshot";
@@ -20,6 +22,25 @@ import {
 type SortDirection = "asc" | "desc";
 
 const DEFAULT_EXPANDED_LIMIT = 2;
+
+type RewardPlan = {
+  rewardRaw: bigint;
+  byLeafKey: Map<string, bigint>;
+  csvRewards: Map<string, bigint>;
+  distributed: bigint;
+  undistributed: bigint;
+  nonAttributableAssets: bigint;
+};
+
+const ZERO = 0n;
+
+function directLeafKey(address: string): string {
+  return `direct:${address}`;
+}
+
+function vaultLeafKey(vaultAddress: string, depositorAddress: string): string {
+  return `vault:${vaultAddress}:${depositorAddress}`;
+}
 
 function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
@@ -83,6 +104,7 @@ function HolderTable({
   silo,
   sortKey,
   sortDirection,
+  rewardPlan,
   onSort,
 }: {
   chain: string;
@@ -90,6 +112,7 @@ function HolderTable({
   silo: SiloSnapshot;
   sortKey: SortKey;
   sortDirection: SortDirection;
+  rewardPlan: RewardPlan | null;
   onSort: (key: SortKey) => void;
 }) {
   return (
@@ -140,7 +163,16 @@ function HolderTable({
                   <td className="px-5 py-4 text-right tabular-nums">
                     {formatUnits(row.totalAssets, silo.inputToken.decimals)} {silo.inputToken.symbol}
                   </td>
-                  <td className="px-5 py-4 text-right text-slate-500">{row.isVault ? "N/A" : "--"}</td>
+                  <td className={row.isVault ? "px-5 py-4 text-right text-slate-500" : "px-5 py-4 text-right"}>
+                    {row.isVault
+                      ? "N/A"
+                      : rewardPlan
+                        ? `${formatUnits(
+                            rewardPlan.byLeafKey.get(directLeafKey(row.address)) ?? ZERO,
+                            silo.inputToken.decimals,
+                          )} ${silo.inputToken.symbol}`
+                        : "--"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -163,16 +195,20 @@ function DepositorTable({
   chain,
   rows,
   silo,
+  vaultAddress,
   sortKey,
   sortDirection,
   addressFilter,
+  rewardPlan,
 }: {
   chain: string;
   rows: VaultDepositor[];
   silo: SiloSnapshot;
+  vaultAddress: string;
   sortKey: SortKey;
   sortDirection: SortDirection;
   addressFilter: string;
+  rewardPlan: RewardPlan | null;
 }) {
   const needle = addressFilter.trim().toLowerCase();
   const visibleRows = needle ? rows.filter((row) => row.address.toLowerCase().includes(needle)) : rows;
@@ -210,7 +246,14 @@ function DepositorTable({
                 <td className="px-5 py-4 text-right tabular-nums">
                   {formatUnits(row.attributedSiloAssets, silo.inputToken.decimals)} {silo.inputToken.symbol}
                 </td>
-                <td className="px-5 py-4 text-right text-slate-500">--</td>
+                <td className="px-5 py-4 text-right">
+                  {rewardPlan
+                    ? `${formatUnits(
+                        rewardPlan.byLeafKey.get(vaultLeafKey(vaultAddress, row.address)) ?? ZERO,
+                        silo.inputToken.decimals,
+                      )} ${silo.inputToken.symbol}`
+                    : "--"}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -234,6 +277,61 @@ function warningLabel(vault: VaultSnapshot): string {
   return `Vault status: ${vault.status}`;
 }
 
+function addCsvReward(csvRewards: Map<string, bigint>, address: string, amount: bigint) {
+  csvRewards.set(address, (csvRewards.get(address) ?? ZERO) + amount);
+}
+
+function buildRewardPlan(silo: SiloSnapshot, rewardRaw: bigint): RewardPlan {
+  const byLeafKey = new Map<string, bigint>();
+  const csvRewards = new Map<string, bigint>();
+  let distributed = ZERO;
+  let leafAssets = ZERO;
+
+  if (rewardRaw === ZERO || silo.totalAssets === ZERO) {
+    return {
+      rewardRaw,
+      byLeafKey,
+      csvRewards,
+      distributed,
+      undistributed: rewardRaw,
+      nonAttributableAssets: silo.totalAssets,
+    };
+  }
+
+  for (const lender of silo.directLenders) {
+    if (lender.isVault) {
+      continue;
+    }
+    const reward = (rewardRaw * lender.totalAssets) / silo.totalAssets;
+    byLeafKey.set(directLeafKey(lender.address), reward);
+    addCsvReward(csvRewards, lender.address, reward);
+    distributed += reward;
+    leafAssets += lender.totalAssets;
+  }
+
+  for (const vault of silo.vaults) {
+    if (isVaultWarning(vault)) {
+      continue;
+    }
+    for (const depositor of vault.depositors) {
+      const reward = (rewardRaw * depositor.attributedSiloAssets) / silo.totalAssets;
+      byLeafKey.set(vaultLeafKey(vault.address, depositor.address), reward);
+      addCsvReward(csvRewards, depositor.address, reward);
+      distributed += reward;
+      leafAssets += depositor.attributedSiloAssets;
+    }
+  }
+
+  return {
+    rewardRaw,
+    byLeafKey,
+    csvRewards,
+    distributed,
+    undistributed: rewardRaw > distributed ? rewardRaw - distributed : ZERO,
+    nonAttributableAssets: silo.totalAssets > leafAssets ? silo.totalAssets - leafAssets : ZERO,
+  };
+}
+
 function VaultCard({
   chain,
   vault,
@@ -243,6 +341,7 @@ function VaultCard({
   sortKey,
   sortDirection,
   addressFilter,
+  rewardPlan,
 }: {
   chain: string;
   vault: VaultSnapshot;
@@ -252,8 +351,11 @@ function VaultCard({
   sortKey: SortKey;
   sortDirection: SortDirection;
   addressFilter: string;
+  rewardPlan: RewardPlan | null;
 }) {
   const hasWarning = isVaultWarning(vault);
+  const unavailableReward =
+    hasWarning && rewardPlan && silo.totalAssets > ZERO ? (rewardPlan.rewardRaw * vault.vaultSiloAssets) / silo.totalAssets : ZERO;
 
   return (
     <div
@@ -286,19 +388,29 @@ function VaultCard({
         )}
       </div>
       {hasWarning ? (
-        <p className="mt-4 max-w-2xl text-sm leading-6 text-amber-100/75">
-          Depositors cannot be enumerated for this vault. Its assets are shown here so reward calculations can surface
-          the non-attributable amount.
-        </p>
+        <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
+          <p>
+            Depositors cannot be enumerated for this vault. Its assets are shown here so reward calculations can
+            surface the non-attributable amount.
+          </p>
+          {unavailableReward > ZERO ? (
+            <p className="font-semibold text-amber-100">
+              Undistributed from this vault: {formatUnits(unavailableReward, silo.inputToken.decimals)}{" "}
+              {silo.inputToken.symbol}
+            </p>
+          ) : null}
+        </div>
       ) : expanded ? (
         <div className="mt-4">
           <DepositorTable
             addressFilter={addressFilter}
             chain={chain}
+            rewardPlan={rewardPlan}
             rows={vault.depositors}
             silo={silo}
             sortDirection={sortDirection}
             sortKey={sortKey}
+            vaultAddress={vault.address}
           />
         </div>
       ) : null}
@@ -318,6 +430,7 @@ export default function App() {
   const [sortKey, setSortKey] = useState<SortKey>("assets");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>({});
+  const [rewardInput, setRewardInput] = useState("");
 
   const selectedChain = chains.find((chain) => chain.chain === selectedChainName) ?? initialChain;
   const selectedSilo = selectedChain.silos.find((silo) => silo.address === selectedSiloAddress) ?? selectedChain.silos[0];
@@ -331,11 +444,15 @@ export default function App() {
   const visibleLenders = selectedSilo ? sortLenders(filteredLenders, sortKey, sortDirection) : [];
 
   const vaultWarnings = selectedSilo?.vaults.filter(isVaultWarning).length ?? 0;
+  const rewardRaw = selectedSilo ? parseUnits(rewardInput, selectedSilo.inputToken.decimals) : null;
+  const rewardInputInvalid = rewardInput.trim() !== "" && rewardRaw === null;
+  const rewardPlan = selectedSilo && rewardRaw !== null ? buildRewardPlan(selectedSilo, rewardRaw) : null;
 
   function selectChain(chain: ChainSnapshot) {
     setSelectedChainName(chain.chain);
     setSelectedSiloAddress(chain.silos[0]?.address ?? "");
     setExpandedVaults({});
+    setRewardInput("");
   }
 
   function handleSort(nextKey: SortKey) {
@@ -412,6 +529,7 @@ export default function App() {
                       onClick={() => {
                         setSelectedSiloAddress(silo.address);
                         setExpandedVaults({});
+                        setRewardInput("");
                       }}
                     >
                       <div className="flex items-center justify-between">
@@ -453,13 +571,65 @@ export default function App() {
                     <input
                       className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-slate-300 outline-none placeholder:text-slate-600"
                       placeholder={`0.00 ${selectedSilo.inputToken.symbol}`}
-                      readOnly
+                      value={rewardInput}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setRewardInput(nextValue);
+                        if (nextValue.trim()) {
+                          setExpandedVaults(Object.fromEntries(selectedSilo.vaults.map((vault) => [vault.address, true])));
+                        }
+                      }}
                     />
-                    <button className="rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold text-slate-400">
+                    <button
+                      className="rounded-xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                      disabled={!rewardPlan || rewardPlan.rewardRaw === ZERO || rewardInputInvalid}
+                      type="button"
+                      onClick={() => {
+                        if (!selectedSilo || !rewardPlan) {
+                          return;
+                        }
+                        const rows = [["address", "reward"]];
+                        for (const [address, reward] of [...rewardPlan.csvRewards.entries()].sort(([a], [b]) =>
+                          a.localeCompare(b),
+                        )) {
+                          rows.push([address, formatUnitsPlain(reward, selectedSilo.inputToken.decimals)]);
+                        }
+                        const csv = rows.map((row) => row.join(",")).join("\n");
+                        const blob = new Blob([`${csv}\n`], { type: "text/csv;charset=utf-8" });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = `${selectedChain.chain}-${selectedSilo.address}-rewards.csv`;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                    >
                       CSV
                     </button>
                   </div>
-                  <p className="mt-3 text-xs text-slate-500">Reward calculation will activate once data is wired.</p>
+                  {rewardInputInvalid ? (
+                    <p className="mt-3 text-xs text-amber-200">
+                      Enter a non-negative amount with at most {selectedSilo.inputToken.decimals} decimals.
+                    </p>
+                  ) : rewardPlan && rewardPlan.rewardRaw > ZERO ? (
+                    <div className="mt-3 space-y-1 text-xs text-slate-400">
+                      <p>
+                        Distributed: {formatUnits(rewardPlan.distributed, selectedSilo.inputToken.decimals)}{" "}
+                        {selectedSilo.inputToken.symbol}
+                      </p>
+                      {rewardPlan.undistributed > ZERO ? (
+                        <p className="text-amber-200">
+                          Undistributed: {formatUnits(rewardPlan.undistributed, selectedSilo.inputToken.decimals)}{" "}
+                          {selectedSilo.inputToken.symbol}
+                          {rewardPlan.nonAttributableAssets > ZERO
+                            ? " because some vault assets have no enumerable depositors."
+                            : " due to integer rounding."}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-slate-500">Enter an amount to compute pro-rata leaf rewards.</p>
+                  )}
                 </div>
               </div>
 
@@ -506,6 +676,7 @@ export default function App() {
               silo={selectedSilo}
               sortDirection={sortDirection}
               sortKey={sortKey}
+              rewardPlan={rewardPlan}
               onSort={handleSort}
             />
 
@@ -529,6 +700,7 @@ export default function App() {
                     silo={selectedSilo}
                     sortDirection={sortDirection}
                     sortKey={sortKey}
+                    rewardPlan={rewardPlan}
                     vault={vault}
                     onToggle={() =>
                       setExpandedVaults((current) => ({

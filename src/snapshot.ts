@@ -282,6 +282,40 @@ export function formatUnits(value: bigint, decimals: number, maxFractionDigits =
   return `${negative ? "-" : ""}${wholeFormatted}${fractionTrimmed ? `.${fractionTrimmed}` : ""}`;
 }
 
+export function formatUnitsPlain(value: bigint, decimals: number): string {
+  const negative = value < ZERO;
+  const absolute = negative ? -value : value;
+  const scale = 10n ** BigInt(decimals);
+  const whole = absolute / scale;
+  const fraction = absolute % scale;
+
+  if (fraction === ZERO) {
+    return `${negative ? "-" : ""}${whole.toString()}`;
+  }
+
+  const fractionPadded = fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
+  return `${negative ? "-" : ""}${whole.toString()}.${fractionPadded}`;
+}
+
+export function parseUnits(value: string, decimals: number): bigint | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (!/^\d+(\.\d*)?$/.test(trimmed)) {
+    return null;
+  }
+
+  const [whole, fraction = ""] = trimmed.split(".");
+  if (fraction.length > decimals) {
+    return null;
+  }
+
+  const wholeRaw = BigInt(whole) * 10n ** BigInt(decimals);
+  const fractionRaw = fraction ? BigInt(fraction.padEnd(decimals, "0")) : ZERO;
+  return wholeRaw + fractionRaw;
+}
+
 export function formatCompactUnits(value: bigint, decimals: number): string {
   const asNumber = Number(value) / 10 ** decimals;
   if (!Number.isFinite(asNumber)) {
