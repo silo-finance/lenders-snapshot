@@ -204,7 +204,7 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
 }
 
 function parseSnapshot(root: RawRoot): ChainSnapshot[] {
-  const chainNames = Array.from(new Set([...Object.keys(KNOWN_CHAINS), ...Object.keys(root)])).sort((a, b) => {
+  const chainNames = Object.keys(root).sort((a, b) => {
     const knownOrder = Object.keys(KNOWN_CHAINS);
     const aIndex = knownOrder.indexOf(a);
     const bIndex = knownOrder.indexOf(b);
@@ -228,6 +228,17 @@ function parseSnapshot(root: RawRoot): ChainSnapshot[] {
 }
 
 export const chains = parseSnapshot(snapshotJson as RawRoot);
+
+export function findSiloByAddress(address: string): { chain: ChainSnapshot; silo: SiloSnapshot } | null {
+  const normalized = address.toLowerCase();
+  for (const chain of chains) {
+    const silo = chain.silos.find((entry) => entry.address.toLowerCase() === normalized);
+    if (silo) {
+      return { chain, silo };
+    }
+  }
+  return null;
+}
 
 export function compareBigIntDesc(a: bigint, b: bigint): number {
   if (a === b) {
