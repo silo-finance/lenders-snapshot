@@ -51,14 +51,14 @@ function vaultLeafKey(siloAddress: string, vaultAddress: string, depositorAddres
 }
 
 function csvEscape(value: string): string {
-  if (/[",\n\r]/.test(value)) {
+  if (/[";\n\r]/.test(value)) {
     return `"${value.replaceAll('"', '""')}"`;
   }
   return value;
 }
 
 function downloadCsv(filename: string, rows: string[][]) {
-  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+  const csv = rows.map((row) => row.map(csvEscape).join(";")).join("\n");
   const blob = new Blob([`${csv}\n`], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
