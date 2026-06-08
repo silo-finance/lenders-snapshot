@@ -10,9 +10,9 @@ import {
   compareBigIntDesc,
   explorerAddressUrl,
   formatCompactUnits,
-  formatRawInteger,
   formatUnits,
   formatUnitsPlain,
+  formatUnitsRounded,
   parseUnits,
   shortAddress,
 } from "./snapshot";
@@ -36,6 +36,15 @@ type RewardPlan = {
 };
 
 const ZERO = 0n;
+
+function shareDecimals(assetDecimals: number): number {
+  return assetDecimals + 3;
+}
+
+function floorToWholeUnits(value: bigint, decimals: number): bigint {
+  const scale = 10n ** BigInt(decimals);
+  return (value / scale) * scale;
+}
 
 function directLeafKey(address: string): string {
   return `direct:${address}`;
@@ -298,17 +307,26 @@ function HolderTable({
                       ) : null}
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-right tabular-nums">{formatRawInteger(row.totalShares)}</td>
-                  <td className="px-5 py-4 text-right tabular-nums">
-                    {formatUnits(row.totalAssets, silo.inputToken.decimals)} {silo.inputToken.symbol}
+                  <td className="px-5 py-4 text-right font-mono tabular-nums">
+                    {formatUnits(row.totalShares, shareDecimals(silo.inputToken.decimals))}
                   </td>
-                  <td className={row.isVault ? "px-5 py-4 text-right text-slate-500" : "px-5 py-4 text-right"}>
+                  <td className="px-5 py-4 text-right font-mono tabular-nums">
+                    {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                  </td>
+                  <td
+                    className={
+                      row.isVault
+                        ? "px-5 py-4 text-right font-mono tabular-nums text-slate-500"
+                        : "px-5 py-4 text-right font-mono tabular-nums"
+                    }
+                  >
                     {row.isVault
                       ? "N/A"
                       : rewardPlan
                         ? `${formatUnits(
                             rewardPlan.byLeafKey.get(directLeafKey(row.address)) ?? ZERO,
                             silo.inputToken.decimals,
+                            0,
                           )} ${silo.inputToken.symbol}`
                         : "--"}
                   </td>
@@ -408,15 +426,18 @@ function DepositorTable({
                     {row.addressType}
                   </span>
                 </td>
-                <td className="px-5 py-4 text-right tabular-nums">{formatRawInteger(row.vaultShares)}</td>
-                <td className="px-5 py-4 text-right tabular-nums">
-                  {formatUnits(row.attributedSiloAssets, silo.inputToken.decimals)} {silo.inputToken.symbol}
+                <td className="px-5 py-4 text-right font-mono tabular-nums">
+                  {formatUnits(row.vaultShares, shareDecimals(silo.inputToken.decimals))}
                 </td>
-                <td className="px-5 py-4 text-right">
+                <td className="px-5 py-4 text-right font-mono tabular-nums">
+                  {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                </td>
+                <td className="px-5 py-4 text-right font-mono tabular-nums">
                   {rewardPlan
                     ? `${formatUnits(
                         rewardPlan.byLeafKey.get(vaultLeafKey(vaultAddress, row.address)) ?? ZERO,
                         silo.inputToken.decimals,
+                        0,
                       )} ${silo.inputToken.symbol}`
                     : "--"}
                 </td>
@@ -472,7 +493,7 @@ function buildRewardPlan(silo: SiloSnapshot, rewardRaw: bigint): RewardPlan {
     if (lender.isVault) {
       continue;
     }
-    const reward = (rewardRaw * lender.totalAssets) / silo.totalAssets;
+    const reward = floorToWholeUnits((rewardRaw * lender.totalAssets) / silo.totalAssets, silo.inputToken.decimals);
     byLeafKey.set(directLeafKey(lender.address), reward);
     addCsvReward(csvRewards, lender.address, reward);
     distributed += reward;
@@ -484,7 +505,10 @@ function buildRewardPlan(silo: SiloSnapshot, rewardRaw: bigint): RewardPlan {
       continue;
     }
     for (const depositor of vault.depositors) {
-      const reward = (rewardRaw * depositor.attributedSiloAssets) / silo.totalAssets;
+      const reward = floorToWholeUnits(
+        (rewardRaw * depositor.attributedSiloAssets) / silo.totalAssets,
+        silo.inputToken.decimals,
+      );
       byLeafKey.set(vaultLeafKey(vault.address, depositor.address), reward);
       addCsvReward(csvRewards, depositor.address, reward);
       distributed += reward;
@@ -540,7 +564,8 @@ function VaultCard({
             <AddressLink address={vault.address} chain={chain} />
           </div>
           <p className={hasWarning ? "mt-2 text-sm text-amber-100/70" : "mt-2 text-sm text-emerald-100/70"}>
-            Vault assets: {formatUnits(vault.vaultSiloAssets, silo.inputToken.decimals)} {silo.inputToken.symbol}
+            Vault assets: {formatUnitsRounded(vault.vaultSiloAssets, silo.inputToken.decimals, 2)}{" "}
+            {silo.inputToken.symbol}
           </p>
         </div>
         {hasWarning ? (
@@ -835,21 +860,22 @@ export default function App() {
               <div className="mt-6 grid gap-4 md:grid-cols-3">
                 <MetricCard
                   label="Total shares"
-                  value={formatCompactUnits(selectedSilo.totalShares, 0)}
+                  value={formatCompactUnits(selectedSilo.totalShares, shareDecimals(selectedSilo.inputToken.decimals))}
                   hint="Collateral supply"
                 />
                 <MetricCard
                   label="Total assets"
-                  value={`${formatUnits(selectedSilo.totalAssets, selectedSilo.inputToken.decimals)} ${
+                  value={`${formatUnitsRounded(selectedSilo.totalAssets, selectedSilo.inputToken.decimals, 2)} ${
                     selectedSilo.inputToken.symbol
                   }`}
                   hint="Redeemable silo assets"
                 />
                 <MetricCard
                   label="Vault assets"
-                  value={`${formatUnits(
+                  value={`${formatUnitsRounded(
                     selectedSilo.vaults.reduce((sum, vault) => sum + vault.vaultSiloAssets, 0n),
                     selectedSilo.inputToken.decimals,
+                    2,
                   )} ${selectedSilo.inputToken.symbol}`}
                   hint="Attributable through vault depositors"
                 />

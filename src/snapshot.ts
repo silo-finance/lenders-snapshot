@@ -272,6 +272,29 @@ export function formatUnits(value: bigint, decimals: number, maxFractionDigits =
   return `${negative ? "-" : ""}${wholeFormatted}${fractionTrimmed ? `.${fractionTrimmed}` : ""}`;
 }
 
+export function formatUnitsRounded(value: bigint, decimals: number, fractionDigits: number): string {
+  const negative = value < ZERO;
+  const absolute = negative ? -value : value;
+  const scale = 10n ** BigInt(decimals);
+  const displayScale = 10n ** BigInt(fractionDigits);
+  let rounded = (absolute * displayScale) / scale;
+  const remainder = (absolute * displayScale) % scale;
+
+  if (remainder * 2n >= scale) {
+    rounded += 1n;
+  }
+
+  const whole = rounded / displayScale;
+  const fraction = rounded % displayScale;
+  const wholeFormatted = new Intl.NumberFormat("en-US").format(Number(whole));
+
+  if (fractionDigits === 0) {
+    return `${negative ? "-" : ""}${wholeFormatted}`;
+  }
+
+  return `${negative ? "-" : ""}${wholeFormatted}.${fraction.toString().padStart(fractionDigits, "0")}`;
+}
+
 export function formatUnitsPlain(value: bigint, decimals: number): string {
   const negative = value < ZERO;
   const absolute = negative ? -value : value;
