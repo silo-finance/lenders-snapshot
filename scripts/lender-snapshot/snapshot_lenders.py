@@ -34,7 +34,6 @@ from eth_abi import encode as abi_encode
 from eth_utils import function_signature_to_4byte_selector, to_checksum_address
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # --------------------------------------------------------------------------------------
 # HARDCODED (non-secret) configuration
