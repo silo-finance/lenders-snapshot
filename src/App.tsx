@@ -10,6 +10,7 @@ import {
   compareBigIntDesc,
   explorerAddressUrl,
   formatUnits,
+  formatUnitsFixed,
   formatUnitsPlain,
   formatUnitsRounded,
   parseUnits,
@@ -847,16 +848,20 @@ export default function App() {
                         if (!selectedSilo || !rewardPlan) {
                           return;
                         }
-                        const rows = [["address", "reward"]];
+                        const rows = [["address", "raw_amount", "assets"]];
                         for (const [address, reward] of [...rewardPlan.csvRewards.entries()].sort(([a], [b]) =>
                           a.localeCompare(b),
                         )) {
-                          rows.push([address, formatUnitsPlain(reward, selectedSilo.inputToken.decimals)]);
+                          rows.push([
+                            address,
+                            reward.toString(),
+                            formatUnitsFixed(reward, selectedSilo.inputToken.decimals),
+                          ]);
                         }
                         downloadCsv(`global-snapshot-rewards.csv`, rows);
                       }}
                     >
-                      CSV
+                      Download CSV
                     </button>
                   </div>
                   {rewardInputInvalid ? (
