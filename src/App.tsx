@@ -45,6 +45,24 @@ function vaultLeafKey(vaultAddress: string, depositorAddress: string): string {
   return `vault:${vaultAddress}:${depositorAddress}`;
 }
 
+function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replaceAll('"', '""')}"`;
+  }
+  return value;
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([`${csv}\n`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-emerald-950/20">
@@ -196,6 +214,7 @@ function HolderTable({
   onSort,
   onToggle,
   onJumpToVault,
+  onExport,
 }: {
   chain: string;
   rows: DirectLender[];
@@ -206,18 +225,29 @@ function HolderTable({
   onSort: (key: TableSortKey) => void;
   onToggle: () => void;
   onJumpToVault: (vaultAddress: string) => void;
+  onExport: () => void;
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
       <div className="flex flex-col gap-3 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="font-semibold text-white">Direct lenders</h3>
-        <button
-          className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
-          type="button"
-          onClick={onToggle}
-        >
-          {expanded ? "Collapse" : "Expand"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-500 disabled:hover:bg-transparent"
+            disabled={rows.length === 0}
+            type="button"
+            onClick={onExport}
+          >
+            Export CSV
+          </button>
+          <button
+            className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
+            type="button"
+            onClick={onToggle}
+          >
+            {expanded ? "Collapse" : "Expand"}
+          </button>
+        </div>
       </div>
       {!expanded ? (
         <div className="px-5 py-4 text-sm text-slate-400">
@@ -770,14 +800,7 @@ export default function App() {
                         )) {
                           rows.push([address, formatUnitsPlain(reward, selectedSilo.inputToken.decimals)]);
                         }
-                        const csv = rows.map((row) => row.join(",")).join("\n");
-                        const blob = new Blob([`${csv}\n`], { type: "text/csv;charset=utf-8" });
-                        const url = URL.createObjectURL(blob);
-                        const link = document.createElement("a");
-                        link.href = url;
-                        link.download = `${selectedChain.chain}-${selectedSilo.address}-rewards.csv`;
-                        link.click();
-                        URL.revokeObjectURL(url);
+                        downloadCsv(`${selectedChain.chain}-${selectedSilo.address}-rewards.csv`, rows);
                       }}
                     >
                       CSV
@@ -873,6 +896,19 @@ export default function App() {
                 rewardPlan={rewardPlan}
                 sortState={directSort}
                 onJumpToVault={jumpToVault}
+                onExport={() => {
+                  downloadCsv(
+                    `${selectedChain.chain}-${selectedSilo.address}-direct-lenders.csv`,
+                    [
+                      ["Address", "Type", "Assets"],
+                      ...visibleLenders.map((row) => [
+                        row.address,
+                        row.addressType,
+                        formatUnitsPlain(row.totalAssets, selectedSilo.inputToken.decimals),
+                      ]),
+                    ],
+                  );
+                }}
                 onSort={(key) => setDirectSort((current) => nextSortState(current, key))}
                 onToggle={() => setDirectExpanded((current) => !current)}
               />
