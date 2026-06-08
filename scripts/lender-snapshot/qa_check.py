@@ -94,6 +94,18 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
         collateral_sum,
     )
 
+    for lender_addr, entry in direct.items():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("address_type") != "silo_vault":
+            continue
+        vaults_obj = silo.get("vaults", {})
+        if not isinstance(vaults_obj, dict):
+            vaults_obj = {}
+        vault_keys = {str(addr).lower() for addr in vaults_obj}
+        if lender_addr.lower() not in vault_keys:
+            report.warn(f"{prefix} silo_vault {lender_addr} missing matching vaults entry")
+
     vaults = silo.get("vaults", {})
     if not isinstance(vaults, dict):
         vaults = {}
@@ -109,6 +121,9 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
         if not indexed or status == "vault_not_indexed":
             report.warn(f"{vlabel}: vault_not_indexed (depositors not enumerated)")
             continue
+
+        if status == "ok" and vault.get("vault_total_supply") is None:
+            report.warn(f"{vlabel}: status=ok but vault_total_supply is null")
 
         depositors = vault.get("depositors", {})
         if not isinstance(depositors, dict):
