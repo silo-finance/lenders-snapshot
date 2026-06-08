@@ -11,9 +11,7 @@ type RawInputToken = {
 type RawDirectLender = {
   address_type?: string;
   collateral_shares?: RawAmount;
-  protected_shares?: RawAmount;
   assets_collateral?: RawAmount;
-  assets_protected?: RawAmount;
   total_assets?: RawAmount;
 };
 
@@ -38,10 +36,8 @@ type RawSilo = {
   snapshot_block?: number | string;
   silo_id?: string | number | null;
   input_token?: RawInputToken;
-  protected_share_token?: string | null;
   total_assets?: RawAmount;
   collateral_total_supply?: RawAmount;
-  protected_total_supply?: RawAmount;
   direct_lenders?: Record<string, RawDirectLender>;
   vaults?: Record<string, RawVault>;
 };
@@ -63,10 +59,8 @@ export type DirectLender = {
   address: string;
   addressType: string;
   collateralShares: bigint;
-  protectedShares: bigint;
   totalShares: bigint;
   assetsCollateral: bigint;
-  assetsProtected: bigint;
   totalAssets: bigint;
   isVault: boolean;
 };
@@ -95,9 +89,7 @@ export type SiloSnapshot = {
   snapshotBlock: number;
   siloId: string | null;
   inputToken: InputToken;
-  protectedShareToken: string | null;
   collateralTotalSupply: bigint;
-  protectedTotalSupply: bigint;
   totalShares: bigint;
   totalAssets: bigint;
   directLenders: DirectLender[];
@@ -110,8 +102,6 @@ export type ChainSnapshot = {
   chainId: number;
   silos: SiloSnapshot[];
 };
-
-export type SortKey = "shares" | "assets";
 
 const KNOWN_CHAINS: Record<string, { label: string; chainId: number; explorer: string }> = {
   sonic: { label: "Sonic", chainId: 146, explorer: "https://sonicscan.org/address/" },
@@ -157,18 +147,14 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
 
   const directLenders = Object.entries(raw.direct_lenders ?? {}).map(([lenderAddress, entry]) => {
     const collateralShares = toBigInt(entry.collateral_shares);
-    const protectedShares = toBigInt(entry.protected_shares);
     const assetsCollateral = toBigInt(entry.assets_collateral);
-    const assetsProtected = toBigInt(entry.assets_protected);
-    const totalAssets = toBigInt(entry.total_assets) || assetsCollateral + assetsProtected;
+    const totalAssets = toBigInt(entry.total_assets) || assetsCollateral;
     return {
       address: lenderAddress,
       addressType: entry.address_type ?? "unknown",
       collateralShares,
-      protectedShares,
-      totalShares: collateralShares + protectedShares,
+      totalShares: collateralShares,
       assetsCollateral,
-      assetsProtected,
       totalAssets,
       isVault: entry.address_type === "silo_vault",
     };
@@ -196,17 +182,14 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
 
   const totalAssets = toBigInt(raw.total_assets) || directLenders.reduce((sum, lender) => sum + lender.totalAssets, ZERO);
   const collateralTotalSupply = toBigInt(raw.collateral_total_supply);
-  const protectedTotalSupply = toBigInt(raw.protected_total_supply);
 
   return {
     address,
     snapshotBlock: toNumber(raw.snapshot_block, 0),
     siloId: raw.silo_id === null || raw.silo_id === undefined ? null : String(raw.silo_id),
     inputToken,
-    protectedShareToken: raw.protected_share_token ?? null,
     collateralTotalSupply,
-    protectedTotalSupply,
-    totalShares: collateralTotalSupply + protectedTotalSupply,
+    totalShares: collateralTotalSupply,
     totalAssets,
     directLenders: directLenders.sort((a, b) => compareBigIntDesc(a.totalAssets, b.totalAssets)),
     vaults: vaults.sort((a, b) => compareBigIntDesc(a.vaultSiloAssets, b.vaultSiloAssets)),
@@ -332,14 +315,3 @@ export function formatRawInteger(value: bigint): string {
   return raw.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-export function sortLenders<T extends { totalShares: bigint; totalAssets: bigint }>(
-  rows: T[],
-  sortKey: SortKey,
-  direction: "asc" | "desc",
-): T[] {
-  return [...rows].sort((a, b) => {
-    const left = sortKey === "shares" ? a.totalShares : a.totalAssets;
-    const right = sortKey === "shares" ? b.totalShares : b.totalAssets;
-    return direction === "asc" ? compareBigIntAsc(left, right) : compareBigIntDesc(left, right);
-  });
-}

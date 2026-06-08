@@ -742,7 +742,7 @@ export default function App() {
                 <MetricCard
                   label="Total shares"
                   value={formatCompactUnits(selectedSilo.totalShares, 0)}
-                  hint="Collateral + protected supply"
+                  hint="Collateral supply"
                 />
                 <MetricCard
                   label="Total assets"
