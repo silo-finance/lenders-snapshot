@@ -1,5 +1,5 @@
-const SILO_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
-const CHAIN_SILO_PATH_PATTERN = /^([a-z0-9_-]+)-(0x[a-fA-F0-9]{40})$/i;
+const SILO_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/i;
+const CHAIN_NAME_PATTERN = /^[a-z0-9_-]+$/i;
 
 export type SiloPathMatch = {
   address: string;
@@ -19,21 +19,20 @@ export function parseSiloPathFromUrl(): SiloPathMatch | null {
     pathname = pathname.slice(base.length);
   }
 
-  const segment = pathname.replace(/^\/+/, "").split("/")[0] ?? "";
-  if (!segment) {
+  const segments = pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+  if (segments.length === 0) {
     return null;
   }
 
-  const chainMatch = segment.match(CHAIN_SILO_PATH_PATTERN);
-  if (chainMatch) {
+  if (segments.length >= 2 && CHAIN_NAME_PATTERN.test(segments[0]) && SILO_ADDRESS_PATTERN.test(segments[1])) {
     return {
-      chain: chainMatch[1].toLowerCase(),
-      address: chainMatch[2],
+      chain: segments[0].toLowerCase(),
+      address: segments[1],
     };
   }
 
-  if (SILO_ADDRESS_PATTERN.test(segment)) {
-    return { address: segment };
+  if (segments.length === 1 && SILO_ADDRESS_PATTERN.test(segments[0])) {
+    return { address: segments[0] };
   }
 
   return null;
@@ -41,7 +40,7 @@ export function parseSiloPathFromUrl(): SiloPathMatch | null {
 
 export function buildSiloPath(chain: string, address: string): string {
   const base = getAppBasePath();
-  const segment = `${chain.toLowerCase()}-${address}`;
+  const segment = `${chain.toLowerCase()}/${address}`;
   return base ? `${base}/${segment}` : `/${segment}`;
 }
 
