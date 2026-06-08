@@ -465,92 +465,90 @@ export default function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
-      <section className="mx-auto max-w-7xl px-5 py-8 sm:px-8 lg:px-10">
-        <header className="flex flex-col gap-6 border-b border-white/10 pb-8 lg:flex-row lg:items-end lg:justify-between">
+    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
+      <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
+        <header className="border-b border-white/10 pb-8">
           <div>
-            <div className="inline-flex rounded-full border border-emerald-300/30 bg-emerald-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-emerald-200">
-              Lenders Snapshot
-            </div>
-            <h1 className="mt-5 max-w-4xl text-4xl font-semibold tracking-tight sm:text-6xl">
-              Review Silo lenders and prepare reward distributions.
-            </h1>
+            <h1 className="max-w-4xl text-4xl font-semibold tracking-tight sm:text-6xl">Review Silo Lenders</h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
               Static, no-RPC snapshot explorer for direct holders and vault depositors across chains.
             </p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-2">
-            <div className="grid grid-cols-2 gap-2">
-              {chains.map((chain) => (
-                <button
-                  key={chain.chain}
-                  className={`rounded-xl px-5 py-3 text-sm font-semibold transition ${
-                    selectedChain.chain === chain.chain
-                      ? "bg-emerald-300 text-slate-950 shadow-lg shadow-emerald-500/20"
-                      : "text-slate-300 hover:bg-white/10"
-                  }`}
-                  type="button"
-                  onClick={() => selectChain(chain)}
-                >
-                  {chain.label}
-                </button>
-              ))}
-            </div>
-          </div>
         </header>
 
-        <div className="grid gap-6 py-8 lg:grid-cols-[21rem_1fr]">
-          <aside className="space-y-4">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Chain</p>
-                  <h2 className="mt-1 text-xl font-semibold">{selectedChain.label}</h2>
-                </div>
-                <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">
-                  {selectedChain.silos.length} silo{selectedChain.silos.length === 1 ? "" : "s"}
-                </span>
-              </div>
-              <div className="mt-5 space-y-3">
-                {selectedChain.silos.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-slate-500">
-                    No silos are currently bundled for this chain.
-                  </div>
-                ) : (
-                  selectedChain.silos.map((silo) => (
+        <div className="min-w-0 space-y-6 py-8">
+          <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-slate-950/30 sm:p-5">
+            <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] xl:items-start">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Chain</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {chains.map((chain) => (
                     <button
-                      key={silo.address}
-                      className={`w-full rounded-2xl border p-4 text-left shadow-lg shadow-emerald-950/30 ${
-                        selectedSilo?.address === silo.address
-                          ? "border-emerald-300/40 bg-emerald-300/10"
-                          : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                      key={chain.chain}
+                      className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                        selectedChain.chain === chain.chain
+                          ? "bg-emerald-300 text-slate-950 shadow-lg shadow-emerald-500/20"
+                          : "border border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10"
                       }`}
                       type="button"
-                      onClick={() => {
-                        setSelectedSiloAddress(silo.address);
-                        setExpandedVaults({});
-                        setRewardInput("");
-                      }}
+                      onClick={() => selectChain(chain)}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold">{silo.inputToken.symbol} Silo</span>
-                        {selectedSilo?.address === silo.address ? (
-                          <span className="rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">Selected</span>
-                        ) : null}
-                      </div>
-                      <p className="mt-2 font-mono text-xs text-emerald-100/80">{shortAddress(silo.address)}</p>
-                      <p className="mt-3 text-sm text-slate-400">
-                        Snapshot block {new Intl.NumberFormat("en-US").format(silo.snapshotBlock)}
-                      </p>
+                      {chain.label}
                     </button>
-                  ))
-                )}
+                  ))}
+                </div>
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Silos</p>
+                  <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">
+                    {selectedChain.silos.length} silo{selectedChain.silos.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="mt-3 flex min-w-0 flex-wrap gap-3">
+                  {selectedChain.silos.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
+                      No silos are currently bundled for this chain.
+                    </div>
+                  ) : (
+                    selectedChain.silos.map((silo) => (
+                      <button
+                        key={silo.address}
+                        className={`min-w-0 rounded-2xl border px-4 py-3 text-left transition ${
+                          selectedSilo?.address === silo.address
+                            ? "border-emerald-300/40 bg-emerald-300/10"
+                            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                        }`}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSiloAddress(silo.address);
+                          setExpandedVaults({});
+                          setRewardInput("");
+                        }}
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate font-semibold">{silo.inputToken.symbol} Silo</span>
+                          {selectedSilo?.address === silo.address ? (
+                            <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">
+                              Selected
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+                          <span className="font-mono text-emerald-100/80">{shortAddress(silo.address)}</span>
+                          <span>Block {new Intl.NumberFormat("en-US").format(silo.snapshotBlock)}</span>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
-          </aside>
+          </section>
 
           {selectedSilo ? (
-            <section className="space-y-6">
+            <section className="min-w-0 space-y-6">
             <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-slate-950/40">
               <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
                 <div>
@@ -714,7 +712,7 @@ export default function App() {
             </div>
           </section>
           ) : (
-            <section>
+            <section className="min-w-0">
               <EmptyState message="Select a chain with bundled silo data to view snapshot details." />
             </section>
           )}
