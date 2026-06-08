@@ -30,6 +30,7 @@ type RewardPlan = {
   rewardRaw: bigint;
   byLeafKey: Map<string, bigint>;
   csvRewards: Map<string, bigint>;
+  totalAssets: bigint;
   distributed: bigint;
   undistributed: bigint;
   nonAttributableAssets: bigint;
@@ -46,12 +47,12 @@ function floorToWholeUnits(value: bigint, decimals: number): bigint {
   return (value / scale) * scale;
 }
 
-function directLeafKey(address: string): string {
-  return `direct:${address}`;
+function directLeafKey(siloAddress: string, address: string): string {
+  return `direct:${siloAddress}:${address}`;
 }
 
-function vaultLeafKey(vaultAddress: string, depositorAddress: string): string {
-  return `vault:${vaultAddress}:${depositorAddress}`;
+function vaultLeafKey(siloAddress: string, vaultAddress: string, depositorAddress: string): string {
+  return `vault:${siloAddress}:${vaultAddress}:${depositorAddress}`;
 }
 
 function csvEscape(value: string): string {
@@ -324,7 +325,7 @@ function HolderTable({
                       ? "N/A"
                       : rewardPlan
                         ? `${formatUnits(
-                            rewardPlan.byLeafKey.get(directLeafKey(row.address)) ?? ZERO,
+                            rewardPlan.byLeafKey.get(directLeafKey(silo.address, row.address)) ?? ZERO,
                             silo.inputToken.decimals,
                             0,
                           )} ${silo.inputToken.symbol}`
@@ -435,7 +436,7 @@ function DepositorTable({
                 <td className="px-5 py-4 text-right font-mono tabular-nums">
                   {rewardPlan
                     ? `${formatUnits(
-                        rewardPlan.byLeafKey.get(vaultLeafKey(vaultAddress, row.address)) ?? ZERO,
+                        rewardPlan.byLeafKey.get(vaultLeafKey(silo.address, vaultAddress, row.address)) ?? ZERO,
                         silo.inputToken.decimals,
                         0,
                       )} ${silo.inputToken.symbol}`
@@ -472,47 +473,48 @@ function addCsvReward(csvRewards: Map<string, bigint>, address: string, amount: 
   csvRewards.set(address, (csvRewards.get(address) ?? ZERO) + amount);
 }
 
-function buildRewardPlan(silo: SiloSnapshot, rewardRaw: bigint): RewardPlan {
+function buildRewardPlan(allSilos: SiloSnapshot[], rewardRaw: bigint, rewardDecimals: number): RewardPlan {
   const byLeafKey = new Map<string, bigint>();
   const csvRewards = new Map<string, bigint>();
   let distributed = ZERO;
   let leafAssets = ZERO;
+  const totalAssets = allSilos.reduce((sum, silo) => sum + silo.totalAssets, ZERO);
 
-  if (rewardRaw === ZERO || silo.totalAssets === ZERO) {
+  if (rewardRaw === ZERO || totalAssets === ZERO) {
     return {
       rewardRaw,
       byLeafKey,
       csvRewards,
+      totalAssets,
       distributed,
       undistributed: rewardRaw,
-      nonAttributableAssets: silo.totalAssets,
+      nonAttributableAssets: totalAssets,
     };
   }
 
-  for (const lender of silo.directLenders) {
-    if (lender.isVault) {
-      continue;
-    }
-    const reward = floorToWholeUnits((rewardRaw * lender.totalAssets) / silo.totalAssets, silo.inputToken.decimals);
-    byLeafKey.set(directLeafKey(lender.address), reward);
-    addCsvReward(csvRewards, lender.address, reward);
-    distributed += reward;
-    leafAssets += lender.totalAssets;
-  }
-
-  for (const vault of silo.vaults) {
-    if (isVaultWarning(vault)) {
-      continue;
-    }
-    for (const depositor of vault.depositors) {
-      const reward = floorToWholeUnits(
-        (rewardRaw * depositor.attributedSiloAssets) / silo.totalAssets,
-        silo.inputToken.decimals,
-      );
-      byLeafKey.set(vaultLeafKey(vault.address, depositor.address), reward);
-      addCsvReward(csvRewards, depositor.address, reward);
+  for (const silo of allSilos) {
+    for (const lender of silo.directLenders) {
+      if (lender.isVault) {
+        continue;
+      }
+      const reward = floorToWholeUnits((rewardRaw * lender.totalAssets) / totalAssets, rewardDecimals);
+      byLeafKey.set(directLeafKey(silo.address, lender.address), reward);
+      addCsvReward(csvRewards, lender.address, reward);
       distributed += reward;
-      leafAssets += depositor.attributedSiloAssets;
+      leafAssets += lender.totalAssets;
+    }
+
+    for (const vault of silo.vaults) {
+      if (isVaultWarning(vault)) {
+        continue;
+      }
+      for (const depositor of vault.depositors) {
+        const reward = floorToWholeUnits((rewardRaw * depositor.attributedSiloAssets) / totalAssets, rewardDecimals);
+        byLeafKey.set(vaultLeafKey(silo.address, vault.address, depositor.address), reward);
+        addCsvReward(csvRewards, depositor.address, reward);
+        distributed += reward;
+        leafAssets += depositor.attributedSiloAssets;
+      }
     }
   }
 
@@ -520,9 +522,10 @@ function buildRewardPlan(silo: SiloSnapshot, rewardRaw: bigint): RewardPlan {
     rewardRaw,
     byLeafKey,
     csvRewards,
+    totalAssets,
     distributed,
     undistributed: rewardRaw > distributed ? rewardRaw - distributed : ZERO,
-    nonAttributableAssets: silo.totalAssets > leafAssets ? silo.totalAssets - leafAssets : ZERO,
+    nonAttributableAssets: totalAssets > leafAssets ? totalAssets - leafAssets : ZERO,
   };
 }
 
@@ -546,7 +549,9 @@ function VaultCard({
   const [depositorSort, setDepositorSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const hasWarning = isVaultWarning(vault);
   const unavailableReward =
-    hasWarning && rewardPlan && silo.totalAssets > ZERO ? (rewardPlan.rewardRaw * vault.vaultSiloAssets) / silo.totalAssets : ZERO;
+    hasWarning && rewardPlan && rewardPlan.totalAssets > ZERO
+      ? (rewardPlan.rewardRaw * vault.vaultSiloAssets) / rewardPlan.totalAssets
+      : ZERO;
 
   return (
     <div
@@ -627,6 +632,7 @@ export default function App() {
 
   const selectedChain = chains.find((chain) => chain.chain === selectedChainName) ?? initialChain;
   const selectedSilo = selectedChain.silos.find((silo) => silo.address === selectedSiloAddress) ?? selectedChain.silos[0];
+  const allSilos = chains.flatMap((chain) => chain.silos);
 
   const lenderNeedle = addressFilter.trim().toLowerCase();
   const filterActive = lenderNeedle.length > 0;
@@ -652,7 +658,8 @@ export default function App() {
   const hasVisibleFilterResults = !filterActive || visibleLenders.length > 0 || visibleVaults.length > 0;
   const rewardRaw = selectedSilo ? parseUnits(rewardInput, selectedSilo.inputToken.decimals) : null;
   const rewardInputInvalid = rewardInput.trim() !== "" && rewardRaw === null;
-  const rewardPlan = selectedSilo && rewardRaw !== null ? buildRewardPlan(selectedSilo, rewardRaw) : null;
+  const rewardPlan =
+    selectedSilo && rewardRaw !== null ? buildRewardPlan(allSilos, rewardRaw, selectedSilo.inputToken.decimals) : null;
 
   function selectChain(chain: ChainSnapshot) {
     setSelectedChainName(chain.chain);
@@ -796,7 +803,7 @@ export default function App() {
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Reward amount</p>
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Global reward amount</p>
                   <div className="mt-3 flex gap-3">
                     <input
                       className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-slate-300 outline-none placeholder:text-slate-600"
@@ -825,7 +832,7 @@ export default function App() {
                         )) {
                           rows.push([address, formatUnitsPlain(reward, selectedSilo.inputToken.decimals)]);
                         }
-                        downloadCsv(`${selectedChain.chain}-${selectedSilo.address}-rewards.csv`, rows);
+                        downloadCsv(`global-snapshot-rewards.csv`, rows);
                       }}
                     >
                       CSV
@@ -838,7 +845,7 @@ export default function App() {
                   ) : rewardPlan && rewardPlan.rewardRaw > ZERO ? (
                     <div className="mt-3 space-y-1 text-xs text-slate-400">
                       <p>
-                        Distributed: {formatUnits(rewardPlan.distributed, selectedSilo.inputToken.decimals)}{" "}
+                        Global distributed: {formatUnits(rewardPlan.distributed, selectedSilo.inputToken.decimals)}{" "}
                         {selectedSilo.inputToken.symbol}
                       </p>
                       {rewardPlan.undistributed > ZERO ? (
@@ -852,7 +859,9 @@ export default function App() {
                       ) : null}
                     </div>
                   ) : (
-                    <p className="mt-3 text-xs text-slate-500">Enter an amount to compute pro-rata leaf rewards.</p>
+                    <p className="mt-3 text-xs text-slate-500">
+                      Enter an amount to compute pro-rata rewards across all snapshot assets.
+                    </p>
                   )}
                 </div>
               </div>
