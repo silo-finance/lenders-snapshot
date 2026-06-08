@@ -3095,7 +3095,8 @@
             "status": "vault_not_indexed"
           }
         },
-        "total_assets": "282353426280"
+        "total_assets": "282353426280",
+        "silo_id": "23"
       },
       "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64": {
         "snapshot_block": 54144258,
