@@ -1,9 +1,8 @@
-name: Deploy Pages
+name: Deploy to GitHub Pages
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -12,12 +11,11 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
   deploy:
-    name: Build and deploy
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -26,43 +24,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
-
-      - name: Switch Pages to GitHub Actions source
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --method PUT "repos/${{ github.repository }}/pages" \
-            -H "Accept: application/vnd.github+json" \
-            -f build_type=workflow
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
+      - name: Run linter (fails on errors and warnings)
         run: npm run lint
 
-      - name: Build
-        run: npm run build
+      - name: Build static site
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+        run: npm run build
 
       - name: Add SPA fallback
         run: cp dist/index.html dist/404.html
 
-      - name: Upload artifact
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: ./dist
 
       - name: Deploy to GitHub Pages
         id: deployment
