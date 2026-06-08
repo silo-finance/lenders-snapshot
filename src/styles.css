@@ -13,6 +13,8 @@ body {
 
 button:not(:disabled),
 a,
+select,
+input[type="checkbox"],
 [role="button"],
 summary {
   cursor: pointer;

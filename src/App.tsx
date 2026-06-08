@@ -29,7 +29,8 @@ const DEFAULT_EXPANDED_LIMIT = 2;
 type RewardPlan = {
   rewardRaw: bigint;
   byLeafKey: Map<string, bigint>;
-  csvRewards: Map<string, bigint>;
+  csvRewards: Map<string, bigint | null>;
+  excludedLeafKeys: Set<string>;
   totalAssets: bigint;
   distributed: bigint;
   undistributed: bigint;
@@ -37,6 +38,7 @@ type RewardPlan = {
 };
 
 const ZERO = 0n;
+const OTHER_CONTRACT_TYPE = "contract_other";
 
 function floorToWholeUnits(value: bigint, decimals: number): bigint {
   const scale = 10n ** BigInt(decimals);
@@ -319,13 +321,12 @@ function HolderTable({
                   >
                     {row.isVault
                       ? "N/A"
-                      : rewardPlan
-                        ? `${formatUnits(
-                            rewardPlan.byLeafKey.get(directLeafKey(silo.address, row.address)) ?? ZERO,
-                            silo.inputToken.decimals,
-                            0,
-                          )} ${silo.inputToken.symbol}`
-                        : "--"}
+                      : formatRewardCell(
+                          rewardPlan,
+                          directLeafKey(silo.address, row.address),
+                          silo.inputToken.decimals,
+                          silo.inputToken.symbol,
+                        )}
                   </td>
                 </tr>
               ))}
@@ -437,11 +438,12 @@ function DepositorTable({
                 </td>
                 <td className="px-5 py-4 text-right font-mono tabular-nums">
                   {rewardPlan
-                    ? `${formatUnits(
-                        rewardPlan.byLeafKey.get(vaultLeafKey(silo.address, vaultAddress, row.address)) ?? ZERO,
+                    ? formatRewardCell(
+                        rewardPlan,
+                        vaultLeafKey(silo.address, vaultAddress, row.address),
                         silo.inputToken.decimals,
-                        0,
-                      )} ${silo.inputToken.symbol}`
+                        silo.inputToken.symbol,
+                      )
                     : "--"}
                 </td>
               </tr>
@@ -471,26 +473,79 @@ function vaultElementId(address: string): string {
   return `vault-${address.toLowerCase()}`;
 }
 
-function addCsvReward(csvRewards: Map<string, bigint>, address: string, amount: bigint) {
-  csvRewards.set(address, (csvRewards.get(address) ?? ZERO) + amount);
+function addCsvReward(csvRewards: Map<string, bigint | null>, address: string, amount: bigint | null) {
+  const current = csvRewards.get(address);
+  if (amount === null) {
+    if (current === undefined) {
+      csvRewards.set(address, null);
+    }
+    return;
+  }
+  csvRewards.set(address, (current ?? ZERO) + amount);
 }
 
-function buildRewardPlan(allSilos: SiloSnapshot[], rewardRaw: bigint, rewardDecimals: number): RewardPlan {
+function isRewardEligible(addressType: string, includeOtherContracts: boolean): boolean {
+  return includeOtherContracts || addressType !== OTHER_CONTRACT_TYPE;
+}
+
+function formatRewardCell(rewardPlan: RewardPlan | null, leafKey: string, decimals: number, symbol: string): string {
+  if (!rewardPlan) {
+    return "--";
+  }
+  if (rewardPlan.excludedLeafKeys.has(leafKey)) {
+    return "Not available";
+  }
+  return `${formatUnits(rewardPlan.byLeafKey.get(leafKey) ?? ZERO, decimals, 0)} ${symbol}`;
+}
+
+function buildRewardPlan(
+  allSilos: SiloSnapshot[],
+  rewardRaw: bigint,
+  rewardDecimals: number,
+  includeOtherContracts: boolean,
+): RewardPlan {
   const byLeafKey = new Map<string, bigint>();
-  const csvRewards = new Map<string, bigint>();
+  const csvRewards = new Map<string, bigint | null>();
+  const excludedLeafKeys = new Set<string>();
   let distributed = ZERO;
   let leafAssets = ZERO;
+  let excludedAssets = ZERO;
   const totalAssets = allSilos.reduce((sum, silo) => sum + silo.totalAssets, ZERO);
 
-  if (rewardRaw === ZERO || totalAssets === ZERO) {
+  for (const silo of allSilos) {
+    for (const lender of silo.directLenders) {
+      if (lender.isVault) {
+        continue;
+      }
+      if (!isRewardEligible(lender.addressType, includeOtherContracts)) {
+        excludedAssets += lender.totalAssets;
+      }
+    }
+
+    for (const vault of silo.vaults) {
+      if (isVaultWarning(vault)) {
+        continue;
+      }
+      for (const depositor of vault.depositors) {
+        if (!isRewardEligible(depositor.addressType, includeOtherContracts)) {
+          excludedAssets += depositor.attributedSiloAssets;
+        }
+      }
+    }
+  }
+
+  const rewardDenominator = totalAssets > excludedAssets ? totalAssets - excludedAssets : ZERO;
+
+  if (rewardRaw === ZERO || rewardDenominator === ZERO) {
     return {
       rewardRaw,
       byLeafKey,
       csvRewards,
-      totalAssets,
+      excludedLeafKeys,
+      totalAssets: rewardDenominator,
       distributed,
       undistributed: rewardRaw,
-      nonAttributableAssets: totalAssets,
+      nonAttributableAssets: rewardDenominator,
     };
   }
 
@@ -499,8 +554,14 @@ function buildRewardPlan(allSilos: SiloSnapshot[], rewardRaw: bigint, rewardDeci
       if (lender.isVault) {
         continue;
       }
-      const reward = floorToWholeUnits((rewardRaw * lender.totalAssets) / totalAssets, rewardDecimals);
-      byLeafKey.set(directLeafKey(silo.address, lender.address), reward);
+      const leafKey = directLeafKey(silo.address, lender.address);
+      if (!isRewardEligible(lender.addressType, includeOtherContracts)) {
+        excludedLeafKeys.add(leafKey);
+        addCsvReward(csvRewards, lender.address, null);
+        continue;
+      }
+      const reward = floorToWholeUnits((rewardRaw * lender.totalAssets) / rewardDenominator, rewardDecimals);
+      byLeafKey.set(leafKey, reward);
       addCsvReward(csvRewards, lender.address, reward);
       distributed += reward;
       leafAssets += lender.totalAssets;
@@ -511,8 +572,17 @@ function buildRewardPlan(allSilos: SiloSnapshot[], rewardRaw: bigint, rewardDeci
         continue;
       }
       for (const depositor of vault.depositors) {
-        const reward = floorToWholeUnits((rewardRaw * depositor.attributedSiloAssets) / totalAssets, rewardDecimals);
-        byLeafKey.set(vaultLeafKey(silo.address, vault.address, depositor.address), reward);
+        const leafKey = vaultLeafKey(silo.address, vault.address, depositor.address);
+        if (!isRewardEligible(depositor.addressType, includeOtherContracts)) {
+          excludedLeafKeys.add(leafKey);
+          addCsvReward(csvRewards, depositor.address, null);
+          continue;
+        }
+        const reward = floorToWholeUnits(
+          (rewardRaw * depositor.attributedSiloAssets) / rewardDenominator,
+          rewardDecimals,
+        );
+        byLeafKey.set(leafKey, reward);
         addCsvReward(csvRewards, depositor.address, reward);
         distributed += reward;
         leafAssets += depositor.attributedSiloAssets;
@@ -524,10 +594,11 @@ function buildRewardPlan(allSilos: SiloSnapshot[], rewardRaw: bigint, rewardDeci
     rewardRaw,
     byLeafKey,
     csvRewards,
-    totalAssets,
+    excludedLeafKeys,
+    totalAssets: rewardDenominator,
     distributed,
     undistributed: rewardRaw > distributed ? rewardRaw - distributed : ZERO,
-    nonAttributableAssets: totalAssets > leafAssets ? totalAssets - leafAssets : ZERO,
+    nonAttributableAssets: rewardDenominator > leafAssets ? rewardDenominator - leafAssets : ZERO,
   };
 }
 
@@ -635,6 +706,7 @@ export default function App() {
   const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>({});
   const [rewardInput, setRewardInput] = useState("");
+  const [includeOtherContracts, setIncludeOtherContracts] = useState(false);
 
   const selectedChain = chains.find((chain) => chain.chain === selectedChainName) ?? initialChain;
   const selectedSilo = selectedChain.silos.find((silo) => silo.address === selectedSiloAddress) ?? selectedChain.silos[0];
@@ -678,7 +750,9 @@ export default function App() {
   const rewardRaw = selectedSilo ? parseUnits(rewardInput, selectedSilo.inputToken.decimals) : null;
   const rewardInputInvalid = rewardInput.trim() !== "" && rewardRaw === null;
   const rewardPlan =
-    selectedSilo && rewardRaw !== null ? buildRewardPlan(allSilos, rewardRaw, selectedSilo.inputToken.decimals) : null;
+    selectedSilo && rewardRaw !== null
+      ? buildRewardPlan(allSilos, rewardRaw, selectedSilo.inputToken.decimals, includeOtherContracts)
+      : null;
 
   function selectChain(chain: ChainSnapshot) {
     setSelectedChainName(chain.chain);
@@ -854,8 +928,8 @@ export default function App() {
                         )) {
                           rows.push([
                             address,
-                            reward.toString(),
-                            formatUnitsFixed(reward, selectedSilo.inputToken.decimals),
+                            reward === null ? "" : reward.toString(),
+                            reward === null ? "" : formatUnitsFixed(reward, selectedSilo.inputToken.decimals),
                           ]);
                         }
                         downloadCsv(`global-snapshot-rewards.csv`, rows);
@@ -864,6 +938,18 @@ export default function App() {
                       Download CSV
                     </button>
                   </div>
+                  <label className="mt-3 flex items-start gap-3 text-xs leading-5 text-slate-300">
+                    <input
+                      className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
+                      type="checkbox"
+                      checked={includeOtherContracts}
+                      onChange={(event) => setIncludeOtherContracts(event.target.checked)}
+                    />
+                    <span>
+                      Distribute to unrecognized contracts (`contract_other`). When disabled, these addresses stay in
+                      the CSV with empty reward fields and their assets are redistributed to eligible recipients.
+                    </span>
+                  </label>
                   {rewardInputInvalid ? (
                     <p className="mt-3 text-xs text-amber-200">
                       Enter a non-negative amount with at most {selectedSilo.inputToken.decimals} decimals.
