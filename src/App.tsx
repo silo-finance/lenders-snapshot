@@ -1,4 +1,5 @@
 import { useState } from "react";
+import packageJson from "../package.json";
 import {
   type ChainSnapshot,
   type DirectLender,
@@ -25,6 +26,7 @@ type TableSortState = {
 };
 
 const DEFAULT_EXPANDED_LIMIT = 2;
+const APP_VERSION = packageJson.version;
 
 type RewardPlan = {
   rewardRaw: bigint;
@@ -791,7 +793,12 @@ export default function App() {
       <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
         <header className="border-b border-white/10 pb-8">
           <div>
-            <h1 className="max-w-4xl text-4xl font-semibold tracking-tight sm:text-6xl">Review Silo Lenders</h1>
+            <div className="flex flex-wrap items-baseline gap-3">
+              <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">Review Silo Lenders</h1>
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-semibold text-slate-400">
+                v{APP_VERSION}
+              </span>
+            </div>
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
               Static, no-RPC snapshot explorer for direct holders and vault depositors across chains.
             </p>
