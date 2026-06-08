@@ -3106,7 +3106,7 @@
           "decimals": 6,
           "symbol": "USDC"
         },
-        "total_assets": "26443248397",
+        "total_assets": "26443248422",
         "collateral_total_supply": "24921491457493",
         "direct_lenders": {
           "0x098ddb5f48ad1daa5f691c4b2ad6360e45a22747": {
@@ -3443,7 +3443,7 @@
                 "attributed_silo_assets": "21358"
               },
               "0x026f347a39cebefb4120d9b50530ecc4f93e301f": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "19692913707445687855576462",
                 "fraction": "0.000053571775905309",
                 "attributed_silo_assets": "420677"
@@ -3473,7 +3473,7 @@
                 "attributed_silo_assets": "0"
               },
               "0x08abc0167916906f3d0c3be40efad43e014c066c": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "30336797994880988090062727",
                 "fraction": "0.000082526951979276",
                 "attributed_silo_assets": "648050"
@@ -3497,7 +3497,7 @@
                 "attributed_silo_assets": "21542"
               },
               "0x09f6d8a0aeabb1385e7ed410f08761cf39271d76": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "2419133872806912752389798962",
                 "fraction": "0.006580910252501399",
                 "attributed_silo_assets": "51677225"
@@ -3509,13 +3509,13 @@
                 "attributed_silo_assets": "23658"
               },
               "0x0b03d623436a3d2b5401626208efc91d7a58dbcb": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "13046027768871627239695433",
                 "fraction": "0.000035489866378899",
                 "attributed_silo_assets": "278687"
               },
               "0x0bf34484963766bf1d6bd0a15fe7ec6f72f3bd32": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "422227351837602398625143885",
                 "fraction": "0.001148609566352996",
                 "attributed_silo_assets": "9019566"
@@ -3545,37 +3545,37 @@
                 "attributed_silo_assets": "32676"
               },
               "0x0e243e5c925c27503f73de66df52894a2e37c34e": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "979604778333221205281023913",
                 "fraction": "0.002664875723331666",
                 "attributed_silo_assets": "20926190"
               },
               "0x0e8164f7e45691b075959ce0b7d6385a2fafd52c": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10149975549619817346297353",
                 "fraction": "0.000027611567473787",
                 "attributed_silo_assets": "216822"
               },
               "0x0fe7626cb34088b17d5c50c66bd64fa84ddbbc3b": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "9876313903156295123399621",
                 "fraction": "0.000026867109816783",
                 "attributed_silo_assets": "210976"
               },
               "0x10a28fb144bc79eda79194e818323dd9c3217016": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "446677640216905964465178771",
                 "fraction": "0.001215123104640680",
                 "attributed_silo_assets": "9541870"
               },
               "0x10b9e4f3248676f78fa0592237d7b01accd395c6": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10073567378416077087916757",
                 "fraction": "0.000027403709891823",
                 "attributed_silo_assets": "215190"
               },
               "0x118cea94840d065c1a8652a62504d3d0486f6cdb": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "50187413368790773426256447",
                 "fraction": "0.000136527732879032",
                 "attributed_silo_assets": "1072097"
@@ -3605,7 +3605,7 @@
                 "attributed_silo_assets": "1269542"
               },
               "0x14222b3a5929f990a10a6cefd7777dde06ba1a50": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10119669132563157883060456",
                 "fraction": "0.000027529123168837",
                 "attributed_silo_assets": "216175"
@@ -3629,7 +3629,7 @@
                 "attributed_silo_assets": "616468"
               },
               "0x16fb57d655ff5f893202d184173d05a2a0f00cbd": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10193096427647185765884003",
                 "fraction": "0.000027728871700517",
                 "attributed_silo_assets": "217743"
@@ -3641,7 +3641,7 @@
                 "attributed_silo_assets": "2285477"
               },
               "0x1a60d723dfe0be0a73eb3857af7eab2a29fb9125": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "139756647510817997767088623",
                 "fraction": "0.000380188118068890",
                 "attributed_silo_assets": "2985463"
@@ -3653,7 +3653,7 @@
                 "attributed_silo_assets": "23419"
               },
               "0x1b28ffcac70d62177afe349b445550e8ac930322": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "2954296700725343984516938928",
                 "fraction": "0.008036744747894432",
                 "attributed_silo_assets": "63109304"
@@ -3689,7 +3689,7 @@
                 "attributed_silo_assets": "42657"
               },
               "0x2025ca90de3d649da0b394e66e14de50a198cf8d": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "20192549085676250277353282",
                 "fraction": "0.000054930963017718",
                 "attributed_silo_assets": "431350"
@@ -3707,7 +3707,7 @@
                 "attributed_silo_assets": "25113"
               },
               "0x23a5973d18990210324e5553507ac8feb939dd57": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "278088778395916742672009420",
                 "fraction": "0.000756501040898512",
                 "attributed_silo_assets": "5940496"
@@ -3725,7 +3725,7 @@
                 "attributed_silo_assets": "42654"
               },
               "0x270def6a42a6cb81316968149c2bd32b2a264669": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "9854364403150250497615993",
                 "fraction": "0.000026807399318224",
                 "attributed_silo_assets": "210507"
@@ -3755,7 +3755,7 @@
                 "attributed_silo_assets": "212414"
               },
               "0x28c3698430d4f1a78d4359eef893cfaef6174711": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "112045732790061685419412095",
                 "fraction": "0.000304804508735843",
                 "attributed_silo_assets": "2393506"
@@ -3773,7 +3773,7 @@
                 "attributed_silo_assets": "23451"
               },
               "0x29e378ab67da3491ff3c4eb5b4da6a4de6868b58": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "1159207382774853085774820",
                 "fraction": "0.000003153459110234",
                 "attributed_silo_assets": "24762"
@@ -3803,7 +3803,7 @@
                 "attributed_silo_assets": "42649"
               },
               "0x2ee8eb7b8f1eb6608f193e5daf0de9e6a62612b5": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "2939285426664057261033450661",
                 "fraction": "0.007995908707986311",
                 "attributed_silo_assets": "62788635"
@@ -3815,7 +3815,7 @@
                 "attributed_silo_assets": "23456"
               },
               "0x30ab6e3e5377c6c254fb67e4931a6a00943ed3cb": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10698802856236244402881805",
                 "fraction": "0.000029104574243509",
                 "attributed_silo_assets": "228546"
@@ -3833,7 +3833,7 @@
                 "attributed_silo_assets": "21324"
               },
               "0x32d744acb52e042c3bf263a791cb7c261284af28": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10020991909329518998906272",
                 "fraction": "0.000027260685792400",
                 "attributed_silo_assets": "214067"
@@ -3845,7 +3845,7 @@
                 "attributed_silo_assets": "42564"
               },
               "0x33ae856c155b3299e3ab8d4d1fbd6a0b2aee8d6b": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "101021725848830916817047997",
                 "fraction": "0.000274815262948873",
                 "attributed_silo_assets": "2158013"
@@ -3863,7 +3863,7 @@
                 "attributed_silo_assets": "23454"
               },
               "0x34629be754cd69458188bae152613e63c7acc9df": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "24511203927786097044754636",
                 "fraction": "0.000066679250389048",
                 "attributed_silo_assets": "523605"
@@ -3881,13 +3881,13 @@
                 "attributed_silo_assets": "32893"
               },
               "0x357d37db035fcf241575d13f98c3a6c4c706ca5c": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "1570403096678047878511539",
                 "fraction": "0.000004272058671766",
                 "attributed_silo_assets": "33546"
               },
               "0x35d79143330311398897d12e757e514414a88f0e": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "41465648740864301416222586",
                 "fraction": "0.000112801410452226",
                 "attributed_silo_assets": "885783"
@@ -3917,7 +3917,7 @@
                 "attributed_silo_assets": "23389"
               },
               "0x3955cd92311c6504768c214dbb178d93992f0439": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10123931971484876703176479",
                 "fraction": "0.000027540719616921",
                 "attributed_silo_assets": "216266"
@@ -3947,13 +3947,13 @@
                 "attributed_silo_assets": "23468"
               },
               "0x3e2e0255c42001c386c2d98c958504d036b81147": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11185381050558636116641976",
                 "fraction": "0.000030428241140845",
                 "attributed_silo_assets": "238940"
               },
               "0x3e8e5443bb9bd4504468194461902d101766ffe1": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "246168452376637308381566022",
                 "fraction": "0.000669666325744974",
                 "attributed_silo_assets": "5258618"
@@ -3977,7 +3977,7 @@
                 "attributed_silo_assets": "5310596"
               },
               "0x40024c88bc41279337db08a4e9b4c7b01e497e0a": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "4046966640329137384671952",
                 "fraction": "0.000011009198190413",
                 "attributed_silo_assets": "86450"
@@ -3989,7 +3989,7 @@
                 "attributed_silo_assets": "84987"
               },
               "0x41b568da1804e2cdd81a0600e6770d81b6669e29": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "9789175635784647171862935",
                 "fraction": "0.000026630062531564",
                 "attributed_silo_assets": "209115"
@@ -4025,7 +4025,7 @@
                 "attributed_silo_assets": "24515"
               },
               "0x467a65d9720f7a462d6f0e45f76ed26b2cba1961": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11115990931202193042568279",
                 "fraction": "0.000030239475172567",
                 "attributed_silo_assets": "237458"
@@ -4043,7 +4043,7 @@
                 "attributed_silo_assets": "21324"
               },
               "0x49ef092fb6bbeadb8217827b036b3affd6f03f1f": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "1943161639138465073671203501",
                 "fraction": "0.005286095365378080",
                 "attributed_silo_assets": "41509567"
@@ -4061,7 +4061,7 @@
                 "attributed_silo_assets": "2307759"
               },
               "0x4b65586a32d6f70f510bb2c9d31dfafc10c28246": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "97470915639681732581029188",
                 "fraction": "0.000265155787889329",
                 "attributed_silo_assets": "2082161"
@@ -4091,7 +4091,7 @@
                 "attributed_silo_assets": "0"
               },
               "0x4fd4d313f8aa7601c0d059f9fc964cdb766ed61a": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "449846016474802723553796662",
                 "fraction": "0.001223742222430627",
                 "attributed_silo_assets": "9609552"
@@ -4139,13 +4139,13 @@
                 "attributed_silo_assets": "18451841"
               },
               "0x5719fb6af1ce234be32c08dad0bcda3ad11461c7": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "7953844245445271742160819",
                 "fraction": "0.000021637304049203",
                 "attributed_silo_assets": "169908"
               },
               "0x57664dbc37702885c4ce90470256cad3397b0b50": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "261981306268261993052903549",
                 "fraction": "0.000712682949779904",
                 "attributed_silo_assets": "5596410"
@@ -4157,7 +4157,7 @@
                 "attributed_silo_assets": "5488"
               },
               "0x5a8b6b2d397de6bfa3f1a50d334702220cafbd21": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "6314670816438884436599560",
                 "fraction": "0.000017178165451777",
                 "attributed_silo_assets": "134893"
@@ -4187,7 +4187,7 @@
                 "attributed_silo_assets": "2128"
               },
               "0x5f1913144ad0da8fd5230637463e6874c1d80e25": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10143952856987373658780025",
                 "fraction": "0.000027595183593532",
                 "attributed_silo_assets": "216693"
@@ -4199,13 +4199,13 @@
                 "attributed_silo_assets": "21535"
               },
               "0x5f6e47304d6771175afb41bbf3f0bed6d8013b7d": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10635052508173955983822636",
                 "fraction": "0.000028931150472349",
                 "attributed_silo_assets": "227184"
               },
               "0x5f96fea67bf519c8b3ec3517cbc251297580837a": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "45792361519137901242855678",
                 "fraction": "0.000124571618294891",
                 "attributed_silo_assets": "978210"
@@ -4247,7 +4247,7 @@
                 "attributed_silo_assets": "40519"
               },
               "0x635e5db0bb94fd11754bef53e9c7fb38f086f5a7": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "131582135802440246833231222",
                 "fraction": "0.000357950519515307",
                 "attributed_silo_assets": "2810840"
@@ -4265,7 +4265,7 @@
                 "attributed_silo_assets": "23474"
               },
               "0x64e2135a0b383e7cf8603cf11ad6a9bfc464385a": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "1127556518995083177888476267",
                 "fraction": "0.003067357428846931",
                 "attributed_silo_assets": "24086716"
@@ -4301,7 +4301,7 @@
                 "attributed_silo_assets": "23444"
               },
               "0x6a35842b7aec249d63d436a462e0f9fc2a89f906": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "50261476554530252950456138",
                 "fraction": "0.000136729211260963",
                 "attributed_silo_assets": "1073679"
@@ -4337,13 +4337,13 @@
                 "attributed_silo_assets": "42703"
               },
               "0x6c3858d9acd9e324f49e515127af8051a2fbba60": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "20432447379720031642155876",
                 "fraction": "0.000055583572267903",
                 "attributed_silo_assets": "436475"
               },
               "0x6d7467a40c94261471f0ecf84f0d7c793b0f0f98": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "9929398730428721900729323",
                 "fraction": "0.000027011519552836",
                 "attributed_silo_assets": "212110"
@@ -4361,7 +4361,7 @@
                 "attributed_silo_assets": "213006"
               },
               "0x707fe86af329fa4b173cbad8426c77ef68964a21": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10043229890853158271689065",
                 "fraction": "0.000027321181063971",
                 "attributed_silo_assets": "214542"
@@ -4385,13 +4385,13 @@
                 "attributed_silo_assets": "19095821"
               },
               "0x746bb09b8376b201e2f187e301a3c8811f75b65d": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "5615308322231815740169392",
                 "fraction": "0.000015275649075946",
                 "attributed_silo_assets": "119953"
               },
               "0x747a0ac18a7b4920f3c1d5f65e691012007d6855": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "1968411864638601719431114903",
                 "fraction": "0.005354785019034583",
                 "attributed_silo_assets": "42048959"
@@ -4415,7 +4415,7 @@
                 "attributed_silo_assets": "27469024"
               },
               "0x75abc92c75689cee1806f261653ac86901209be3": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "20188523705284999145792022",
                 "fraction": "0.000054920012541853",
                 "attributed_silo_assets": "431264"
@@ -4433,7 +4433,7 @@
                 "attributed_silo_assets": "1064856"
               },
               "0x77708f85c2f59b771f36d57c54e5e0215fb13396": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10169797980811707536243258",
                 "fraction": "0.000027665491583621",
                 "attributed_silo_assets": "217245"
@@ -4451,7 +4451,7 @@
                 "attributed_silo_assets": "425683"
               },
               "0x78fae193511b9b3d77d717198321745fd05ca61d": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10352872417477161663766681",
                 "fraction": "0.000028163519597186",
                 "attributed_silo_assets": "221156"
@@ -4469,13 +4469,13 @@
                 "attributed_silo_assets": "23454"
               },
               "0x7a1ae6a943ce7102676d724054a561b7eb276602": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "188399308878481040271095554",
                 "fraction": "0.000512513572439872",
                 "attributed_silo_assets": "4024561"
               },
               "0x7b1f44b86040da03bd556f3eff07c3471b094170": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10094331271890697815919605",
                 "fraction": "0.000027460195116136",
                 "attributed_silo_assets": "215633"
@@ -4487,7 +4487,7 @@
                 "attributed_silo_assets": "21606"
               },
               "0x7c101749cc4cde543017e2135fee28e73a008003": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10072474543814460429984505",
                 "fraction": "0.000027400736990440",
                 "attributed_silo_assets": "215166"
@@ -4505,19 +4505,19 @@
                 "attributed_silo_assets": "2130893"
               },
               "0x7e617b997b7f5f679320af71a38da18e31476c8d": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10140908129097970628277048",
                 "fraction": "0.000027586900843574",
                 "attributed_silo_assets": "216628"
               },
               "0x7f62a4bf485434022388bc5439525293636abecf": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "9934937218571103060611928",
                 "fraction": "0.000027026586223519",
                 "attributed_silo_assets": "212228"
               },
               "0x808262827e24151879813cbeec568065e1c5cc2c": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "514129929980561905853662310",
                 "fraction": "0.001398617482628652",
                 "attributed_silo_assets": "10982777"
@@ -4529,7 +4529,7 @@
                 "attributed_silo_assets": "23426"
               },
               "0x81b40f913a4c6c4ae39271ea4004161a70b7a313": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "101222770704856320832714691",
                 "fraction": "0.000275362176937017",
                 "attributed_silo_assets": "2162307"
@@ -4553,7 +4553,7 @@
                 "attributed_silo_assets": "23462"
               },
               "0x85c02a8354b1ad316dfed074962b0968d4fe922e": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "221301266976150968335745436",
                 "fraction": "0.000602018678298728",
                 "attributed_silo_assets": "4727409"
@@ -4565,7 +4565,7 @@
                 "attributed_silo_assets": "24463"
               },
               "0x87ae719faf89411036c2d9755a451919bff64cf7": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "5030236401634376573698321",
                 "fraction": "0.000013684043979597",
                 "attributed_silo_assets": "107455"
@@ -4595,7 +4595,7 @@
                 "attributed_silo_assets": "42648"
               },
               "0x8c15d5d5df361cbf8e33b1f019e35f47324d9500": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "97823600783021895561890156443",
                 "fraction": "0.266115217750487909",
                 "attributed_silo_assets": "2089695122"
@@ -4637,13 +4637,13 @@
                 "attributed_silo_assets": "23457"
               },
               "0x926eafee17f1217168127879b813d4fb99dae44c": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "7237429537559871811817419",
                 "fraction": "0.000019688399546992",
                 "attributed_silo_assets": "154605"
               },
               "0x927b87f04c3e46940b6c795befa25f104f50d0d7": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11122639962072727655573642",
                 "fraction": "0.000030257562917077",
                 "attributed_silo_assets": "237600"
@@ -4655,13 +4655,13 @@
                 "attributed_silo_assets": "24052"
               },
               "0x9435b03c69c2832f291a5c0a87f01a3338c4dcff": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10162324408977639151076267",
                 "fraction": "0.000027645160792482",
                 "attributed_silo_assets": "217086"
               },
               "0x9476462f950d30bb7728be51594611013045f198": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "5018286838296144770370733",
                 "fraction": "0.000013651536889034",
                 "attributed_silo_assets": "107199"
@@ -4673,7 +4673,7 @@
                 "attributed_silo_assets": "23441"
               },
               "0x9623bd26f4fc8ca7c3b84acb05875da24eae4c0a": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10095570322593596937158841",
                 "fraction": "0.000027463565777663",
                 "attributed_silo_assets": "215660"
@@ -4727,31 +4727,31 @@
                 "attributed_silo_assets": "21582"
               },
               "0x9ef5a7e73212055754d6365664dabe7b360ce535": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10080377744253290613596508",
                 "fraction": "0.000027422236525204",
                 "attributed_silo_assets": "215335"
               },
               "0x9ff6c6383a40078117481ac935920fed2120e9a7": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10100268837427282396502683",
                 "fraction": "0.000027476347420212",
                 "attributed_silo_assets": "215760"
               },
               "0xa0ca63e5ce8b09d8d395ac0701e65463fcb1a9b1": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "13641958747327897645260432",
                 "fraction": "0.000037111012000474",
                 "attributed_silo_assets": "291417"
               },
               "0xa136dffa62b162da8039bc604c331ddf63c2757b": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "20084043351889132777679489",
                 "fraction": "0.000054635788573690",
                 "attributed_silo_assets": "429032"
               },
               "0xa1d8a2e4a1cb12fc0b286839345923afe8936859": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "99198239386345016774109922",
                 "fraction": "0.000269854726911094",
                 "attributed_silo_assets": "2119059"
@@ -4787,7 +4787,7 @@
                 "attributed_silo_assets": "6393976"
               },
               "0xa4f81b3fc81c1dc598a7abc9a777022af9d111bb": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "98552075233496173069164184",
                 "fraction": "0.000268096929070271",
                 "attributed_silo_assets": "2105256"
@@ -4805,7 +4805,7 @@
                 "attributed_silo_assets": "25630"
               },
               "0xa5cc71d415cca33b54e8294459b75b355faab507": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "30332127221520200128642449",
                 "fraction": "0.000082514245803466",
                 "attributed_silo_assets": "647950"
@@ -4823,13 +4823,13 @@
                 "attributed_silo_assets": "734184456"
               },
               "0xa780af07a438c4ee04c2b0386fdbad513a1eb953": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11115227336427941857060285",
                 "fraction": "0.000030237397921393",
                 "attributed_silo_assets": "237442"
               },
               "0xa7d1642757b57420711d077ce7c8ff42a6743618": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "77827458090487327462010684",
                 "fraction": "0.000211718550441169",
                 "attributed_silo_assets": "1662540"
@@ -4847,7 +4847,7 @@
                 "attributed_silo_assets": "22097"
               },
               "0xa914c5963e118d087339b0550c95d085e38cbd99": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "1518715938040112600038205943",
                 "fraction": "0.004131451094803957",
                 "attributed_silo_assets": "32442613"
@@ -4877,19 +4877,19 @@
                 "attributed_silo_assets": "23283"
               },
               "0xae98402f7b8e5acec6c75bb580abfd04a871258c": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11158758411511870865080920",
                 "fraction": "0.000030355818030979",
                 "attributed_silo_assets": "238371"
               },
               "0xb08f71ba91df87a45eba71378ceefa7d1271ca1f": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "4885749091105878827982994",
                 "fraction": "0.000013290986764408",
                 "attributed_silo_assets": "104368"
               },
               "0xb0d82329c751004954ed4df43cba8265afec0f2c": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11075218791353034102327368",
                 "fraction": "0.000030128560354596",
                 "attributed_silo_assets": "236587"
@@ -4919,7 +4919,7 @@
                 "attributed_silo_assets": "22885"
               },
               "0xb2e89759770e8523d0a12035dfc3bcfc309e28cd": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11135521652782470568448273",
                 "fraction": "0.000030292605727817",
                 "attributed_silo_assets": "237875"
@@ -4937,7 +4937,7 @@
                 "attributed_silo_assets": "23456"
               },
               "0xb4b0a3a144aaca6848ab7bd40a555de6e619824a": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11083534162706310647290684",
                 "fraction": "0.000030151181141816",
                 "attributed_silo_assets": "236765"
@@ -4949,13 +4949,13 @@
                 "attributed_silo_assets": "34926"
               },
               "0xb72252fe4a79f57226ebb5d84deb91a8ca563564": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10597671583362265727764280",
                 "fraction": "0.000028829460973431",
                 "attributed_silo_assets": "226386"
               },
               "0xb725636361f0cd00f57fa13e578e58799b3e648c": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "4095224088230690934405464",
                 "fraction": "0.000011140475726239",
                 "attributed_silo_assets": "87481"
@@ -4979,7 +4979,7 @@
                 "attributed_silo_assets": "23487"
               },
               "0xb9873ae0dc5a234b16bcff07295c58c2774638a7": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10094252660100543793871371",
                 "fraction": "0.000027459981263921",
                 "attributed_silo_assets": "215632"
@@ -4997,13 +4997,13 @@
                 "attributed_silo_assets": "21536"
               },
               "0xba2a1545d77b974f7d669570d6bbd7aee82d5286": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11467801410704420778247175",
                 "fraction": "0.000031196525634933",
                 "attributed_silo_assets": "244973"
               },
               "0xbaa86276f8347cdef9c29303fa25025d7af8a0de": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11099732251653339326343961",
                 "fraction": "0.000030195245743126",
                 "attributed_silo_assets": "237111"
@@ -5015,19 +5015,19 @@
                 "attributed_silo_assets": "27348"
               },
               "0xbc95385b1687c628f57ce12d02254e79242382d3": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "35077686142977837718521692",
                 "fraction": "0.000095423865114378",
                 "attributed_silo_assets": "749324"
               },
               "0xbcca9aaf0c6ba6c3584ece05c6fe5c599d0e34b9": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "9915147294918228991373733",
                 "fraction": "0.000026972750545830",
                 "attributed_silo_assets": "211806"
               },
               "0xbcff1630590812b1d3b729d366d528255b595ab8": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "20262455432625939405436369",
                 "fraction": "0.000055121133309874",
                 "attributed_silo_assets": "432843"
@@ -5045,13 +5045,13 @@
                 "attributed_silo_assets": "23456"
               },
               "0xbf2aa2db97c96d29a69638c391aaf8080616f592": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10160278811953876251196106",
                 "fraction": "0.000027639596036195",
                 "attributed_silo_assets": "217042"
               },
               "0xbf989c510830945224f02d5004ced86b31f50db7": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "147627889944523765627103006",
                 "fraction": "0.000401600715616373",
                 "attributed_silo_assets": "3153607"
@@ -5075,7 +5075,7 @@
                 "attributed_silo_assets": "106604"
               },
               "0xc1921fbf3766f1f7da2e7c3e89832490baf7a053": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11080967132561809221567544",
                 "fraction": "0.000030144197900753",
                 "attributed_silo_assets": "236710"
@@ -5087,7 +5087,7 @@
                 "attributed_silo_assets": "21324"
               },
               "0xc443697c0d2c644989cc75f95f6e9fa3f2716312": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10161482179941642558082809",
                 "fraction": "0.000027642869627962",
                 "attributed_silo_assets": "217068"
@@ -5105,7 +5105,7 @@
                 "attributed_silo_assets": "41125"
               },
               "0xc77376888e950a300c6b97c62a30537bfde91742": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "1873590435602764821305616992",
                 "fraction": "0.005096836783298983",
                 "attributed_silo_assets": "40023396"
@@ -5135,13 +5135,13 @@
                 "attributed_silo_assets": "21465930"
               },
               "0xcd3ab369c5483b4556bf8d18f813654c87ac3236": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "880207322077835968526337879",
                 "fraction": "0.002394479055211499",
                 "attributed_silo_assets": "18802875"
               },
               "0xcd9b9d5d6c03581c0f68a415ad57467d92890277": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11049702819365478356376586",
                 "fraction": "0.000030059147775349",
                 "attributed_silo_assets": "236042"
@@ -5153,7 +5153,7 @@
                 "attributed_silo_assets": "21028880"
               },
               "0xd00f5016f22cac0a6b5a3334c1810cd201f70623": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10168798720237107474876503",
                 "fraction": "0.000027662773237094",
                 "attributed_silo_assets": "217224"
@@ -5171,7 +5171,7 @@
                 "attributed_silo_assets": "64198"
               },
               "0xd0a7ce553ce97171638ea9d7602cab5fc8797ee0": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "21856682901626666603775897",
                 "fraction": "0.000059458002804158",
                 "attributed_silo_assets": "466899"
@@ -5183,7 +5183,7 @@
                 "attributed_silo_assets": "733223"
               },
               "0xd13e173cb081ce5529bff4acf2fa98a7071f8e40": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "18297302141196397456322131",
                 "fraction": "0.000049775212776629",
                 "attributed_silo_assets": "390864"
@@ -5201,13 +5201,13 @@
                 "attributed_silo_assets": "88438"
               },
               "0xd2a13c0c128bc0ff2d5ca875b0785c600ed13270": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "100583684986701403238280575",
                 "fraction": "0.000273623634972841",
                 "attributed_silo_assets": "2148655"
               },
               "0xd2c7535a040fc3d960ade0e5cf5d071bf4221f1c": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "32648921318846300488492970",
                 "fraction": "0.000088816755226120",
                 "attributed_silo_assets": "697442"
@@ -5243,7 +5243,7 @@
                 "attributed_silo_assets": "23446"
               },
               "0xd9243f96a94d7087c863ff87f879b991d8c41e53": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "990748022855608556464580398",
                 "fraction": "0.002695189338029814",
                 "attributed_silo_assets": "21164231"
@@ -5267,13 +5267,13 @@
                 "attributed_silo_assets": "86619"
               },
               "0xdd33d60d99b38c7cc481556f211735e16d13c46f": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "50447492589385544069394911",
                 "fraction": "0.000137235241474780",
                 "attributed_silo_assets": "1077652"
               },
               "0xdd5bc4701b35726baf75041edc3a07e5b9db33e6": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "101942631793124007696172884",
                 "fraction": "0.000277320456827770",
                 "attributed_silo_assets": "2177685"
@@ -5291,13 +5291,13 @@
                 "attributed_silo_assets": "1334387"
               },
               "0xe29e1bd34ad0001061c6544a8597d620f42a07aa": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "20221742325583482171171752",
                 "fraction": "0.000055010379082272",
                 "attributed_silo_assets": "431974"
               },
               "0xe360b9b0c654c9b58386962094cd32738eb78ce5": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "303324741423678754026646283",
                 "fraction": "0.000825151895523787",
                 "attributed_silo_assets": "6479583"
@@ -5309,7 +5309,7 @@
                 "attributed_silo_assets": "42660"
               },
               "0xe5d2d379bd3ec62ad54c8a2e531922f6722538f1": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10048842063928135648887523",
                 "fraction": "0.000027336448184052",
                 "attributed_silo_assets": "214662"
@@ -5345,13 +5345,13 @@
                 "attributed_silo_assets": "21943"
               },
               "0xe9e43bf840b575ebec60b6bf919ad4218615ec7d": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "5786694799142239984602999",
                 "fraction": "0.000015741881654357",
                 "attributed_silo_assets": "123614"
               },
               "0xea150ea13b1bacc3abaec3eda0bb38df6e06a656": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11695385303038944981114786",
                 "fraction": "0.000031815635303564",
                 "attributed_silo_assets": "249835"
@@ -5375,19 +5375,19 @@
                 "attributed_silo_assets": "42653"
               },
               "0xed9b74f0e67d22dbfbc823cd9c00b6395386ebd5": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "12151845605147993166828240",
                 "fraction": "0.000033057370751021",
                 "attributed_silo_assets": "259586"
               },
               "0xee583593cd5fa215c4bc5e0f0f03a2c4e01e9a63": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10111327879361729088728987",
                 "fraction": "0.000027506431973724",
                 "attributed_silo_assets": "215996"
               },
               "0xeec9b9f41487cafce246caa8890cf5da866424c0": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "349142199024582032664535208",
                 "fraction": "0.000949791784146188",
                 "attributed_silo_assets": "7458330"
@@ -5411,13 +5411,13 @@
                 "attributed_silo_assets": "33169308"
               },
               "0xf067d0cbb9148fa45bdf910c7d23b25fd8191985": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "2636257369073266040083711456",
                 "fraction": "0.007171563898709196",
                 "attributed_silo_assets": "56315389"
               },
               "0xf2b202bab6a3a1234be6a5dd80b71d725b70addf": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "1239355548306425156710344",
                 "fraction": "0.000003371490815794",
                 "attributed_silo_assets": "26474"
@@ -5429,7 +5429,7 @@
                 "attributed_silo_assets": "127692"
               },
               "0xf516a98e053e5699c2539bf49e500f4b4a67279a": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "1942113422432562569012907864",
                 "fraction": "0.005283243840646747",
                 "attributed_silo_assets": "41487176"
@@ -5441,13 +5441,13 @@
                 "attributed_silo_assets": "27298"
               },
               "0xf6f49c470765a9a5800112b80d6d8dab256b2198": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "4951699426785538615605587",
                 "fraction": "0.000013470395289546",
                 "attributed_silo_assets": "105777"
               },
               "0xf77f66313b2f53451be0aadf1466b33a8a5eb9cc": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "2050244250083789806499116889",
                 "fraction": "0.005577398405758001",
                 "attributed_silo_assets": "43797052"
@@ -5471,13 +5471,13 @@
                 "attributed_silo_assets": "44273"
               },
               "0xf926e8c73a87b1036e64d270634170e316f3f488": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10067812039818013332866333",
                 "fraction": "0.000027388053310262",
                 "attributed_silo_assets": "215067"
               },
               "0xf93ad9667fa019a389e2ca2f9f0644fd244c0ad3": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "10056370586346091734656038",
                 "fraction": "0.000027356928460453",
                 "attributed_silo_assets": "214822"
@@ -5495,25 +5495,25 @@
                 "attributed_silo_assets": "21536"
               },
               "0xfa2e8a34c99a0f1f6a2b879d4f58f9ed0d137560": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "2290139846510795839719043967",
                 "fraction": "0.006230000317459823",
                 "attributed_silo_assets": "48921671"
               },
               "0xfc436f533bbe43f5110bbfb9997194eb6d61ecec": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "11138180224819831210935899",
                 "fraction": "0.000030299837995603",
                 "attributed_silo_assets": "237932"
               },
               "0xfcbb098e581ce85b1cf48ee7286b118ace3ec9a2": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "50450226601095363870066785",
                 "fraction": "0.000137242678965484",
                 "attributed_silo_assets": "1077711"
               },
               "0xfda12e31b7b02e41fc11c600fe8c4a5e7603044a": {
-                "address_type": "contract_other",
+                "address_type": "gnosis_safe",
                 "vault_shares": "619194397919066643528486329",
                 "fraction": "0.001684430451477647",
                 "attributed_silo_assets": "13227150"
