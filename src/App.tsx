@@ -9,7 +9,6 @@ import {
   compareBigIntAsc,
   compareBigIntDesc,
   explorerAddressUrl,
-  formatCompactUnits,
   formatUnits,
   formatUnitsPlain,
   formatUnitsRounded,
@@ -37,10 +36,6 @@ type RewardPlan = {
 };
 
 const ZERO = 0n;
-
-function shareDecimals(assetDecimals: number): number {
-  return assetDecimals + 3;
-}
 
 function floorToWholeUnits(value: bigint, decimals: number): bigint {
   const scale = 10n ** BigInt(decimals);
@@ -309,7 +304,7 @@ function HolderTable({
                     </div>
                   </td>
                   <td className="px-5 py-4 text-right font-mono tabular-nums">
-                    {formatUnits(row.totalShares, shareDecimals(silo.inputToken.decimals))}
+                    {row.totalShares.toString()}
                   </td>
                   <td className="px-5 py-4 text-right font-mono tabular-nums">
                     {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
@@ -428,7 +423,7 @@ function DepositorTable({
                   </span>
                 </td>
                 <td className="px-5 py-4 text-right font-mono tabular-nums">
-                  {formatUnits(row.vaultShares, shareDecimals(silo.inputToken.decimals))}
+                  {row.vaultShares.toString()}
                 </td>
                 <td className="px-5 py-4 text-right font-mono tabular-nums">
                   {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
@@ -869,7 +864,7 @@ export default function App() {
               <div className="mt-6 grid gap-4 md:grid-cols-3">
                 <MetricCard
                   label="Total shares"
-                  value={formatCompactUnits(selectedSilo.totalShares, shareDecimals(selectedSilo.inputToken.decimals))}
+                  value={selectedSilo.totalShares.toString()}
                   hint="Collateral supply"
                 />
                 <MetricCard
