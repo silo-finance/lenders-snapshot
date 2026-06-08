@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import packageJson from "../package.json";
 import { buildSiloPath, explorerHomePath, parseSiloPathFromUrl } from "./routing";
 import {
@@ -204,12 +204,12 @@ function SectionNavButtons({ prevId, nextId }: { prevId?: string; nextId?: strin
       ) : null}
       {nextId ? (
         <button
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-xs text-slate-300 transition hover:bg-white/10 hover:text-emerald-200"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-base leading-none text-slate-300 transition hover:bg-white/10 hover:text-emerald-200"
           title="Next table"
           type="button"
           onClick={() => scrollToSection(nextId)}
         >
-          ⌄
+          ▼
         </button>
       ) : null}
     </span>
@@ -217,7 +217,11 @@ function SectionNavButtons({ prevId, nextId }: { prevId?: string; nextId?: strin
 }
 
 function ColumnHeaderSum({ value }: { value: string }) {
-  return <div className="mb-1 font-mono text-[10px] font-normal normal-case tracking-normal text-slate-400">{value}</div>;
+  return (
+    <div className="mb-1 text-[10px] font-normal normal-case tracking-normal text-slate-400">
+      Sum: <span className="font-mono text-slate-300">{value}</span>
+    </div>
+  );
 }
 
 function EmptyState({ message }: { message: string }) {
@@ -932,21 +936,55 @@ function VaultCard({
   );
 }
 
-function AppHeader() {
+function AppHeader({ subtitle }: { subtitle?: string }) {
   return (
     <header className="border-b border-white/10 pb-8">
       <div>
         <div className="flex flex-wrap items-baseline gap-3">
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">Review Silo Lenders</h1>
+          <a
+            className="text-3xl font-semibold tracking-tight text-white transition hover:text-emerald-200 sm:text-4xl"
+            href={explorerHomePath()}
+          >
+            Lenders Snapshot
+          </a>
           <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-semibold text-slate-400">
             v{APP_VERSION}
           </span>
         </div>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-          Static, no-RPC snapshot explorer for direct holders and vault depositors across chains.
-        </p>
+        {subtitle ? (
+          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">{subtitle}</p>
+        ) : (
+          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+            Static, no-RPC snapshot explorer for direct holders and vault depositors across chains.
+          </p>
+        )}
       </div>
     </header>
+  );
+}
+
+function ScrollToTopButton() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 240);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <button
+      className="fixed bottom-6 right-6 z-50 rounded-full bg-emerald-300 px-4 py-2 text-xs font-semibold text-slate-950 shadow-lg transition hover:bg-emerald-200"
+      type="button"
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+    >
+      To top
+    </button>
   );
 }
 
@@ -1072,24 +1110,21 @@ function SiloDetailPanel({
     <section className="min-w-0 space-y-6">
       <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-slate-950/40">
         <div className={`grid gap-6 xl:items-start ${showRewards ? "xl:grid-cols-3" : ""}`}>
-          <div className={showRewards ? "xl:col-span-2" : ""}>
-            <p className="text-sm font-medium text-emerald-200">
-              {silo.inputToken.symbol} / Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
-            </p>
-            <h2 className="mt-2 text-3xl font-semibold">Silo lenders details</h2>
-            <div className="mt-3">
+          <div className={showRewards ? "xl:col-span-1" : ""}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-emerald-200">
+              <span>
+                {silo.inputToken.symbol} / Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
+              </span>
               <AddressLink address={silo.address} chain={chain.chain} />
             </div>
-            <p className="mt-2 text-sm text-slate-400">
-              On block{" "}
-              <span className="font-mono text-slate-300">{silo.snapshotBlock.toString()}</span>
-              <span className="mx-2 text-slate-600">·</span>
-              Snapshot block{" "}
-              <span className="font-mono text-slate-300">{silo.snapshotBlock.toString()}</span>
+            <h2 className="mt-2 text-3xl font-semibold text-white">Silo lenders details</h2>
+            <p className="mt-2 text-sm">
+              <span className="text-slate-500">On block</span>{" "}
+              <span className="font-mono text-slate-200">{silo.snapshotBlock.toString()}</span>
             </p>
           </div>
           {showRewards ? (
-            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 xl:col-span-1">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 xl:col-span-2">
               <label className="flex items-start gap-3 text-sm text-slate-300">
                 <input
                   className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
@@ -1331,6 +1366,7 @@ function SiloDetailPanel({
       {!hasVisibleFilterResults ? (
         <EmptyState message="No tables contain addresses matching the current filter." />
       ) : null}
+      <ScrollToTopButton />
     </section>
   );
 }
@@ -1517,27 +1553,7 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
       <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
-        <header className="border-b border-white/10 pb-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="flex flex-wrap items-baseline gap-3">
-                <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Review Silo Lenders</h1>
-                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-semibold text-slate-400">
-                  v{APP_VERSION}
-                </span>
-              </div>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-                Silo-only snapshot view for {silo.inputToken.symbol} #{silo.siloId ?? "--"}.
-              </p>
-            </div>
-            <a
-              className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
-              href={explorerHomePath()}
-            >
-              Back to explorer
-            </a>
-          </div>
-        </header>
+        <AppHeader subtitle={`Silo-only snapshot view for ${silo.inputToken.symbol} #${silo.siloId ?? "--"}.`} />
 
         <div className="min-w-0 space-y-6 py-8">
           <SiloDetailPanel
@@ -1584,14 +1600,6 @@ function SiloNotFoundView({ address, chain }: { address: string; chain?: string 
         <AppHeader />
         <div className="py-8">
           <EmptyState message={`No snapshot data found for silo ${label}.`} />
-          <div className="mt-4">
-            <a
-              className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
-              href={explorerHomePath()}
-            >
-              Back to explorer
-            </a>
-          </div>
         </div>
       </section>
     </main>
