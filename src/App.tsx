@@ -358,6 +358,7 @@ function DepositorTable({
   vaultAddress,
   sortState,
   addressFilter,
+  addressTypeFilter,
   rewardPlan,
   onSort,
 }: {
@@ -367,11 +368,16 @@ function DepositorTable({
   vaultAddress: string;
   sortState: TableSortState;
   addressFilter: string;
+  addressTypeFilter: string;
   rewardPlan: RewardPlan | null;
   onSort: (key: TableSortKey) => void;
 }) {
   const needle = addressFilter.trim().toLowerCase();
-  const visibleRows = needle ? rows.filter((row) => row.address.toLowerCase().includes(needle)) : rows;
+  const visibleRows = rows.filter((row) => {
+    const addressMatches = needle ? row.address.toLowerCase().includes(needle) : true;
+    const typeMatches = addressTypeFilter === "all" || row.addressType === addressTypeFilter;
+    return addressMatches && typeMatches;
+  });
   const filteredRows = sortDepositors(visibleRows, sortState);
 
   if (filteredRows.length === 0) {
@@ -531,6 +537,7 @@ function VaultCard({
   expanded,
   onToggle,
   addressFilter,
+  addressTypeFilter,
   rewardPlan,
 }: {
   chain: string;
@@ -539,6 +546,7 @@ function VaultCard({
   expanded: boolean;
   onToggle: () => void;
   addressFilter: string;
+  addressTypeFilter: string;
   rewardPlan: RewardPlan | null;
 }) {
   const [depositorSort, setDepositorSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
@@ -597,6 +605,7 @@ function VaultCard({
         <div className="mt-4">
           <DepositorTable
             addressFilter={addressFilter}
+            addressTypeFilter={addressTypeFilter}
             chain={chain}
             rewardPlan={rewardPlan}
             rows={vault.depositors}
@@ -620,6 +629,7 @@ export default function App() {
   const [selectedChainName, setSelectedChainName] = useState(initialChain.chain);
   const [selectedSiloAddress, setSelectedSiloAddress] = useState(initialChain.silos[0]?.address ?? "");
   const [addressFilter, setAddressFilter] = useState("");
+  const [addressTypeFilter, setAddressTypeFilter] = useState("all");
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>({});
@@ -628,13 +638,23 @@ export default function App() {
   const selectedChain = chains.find((chain) => chain.chain === selectedChainName) ?? initialChain;
   const selectedSilo = selectedChain.silos.find((silo) => silo.address === selectedSiloAddress) ?? selectedChain.silos[0];
   const allSilos = chains.flatMap((chain) => chain.silos);
+  const addressTypes = selectedSilo
+    ? Array.from(
+        new Set([
+          ...selectedSilo.directLenders.map((lender) => lender.addressType),
+          ...selectedSilo.vaults.flatMap((vault) => vault.depositors.map((depositor) => depositor.addressType)),
+        ]),
+      ).sort((a, b) => a.localeCompare(b))
+    : [];
 
   const lenderNeedle = addressFilter.trim().toLowerCase();
-  const filterActive = lenderNeedle.length > 0;
+  const typeMatches = (addressType: string) => addressTypeFilter === "all" || addressType === addressTypeFilter;
+  const filterActive = lenderNeedle.length > 0 || addressTypeFilter !== "all";
   const filteredLenders = selectedSilo
-    ? lenderNeedle
-      ? selectedSilo.directLenders.filter((lender) => lender.address.toLowerCase().includes(lenderNeedle))
-      : selectedSilo.directLenders
+    ? selectedSilo.directLenders.filter((lender) => {
+        const addressMatches = lenderNeedle ? lender.address.toLowerCase().includes(lenderNeedle) : true;
+        return addressMatches && typeMatches(lender.addressType);
+      })
     : [];
   const visibleLenders = selectedSilo ? sortDirectLenders(filteredLenders, directSort) : [];
   const visibleVaults = selectedSilo
@@ -645,7 +665,10 @@ export default function App() {
         if (isVaultWarning(vault)) {
           return false;
         }
-        return vault.depositors.some((depositor) => depositor.address.toLowerCase().includes(lenderNeedle));
+        return vault.depositors.some((depositor) => {
+          const addressMatches = lenderNeedle ? depositor.address.toLowerCase().includes(lenderNeedle) : true;
+          return addressMatches && typeMatches(depositor.addressType);
+        });
       })
     : [];
 
@@ -659,6 +682,7 @@ export default function App() {
   function selectChain(chain: ChainSnapshot) {
     setSelectedChainName(chain.chain);
     setSelectedSiloAddress(chain.silos[0]?.address ?? "");
+    setAddressTypeFilter("all");
     setDirectExpanded(true);
     setExpandedVaults({});
     setRewardInput("");
@@ -747,6 +771,7 @@ export default function App() {
                         tabIndex={0}
                         onClick={() => {
                           setSelectedSiloAddress(silo.address);
+                          setAddressTypeFilter("all");
                           setDirectExpanded(true);
                           setExpandedVaults({});
                           setRewardInput("");
@@ -755,6 +780,7 @@ export default function App() {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
                             setSelectedSiloAddress(silo.address);
+                            setAddressTypeFilter("all");
                             setDirectExpanded(true);
                             setExpandedVaults({});
                             setRewardInput("");
@@ -886,7 +912,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid gap-4 rounded-3xl border border-white/10 bg-white/[0.04] p-5 lg:grid-cols-[minmax(0,2fr)_auto] lg:items-end">
+            <div className="grid gap-4 rounded-3xl border border-white/10 bg-white/[0.04] p-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(12rem,0.7fr)_auto] lg:items-end">
               <div className="min-w-0">
                 <label className="text-xs uppercase tracking-[0.22em] text-slate-500" htmlFor="filter">
                   Address filter
@@ -898,6 +924,24 @@ export default function App() {
                   value={addressFilter}
                   onChange={(event) => setAddressFilter(event.target.value)}
                 />
+              </div>
+              <div className="min-w-0">
+                <label className="text-xs uppercase tracking-[0.22em] text-slate-500" htmlFor="type-filter">
+                  Type filter
+                </label>
+                <select
+                  id="type-filter"
+                  className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-slate-300 outline-none"
+                  value={addressTypeFilter}
+                  onChange={(event) => setAddressTypeFilter(event.target.value)}
+                >
+                  <option value="all">All types</option>
+                  {addressTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="flex flex-wrap gap-2 lg:justify-end">
                 <button
@@ -963,6 +1007,7 @@ export default function App() {
                     <VaultCard
                       key={vault.address}
                       addressFilter={addressFilter}
+                      addressTypeFilter={addressTypeFilter}
                       chain={selectedChain.chain}
                       expanded={expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT}
                       silo={selectedSilo}
