@@ -310,6 +310,20 @@ export function formatUnitsPlain(value: bigint, decimals: number): string {
   return `${negative ? "-" : ""}${whole.toString()}.${fractionPadded}`;
 }
 
+export function formatUnitsFixed(value: bigint, decimals: number): string {
+  const negative = value < ZERO;
+  const absolute = negative ? -value : value;
+  const scale = 10n ** BigInt(decimals);
+  const whole = absolute / scale;
+  const fraction = absolute % scale;
+
+  if (decimals === 0) {
+    return `${negative ? "-" : ""}${whole.toString()}`;
+  }
+
+  return `${negative ? "-" : ""}${whole.toString()}.${fraction.toString().padStart(decimals, "0")}`;
+}
+
 export function parseUnits(value: string, decimals: number): bigint | null {
   const trimmed = value.trim();
   if (!trimmed) {
