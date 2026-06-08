@@ -63,17 +63,65 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
+function copyAddress(address: string) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(address);
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = address;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+  return Promise.resolve();
+}
+
+function CopyAddressButton({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <button
+      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs transition ${
+        copied
+          ? "border-emerald-300/60 bg-emerald-300/20 text-emerald-100"
+          : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-emerald-300/40 hover:text-emerald-200"
+      }`}
+      title={copied ? "Address copied" : "Copy address"}
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void copyAddress(address).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1200);
+        });
+      }}
+    >
+      <span aria-hidden="true">{copied ? "✓" : "⧉"}</span>
+      <span className="sr-only">{copied ? "Address copied" : "Copy address"}</span>
+    </button>
+  );
+}
+
 function AddressLink({ chain, address }: { chain: string; address: string }) {
   return (
-    <a
-      className="font-mono text-emerald-200 transition hover:text-emerald-100"
-      href={explorerAddressUrl(chain, address)}
-      rel="noreferrer"
-      target="_blank"
-      title={address}
-    >
-      {shortAddress(address)}
-    </a>
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <a
+        className="font-mono text-emerald-200 transition hover:text-emerald-100"
+        href={explorerAddressUrl(chain, address)}
+        rel="noreferrer"
+        target="_blank"
+        title={address}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {shortAddress(address)}
+      </a>
+      <CopyAddressButton address={address} />
+    </span>
   );
 }
 
@@ -618,19 +666,29 @@ export default function App() {
                     </div>
                   ) : (
                     selectedChain.silos.map((silo) => (
-                      <button
+                      <div
                         key={silo.address}
                         className={`min-w-0 rounded-2xl border px-4 py-3 text-left transition ${
                           selectedSilo?.address === silo.address
                             ? "border-emerald-300/40 bg-emerald-300/10"
                             : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
                         }`}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         onClick={() => {
                           setSelectedSiloAddress(silo.address);
                           setDirectExpanded(true);
                           setExpandedVaults({});
                           setRewardInput("");
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedSiloAddress(silo.address);
+                            setDirectExpanded(true);
+                            setExpandedVaults({});
+                            setRewardInput("");
+                          }
                         }}
                       >
                         <div className="flex min-w-0 items-center gap-2">
@@ -641,11 +699,11 @@ export default function App() {
                             </span>
                           ) : null}
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
-                          <span className="font-mono text-emerald-100/80">{shortAddress(silo.address)}</span>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+                          <AddressLink address={silo.address} chain={selectedChain.chain} />
                           <span>Block {new Intl.NumberFormat("en-US").format(silo.snapshotBlock)}</span>
                         </div>
-                      </button>
+                      </div>
                     ))
                   )}
                 </div>

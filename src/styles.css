@@ -10,3 +10,14 @@ body {
   margin: 0;
   min-width: 320px;
 }
+
+button:not(:disabled),
+a,
+[role="button"],
+summary {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
