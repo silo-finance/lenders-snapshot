@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import packageJson from "../package.json";
 import { explorerHomePath, parseSiloPathFromUrl } from "./routing";
 import {
@@ -105,26 +105,42 @@ function sumDirectShares(silo: SiloSnapshot): bigint {
   return silo.directLenders.reduce((sum, lender) => sum + lender.collateralShares, ZERO);
 }
 
-function ValidationBadge({ message, valid }: { message: string; valid: boolean }) {
+function ValidationBadge({ message, valid, inline = false }: { message: string; valid: boolean; inline?: boolean }) {
   if (!valid) {
     return null;
   }
 
   return (
-    <span className="mt-2 inline-flex items-center gap-1.5 text-sm text-emerald-300">
+    <span
+      className={`inline-flex items-center gap-1 text-emerald-300 ${inline ? "text-xs" : "mt-2 gap-1.5 text-sm"}`}
+    >
       <span aria-hidden="true">✓</span>
       <span>{message}</span>
     </span>
   );
 }
 
-function MetricCard({ label, value, hint, footer }: { label: string; value: string; hint?: string; footer?: ReactNode }) {
+function MetricCard({
+  label,
+  value,
+  hint,
+  footer,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  footer?: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-emerald-950/20">
+    <div
+      className={`rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-emerald-950/20 ${className}`}
+    >
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{label}</p>
-      <p className="mt-3 font-mono text-2xl font-semibold text-white">{value}</p>
+      <p className="mt-2 font-mono text-xl font-semibold text-white">{value}</p>
       {footer}
-      {hint ? <p className="mt-2 text-sm text-slate-400">{hint}</p> : null}
+      {hint ? <p className="mt-1.5 text-sm text-slate-400">{hint}</p> : null}
     </div>
   );
 }
@@ -134,34 +150,74 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
   const sharesValid = directSharesSum === silo.collateralTotalSupply;
 
   return (
-    <div className="mt-6 grid gap-4 md:grid-cols-3">
-      <MetricCard label="Snapshot block" value={silo.snapshotBlock.toString()} />
+    <div className="mt-5 grid gap-4 md:grid-cols-3">
       <MetricCard
+        className="md:col-span-2"
         label="Total assets"
         value={`${formatUnitsRounded(silo.totalAssets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
         footer={
-          <>
-            <p className="mt-3 font-mono text-lg text-slate-200">
-              {silo.totalShares.toString()} <span className="text-sm text-slate-400">shares</span>
-            </p>
+          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-sm text-slate-200">
+            <span>
+              {silo.totalShares.toString()} <span className="text-slate-400">shares</span>
+            </span>
             <ValidationBadge
+              inline
               message="Total shares equals sum of direct lender shares"
               valid={sharesValid}
             />
-          </>
+          </p>
         }
       />
       <MetricCard
-        label="Vault assets"
+        label="Vaults assets"
         value={`${formatUnitsRounded(
           silo.vaults.reduce((sum, vault) => sum + vault.vaultSiloAssets, 0n),
           silo.inputToken.decimals,
           2,
         )} ${silo.inputToken.symbol}`}
-        hint="Attributable through vault depositors"
+        hint="Sum across all vaults"
       />
     </div>
   );
+}
+
+function scrollToSection(sectionId: string) {
+  document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function SectionNavButtons({ prevId, nextId }: { prevId?: string; nextId?: string }) {
+  if (!prevId && !nextId) {
+    return null;
+  }
+
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      {prevId ? (
+        <button
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-xs text-slate-300 transition hover:bg-white/10 hover:text-emerald-200"
+          title="Previous table"
+          type="button"
+          onClick={() => scrollToSection(prevId)}
+        >
+          ⌃
+        </button>
+      ) : null}
+      {nextId ? (
+        <button
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-xs text-slate-300 transition hover:bg-white/10 hover:text-emerald-200"
+          title="Next table"
+          type="button"
+          onClick={() => scrollToSection(nextId)}
+        >
+          ⌄
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+function ColumnHeaderSum({ value }: { value: string }) {
+  return <div className="mb-1 font-mono text-[10px] font-normal normal-case tracking-normal text-slate-400">{value}</div>;
 }
 
 function EmptyState({ message }: { message: string }) {
@@ -266,31 +322,6 @@ function AddressFilterInput({
   );
 }
 
-function TableTotalsHeader({
-  symbol,
-  totals,
-  decimals,
-  showRewardColumn = false,
-}: {
-  symbol: string;
-  totals: ShareAssetTotals;
-  decimals: number;
-  showRewardColumn?: boolean;
-}) {
-  return (
-    <tr className="border-b border-white/10 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
-      <th className="px-5 py-2" colSpan={2} />
-      <th className="px-5 py-2 text-right normal-case tracking-normal" colSpan={2}>
-        <div>Total sum:</div>
-        <div className="mt-1 font-mono text-xs normal-case tracking-normal text-slate-300">
-          {totals.shares.toString()} shares · {formatUnitsRounded(totals.assets, decimals, 2)} {symbol}
-        </div>
-      </th>
-      {showRewardColumn ? <th className="px-5 py-2" /> : null}
-    </tr>
-  );
-}
-
 function SortHeader({
   align = "left",
   sortKey,
@@ -366,6 +397,7 @@ function HolderTable({
   onJumpToVault,
   onExport,
   forceExpanded = false,
+  navNextId,
 }: {
   chain: string;
   rows: DirectLender[];
@@ -380,14 +412,18 @@ function HolderTable({
   onJumpToVault: (vaultAddress: string) => void;
   onExport: () => void;
   forceExpanded?: boolean;
+  navNextId?: string;
 }) {
   const isExpanded = forceExpanded || expanded;
 
   return (
     <div id="direct-lenders" className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
-      <div className="flex flex-col gap-3 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="font-semibold text-white">Direct lenders</h3>
-        <div className="flex flex-wrap gap-2">
+      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="font-semibold text-white">Direct lenders</h3>
+          <SectionNavButtons nextId={navNextId} />
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
           <button
             className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-500 disabled:hover:bg-transparent"
             disabled={rows.length === 0}
@@ -417,12 +453,6 @@ function HolderTable({
         <div className="max-h-[38rem] overflow-auto">
           <table className="min-w-full divide-y divide-white/10 text-sm">
             <thead className="sticky top-0 bg-slate-950 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
-              <TableTotalsHeader
-                decimals={silo.inputToken.decimals}
-                showRewardColumn={showRewardColumn}
-                symbol={silo.inputToken.symbol}
-                totals={tableTotals}
-              />
               <tr>
                 <th className="px-5 py-3 font-medium">
                   <SortHeader label="Address" sortKey="address" sortState={sortState} onClick={onSort} />
@@ -431,9 +461,13 @@ function HolderTable({
                   <SortHeader label="Type" sortKey="type" sortState={sortState} onClick={onSort} />
                 </th>
                 <th className="px-5 py-3 text-right font-medium">
+                  <ColumnHeaderSum value={tableTotals.shares.toString()} />
                   <SortHeader align="right" label="Shares" sortKey="shares" sortState={sortState} onClick={onSort} />
                 </th>
                 <th className="px-5 py-3 text-right font-medium">
+                  <ColumnHeaderSum
+                    value={`${formatUnitsRounded(tableTotals.assets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
+                  />
                   <SortHeader align="right" label="Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
                 </th>
                 {showRewardColumn ? <th className="px-5 py-3 text-right font-medium">Reward</th> : null}
@@ -553,12 +587,6 @@ function DepositorTable({
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-white/10 text-sm">
           <thead className="bg-white/[0.03] text-left text-xs uppercase tracking-[0.18em] text-slate-500">
-            <TableTotalsHeader
-              decimals={silo.inputToken.decimals}
-              showRewardColumn={showRewardColumn}
-              symbol={silo.inputToken.symbol}
-              totals={tableTotals}
-            />
             <tr>
               <th className="px-5 py-3 font-medium">
                 <SortHeader label="Address" sortKey="address" sortState={sortState} onClick={onSort} />
@@ -567,16 +595,14 @@ function DepositorTable({
                 <SortHeader label="Type" sortKey="type" sortState={sortState} onClick={onSort} />
               </th>
               <th className="px-5 py-3 text-right font-medium">
+                <ColumnHeaderSum value={tableTotals.shares.toString()} />
                 <SortHeader align="right" label="Vault shares" sortKey="shares" sortState={sortState} onClick={onSort} />
               </th>
               <th className="px-5 py-3 text-right font-medium">
-                <SortHeader
-                  align="right"
-                  label="Attributed assets"
-                  sortKey="assets"
-                  sortState={sortState}
-                  onClick={onSort}
+                <ColumnHeaderSum
+                  value={`${formatUnitsRounded(tableTotals.assets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                 />
+                <SortHeader align="right" label="Vault assets" sortKey="assets" sortState={sortState} onClick={onSort} />
               </th>
               {showRewardColumn ? <th className="px-5 py-3 text-right font-medium">Reward</th> : null}
             </tr>
@@ -774,6 +800,8 @@ function VaultCard({
   showRewardColumn,
   forceExpanded = false,
   hideTypeFilter = false,
+  navPrevId,
+  navNextId,
 }: {
   chain: string;
   vault: VaultSnapshot;
@@ -786,6 +814,8 @@ function VaultCard({
   showRewardColumn: boolean;
   forceExpanded?: boolean;
   hideTypeFilter?: boolean;
+  navPrevId?: string;
+  navNextId?: string;
 }) {
   const [depositorSort, setDepositorSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const hasWarning = isVaultWarning(vault);
@@ -805,40 +835,45 @@ function VaultCard({
         hasWarning ? "border-amber-300/30 bg-amber-300/[0.08]" : "border-emerald-300/20 bg-emerald-300/[0.06]"
       }`}
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
           <h3 className={hasWarning ? "font-semibold text-amber-100" : "font-semibold text-emerald-100"}>
             {vault.name || "Unnamed SiloVault"}
           </h3>
-          <div className="mt-1">
-            <AddressLink address={vault.address} chain={chain} />
-          </div>
-          <p className={hasWarning ? "mt-2 text-sm text-amber-100/70" : "mt-2 text-sm text-emerald-100/70"}>
-            Vault assets: {formatUnitsRounded(vault.vaultSiloAssets, silo.inputToken.decimals, 2)}{" "}
-            {silo.inputToken.symbol}
-          </p>
-          {vault.vaultTotalSupply !== null ? (
-            <div className={hasWarning ? "mt-2 text-sm text-amber-100/70" : "mt-2 text-sm text-emerald-100/70"}>
-              <span className="font-mono">{vault.vaultTotalSupply.toString()}</span> shares
-              <ValidationBadge
-                message="Vault shares equal sum of depositor shares"
-                valid={vaultSharesValid}
-              />
-            </div>
-          ) : null}
+          <AddressLink address={vault.address} chain={chain} />
+          <SectionNavButtons nextId={navNextId} prevId={navPrevId} />
         </div>
-        {hasWarning ? (
-          <span className="rounded-full bg-amber-300/20 px-3 py-1 text-sm text-amber-100">{warningLabel(vault)}</span>
-        ) : forceExpanded ? null : (
-          <button
-            className="rounded-full bg-emerald-300/20 px-3 py-1 text-sm text-emerald-100 transition hover:bg-emerald-300/30"
-            type="button"
-            onClick={onToggle}
-          >
-            {isExpanded ? "Collapse" : "Expand"} depositors
-          </button>
-        )}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {hasWarning ? (
+            <span className="rounded-full bg-amber-300/20 px-3 py-1 text-sm text-amber-100">{warningLabel(vault)}</span>
+          ) : forceExpanded ? null : (
+            <button
+              className="rounded-full bg-emerald-300/20 px-3 py-1 text-sm text-emerald-100 transition hover:bg-emerald-300/30"
+              type="button"
+              onClick={onToggle}
+            >
+              {isExpanded ? "Collapse" : "Expand"} depositors
+            </button>
+          )}
+        </div>
       </div>
+      <p
+        className={`mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm ${
+          hasWarning ? "text-amber-100/70" : "text-emerald-100/70"
+        }`}
+      >
+        <span>
+          Vault assets: {formatUnitsRounded(vault.vaultSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+        </span>
+        {vault.vaultTotalSupply !== null ? (
+          <span className="inline-flex flex-wrap items-center gap-x-2 font-mono">
+            <span>
+              {vault.vaultTotalSupply.toString()} <span className="font-sans">shares</span>
+            </span>
+            <ValidationBadge inline message="Vault shares equal sum of depositor shares" valid={vaultSharesValid} />
+          </span>
+        ) : null}
+      </p>
       {hasWarning ? (
         <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
           <p>
@@ -870,75 +905,6 @@ function VaultCard({
           />
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function ScrollControls({ sectionIds }: { sectionIds: string[] }) {
-  const [visible, setVisible] = useState(false);
-  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const onScroll = () => setVisible(window.scrollY > 240);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  useEffect(() => {
-    const elements = sectionIds
-      .map((id) => document.getElementById(id))
-      .filter((element): element is HTMLElement => element !== null);
-
-    if (elements.length === 0) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visibleEntries = entries.filter((entry) => entry.isIntersecting);
-        if (visibleEntries.length === 0) {
-          return;
-        }
-        const topEntry = visibleEntries.sort(
-          (left, right) => left.boundingClientRect.top - right.boundingClientRect.top,
-        )[0];
-        setActiveSectionId(topEntry.target.id);
-      },
-      { root: null, rootMargin: "-20% 0px -55% 0px", threshold: 0 },
-    );
-
-    for (const element of elements) {
-      observer.observe(element);
-    }
-
-    return () => observer.disconnect();
-  }, [sectionIds]);
-
-  if (!visible) {
-    return null;
-  }
-
-  return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
-      {activeSectionId ? (
-        <button
-          className="rounded-full border border-white/10 bg-slate-950/90 px-4 py-2 text-xs font-semibold text-slate-200 shadow-lg backdrop-blur transition hover:bg-white/10"
-          type="button"
-          onClick={() => {
-            document.getElementById(activeSectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
-        >
-          To table header
-        </button>
-      ) : null}
-      <button
-        className="rounded-full bg-emerald-300 px-4 py-2 text-xs font-semibold text-slate-950 shadow-lg transition hover:bg-emerald-200"
-        type="button"
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      >
-        To top
-      </button>
     </div>
   );
 }
@@ -1060,7 +1026,7 @@ function SiloDetailPanel({
   const vaultWarnings = silo.vaults.filter(isVaultWarning).length;
   const hasVisibleFilterResults = !filterActive || visibleLenders.length > 0 || visibleVaults.length > 0;
   const directTableTotals = sumDirectLenderTotals(silo.directLenders);
-  const sectionIds = ["direct-lenders", ...visibleVaults.map((vault) => vaultElementId(vault.address))];
+  const tableSectionIds = ["direct-lenders", ...visibleVaults.map((vault) => vaultElementId(vault.address))];
 
   function expandAll() {
     setDirectExpanded(true);
@@ -1082,18 +1048,25 @@ function SiloDetailPanel({
   return (
     <section className="min-w-0 space-y-6">
       <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-slate-950/40">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-          <div>
+        <div className={`grid gap-6 xl:items-start ${showRewards ? "xl:grid-cols-3" : ""}`}>
+          <div className={showRewards ? "xl:col-span-2" : ""}>
             <p className="text-sm font-medium text-emerald-200">
               {silo.inputToken.symbol} / Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
             </p>
-            <h2 className="mt-2 text-3xl font-semibold">Silo lender details</h2>
+            <h2 className="mt-2 text-3xl font-semibold">Silo lenders details</h2>
             <div className="mt-3">
               <AddressLink address={silo.address} chain={chain.chain} />
             </div>
+            <p className="mt-2 text-sm text-slate-400">
+              On block{" "}
+              <span className="font-mono text-slate-300">{silo.snapshotBlock.toString()}</span>
+              <span className="mx-2 text-slate-600">·</span>
+              Snapshot block{" "}
+              <span className="font-mono text-slate-300">{silo.snapshotBlock.toString()}</span>
+            </p>
           </div>
           {showRewards ? (
-            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 xl:col-span-1">
               <label className="flex items-start gap-3 text-sm text-slate-300">
                 <input
                   className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
@@ -1268,6 +1241,7 @@ function SiloDetailPanel({
           chain={chain.chain}
           expanded={directExpanded}
           forceExpanded={forceExpanded}
+          navNextId={tableSectionIds.length > 1 ? tableSectionIds[1] : undefined}
           rows={visibleLenders}
           showRewardColumn={showRewardColumn}
           silo={silo}
@@ -1314,6 +1288,8 @@ function SiloDetailPanel({
                 expanded={forceExpanded || (expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT)}
                 forceExpanded={forceExpanded}
                 hideTypeFilter={!showTypeFilter}
+                navNextId={index + 2 < tableSectionIds.length ? tableSectionIds[index + 2] : undefined}
+                navPrevId={tableSectionIds[index]}
                 rewardPlan={rewardPlan}
                 showRewardColumn={showRewardColumn}
                 silo={silo}
@@ -1332,7 +1308,6 @@ function SiloDetailPanel({
       {!hasVisibleFilterResults ? (
         <EmptyState message="No tables contain addresses matching the current filter." />
       ) : null}
-      <ScrollControls sectionIds={sectionIds} />
     </section>
   );
 }
