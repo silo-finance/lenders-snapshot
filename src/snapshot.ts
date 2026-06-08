@@ -114,6 +114,13 @@ const KNOWN_TOKEN_SYMBOLS: Record<string, string> = {
 
 const ZERO = 0n;
 
+function displayAddressType(addressType: string | undefined): string {
+  if (addressType === "gnosis_safe") {
+    return "Gnosis Safe";
+  }
+  return addressType ?? "unknown";
+}
+
 function toBigInt(value: RawAmount): bigint {
   if (value === null || value === undefined || value === "") {
     return ZERO;
@@ -151,7 +158,7 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
     const totalAssets = toBigInt(entry.total_assets) || assetsCollateral;
     return {
       address: lenderAddress,
-      addressType: entry.address_type ?? "unknown",
+      addressType: displayAddressType(entry.address_type),
       collateralShares,
       totalShares: collateralShares,
       assetsCollateral,
@@ -173,7 +180,7 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
         : toBigInt(entry.vault_total_supply),
     depositors: Object.entries(entry.depositors ?? {}).map(([depositorAddress, depositor]) => ({
       address: depositorAddress,
-      addressType: depositor.address_type ?? "unknown",
+      addressType: displayAddressType(depositor.address_type),
       vaultShares: toBigInt(depositor.vault_shares),
       fraction: depositor.fraction ?? "0",
       attributedSiloAssets: toBigInt(depositor.attributed_silo_assets),

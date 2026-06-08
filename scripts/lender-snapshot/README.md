@@ -76,7 +76,7 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
         "collateral_total_supply": "…",   // raw integer string
         "direct_lenders": {
           "<addr>": {
-            "address_type": "eoa|silo_vault|erc4626_unresolved|contract_other",
+            "address_type": "eoa|silo_vault|gnosis_safe|erc4626_unresolved|contract_other",
             "collateral_shares": "…",
             "assets_collateral": "…",
             "total_assets": "…"
