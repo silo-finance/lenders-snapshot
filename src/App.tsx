@@ -574,14 +574,27 @@ export default function App() {
   const selectedSilo = selectedChain.silos.find((silo) => silo.address === selectedSiloAddress) ?? selectedChain.silos[0];
 
   const lenderNeedle = addressFilter.trim().toLowerCase();
+  const filterActive = lenderNeedle.length > 0;
   const filteredLenders = selectedSilo
     ? lenderNeedle
       ? selectedSilo.directLenders.filter((lender) => lender.address.toLowerCase().includes(lenderNeedle))
       : selectedSilo.directLenders
     : [];
   const visibleLenders = selectedSilo ? sortDirectLenders(filteredLenders, directSort) : [];
+  const visibleVaults = selectedSilo
+    ? selectedSilo.vaults.filter((vault) => {
+        if (!filterActive) {
+          return true;
+        }
+        if (isVaultWarning(vault)) {
+          return false;
+        }
+        return vault.depositors.some((depositor) => depositor.address.toLowerCase().includes(lenderNeedle));
+      })
+    : [];
 
   const vaultWarnings = selectedSilo?.vaults.filter(isVaultWarning).length ?? 0;
+  const hasVisibleFilterResults = !filterActive || visibleLenders.length > 0 || visibleVaults.length > 0;
   const rewardRaw = selectedSilo ? parseUnits(rewardInput, selectedSilo.inputToken.decimals) : null;
   const rewardInputInvalid = rewardInput.trim() !== "" && rewardRaw === null;
   const rewardPlan = selectedSilo && rewardRaw !== null ? buildRewardPlan(selectedSilo, rewardRaw) : null;
@@ -851,48 +864,58 @@ export default function App() {
               </div>
             </div>
 
-            <HolderTable
-              chain={selectedChain.chain}
-              expanded={directExpanded}
-              rows={visibleLenders}
-              silo={selectedSilo}
-              rewardPlan={rewardPlan}
-              sortState={directSort}
-              onJumpToVault={jumpToVault}
-              onSort={(key) => setDirectSort((current) => nextSortState(current, key))}
-              onToggle={() => setDirectExpanded((current) => !current)}
-            />
+            {(!filterActive || visibleLenders.length > 0) ? (
+              <HolderTable
+                chain={selectedChain.chain}
+                expanded={directExpanded}
+                rows={visibleLenders}
+                silo={selectedSilo}
+                rewardPlan={rewardPlan}
+                sortState={directSort}
+                onJumpToVault={jumpToVault}
+                onSort={(key) => setDirectSort((current) => nextSortState(current, key))}
+                onToggle={() => setDirectExpanded((current) => !current)}
+              />
+            ) : null}
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Vaults</h2>
-                <span className="text-sm text-slate-400">
-                  {selectedSilo.vaults.length - vaultWarnings} indexed, {vaultWarnings} warning
-                  {vaultWarnings === 1 ? "" : "s"}
-                </span>
+            {(!filterActive || visibleVaults.length > 0) ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold">Vaults</h2>
+                  <span className="text-sm text-slate-400">
+                    {filterActive
+                      ? `${visibleVaults.length} matching vault table${visibleVaults.length === 1 ? "" : "s"}`
+                      : `${selectedSilo.vaults.length - vaultWarnings} indexed, ${vaultWarnings} warning${
+                          vaultWarnings === 1 ? "" : "s"
+                        }`}
+                  </span>
+                </div>
+                {visibleVaults.length === 0 ? (
+                  <EmptyState message="No vault lender contracts are present in this snapshot." />
+                ) : (
+                  visibleVaults.map((vault, index) => (
+                    <VaultCard
+                      key={vault.address}
+                      addressFilter={addressFilter}
+                      chain={selectedChain.chain}
+                      expanded={expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT}
+                      silo={selectedSilo}
+                      rewardPlan={rewardPlan}
+                      vault={vault}
+                      onToggle={() =>
+                        setExpandedVaults((current) => ({
+                          ...current,
+                          [vault.address]: !(current[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT),
+                        }))
+                      }
+                    />
+                  ))
+                )}
               </div>
-              {selectedSilo.vaults.length === 0 ? (
-                <EmptyState message="No vault lender contracts are present in this snapshot." />
-              ) : (
-                selectedSilo.vaults.map((vault, index) => (
-                  <VaultCard
-                    key={vault.address}
-                    addressFilter={addressFilter}
-                    chain={selectedChain.chain}
-                    expanded={expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT}
-                    silo={selectedSilo}
-                    rewardPlan={rewardPlan}
-                    vault={vault}
-                    onToggle={() =>
-                      setExpandedVaults((current) => ({
-                        ...current,
-                        [vault.address]: !(current[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT),
-                      }))
-                    }
-                  />
-                ))
-              )}
-            </div>
+            ) : null}
+            {!hasVisibleFilterResults ? (
+              <EmptyState message="No tables contain addresses matching the current filter." />
+            ) : null}
           </section>
           ) : (
             <section className="min-w-0">
