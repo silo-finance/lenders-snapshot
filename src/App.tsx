@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import packageJson from "../package.json";
-import { explorerHomePath, parseSiloPathFromUrl } from "./routing";
+import { buildSiloPath, explorerHomePath, parseSiloPathFromUrl } from "./routing";
 import {
   type ChainSnapshot,
   type DirectLender,
@@ -272,7 +272,29 @@ function CopyAddressButton({ address }: { address: string }) {
   );
 }
 
-function AddressLink({ chain, address }: { chain: string; address: string }) {
+function SiloPageLinkButton({ chain, address }: { chain: string; address: string }) {
+  return (
+    <a
+      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-xs text-slate-400 transition hover:border-emerald-300/40 hover:text-emerald-200"
+      href={buildSiloPath(chain, address)}
+      title="Open silo-only page"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <span aria-hidden="true">↗</span>
+      <span className="sr-only">Open silo-only page</span>
+    </a>
+  );
+}
+
+function AddressLink({
+  chain,
+  address,
+  showSiloPageLink = false,
+}: {
+  chain: string;
+  address: string;
+  showSiloPageLink?: boolean;
+}) {
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
       <a
@@ -286,6 +308,7 @@ function AddressLink({ chain, address }: { chain: string; address: string }) {
         {shortAddress(address)}
       </a>
       <CopyAddressButton address={address} />
+      {showSiloPageLink ? <SiloPageLinkButton address={address} chain={chain} /> : null}
     </span>
   );
 }
@@ -1437,7 +1460,7 @@ function ExplorerView() {
                           ) : null}
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
-                          <AddressLink address={silo.address} chain={selectedChain.chain} />
+                          <AddressLink address={silo.address} chain={selectedChain.chain} showSiloPageLink />
                         </div>
                       </div>
                     ))
