@@ -229,9 +229,16 @@ function parseSnapshot(root: RawRoot): ChainSnapshot[] {
 
 export const chains = parseSnapshot(snapshotJson as RawRoot);
 
-export function findSiloByAddress(address: string): { chain: ChainSnapshot; silo: SiloSnapshot } | null {
+export function findSiloByAddress(
+  address: string,
+  chainName?: string,
+): { chain: ChainSnapshot; silo: SiloSnapshot } | null {
   const normalized = address.toLowerCase();
-  for (const chain of chains) {
+  const chainsToSearch = chainName
+    ? chains.filter((chain) => chain.chain.toLowerCase() === chainName.toLowerCase())
+    : chains;
+
+  for (const chain of chainsToSearch) {
     const silo = chain.silos.find((entry) => entry.address.toLowerCase() === normalized);
     if (silo) {
       return { chain, silo };

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import packageJson from "../package.json";
-import { explorerHomePath, parseSiloAddressFromPath } from "./routing";
+import { explorerHomePath, parseSiloPathFromUrl } from "./routing";
 import {
   type ChainSnapshot,
   type DirectLender,
@@ -1577,13 +1577,15 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
   );
 }
 
-function SiloNotFoundView({ address }: { address: string }) {
+function SiloNotFoundView({ address, chain }: { address: string; chain?: string }) {
+  const label = chain ? `${chain} / ${address}` : address;
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
       <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
         <AppHeader />
         <div className="py-8">
-          <EmptyState message={`No snapshot data found for silo address ${address}.`} />
+          <EmptyState message={`No snapshot data found for silo ${label}.`} />
           <div className="mt-4">
             <a
               className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
@@ -1599,11 +1601,11 @@ function SiloNotFoundView({ address }: { address: string }) {
 }
 
 export default function App() {
-  const pathSiloAddress = parseSiloAddressFromPath();
-  const siloMatch = pathSiloAddress ? findSiloByAddress(pathSiloAddress) : null;
+  const pathMatch = parseSiloPathFromUrl();
+  const siloMatch = pathMatch ? findSiloByAddress(pathMatch.address, pathMatch.chain) : null;
 
-  if (pathSiloAddress && !siloMatch) {
-    return <SiloNotFoundView address={pathSiloAddress} />;
+  if (pathMatch && !siloMatch) {
+    return <SiloNotFoundView address={pathMatch.address} chain={pathMatch.chain} />;
   }
 
   if (siloMatch) {
