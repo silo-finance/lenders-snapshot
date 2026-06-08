@@ -7,7 +7,6 @@ share-sum invariants against the stored total supplies, with ZERO tolerance
 (exact equality to 1 wei):
 
   - sum(direct_lenders[].collateral_shares) == collateral_total_supply
-  - sum(direct_lenders[].protected_shares) == protected_total_supply
   - for each indexed vault with in_withdraw_queue == true:
         sum(depositors[].vault_shares) == vault_total_supply
 
@@ -86,20 +85,13 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
         direct = {}
 
     collateral_sum = 0
-    protected_sum = 0
     for entry in direct.values():
         collateral_sum += to_int(entry.get("collateral_shares", 0))
-        protected_sum += to_int(entry.get("protected_shares", 0))
 
     report.check_equal(
         f"{prefix} collateral_shares_sum vs collateral_total_supply",
         to_int(silo.get("collateral_total_supply", 0)),
         collateral_sum,
-    )
-    report.check_equal(
-        f"{prefix} protected_shares_sum vs protected_total_supply",
-        to_int(silo.get("protected_total_supply", 0)),
-        protected_sum,
     )
 
     vaults = silo.get("vaults", {})
@@ -152,25 +144,13 @@ def verify_onchain(root: dict[str, Any], chain_filter: set[str], report: Report)
             block = int(silo.get("snapshot_block"))
             rpc = mod.RpcClient(rpc_url, block)
             mc = mod.Multicall(rpc, mod.MULTICALL3, mod.MULTICALL_BATCH)
-            sp_token = silo.get("protected_share_token")
-
-            calls = [
-                (mod.cs(silo_addr), mod.call_total_supply()),
-                (mod.cs(sp_token), mod.call_total_supply()),
-            ]
-            res = mc.aggregate(calls)
+            res = mc.aggregate([(mod.cs(silo_addr), mod.call_total_supply())])
             chain_collateral = mod.dec_uint(res[0][1]) if res[0][0] else None
-            chain_protected = mod.dec_uint(res[1][1]) if res[1][0] else None
 
             report.check_equal(
                 f"[onchain] {chain}/{silo_addr} collateral_total_supply",
                 chain_collateral if chain_collateral is not None else -1,
                 to_int(silo.get("collateral_total_supply", 0)),
-            )
-            report.check_equal(
-                f"[onchain] {chain}/{silo_addr} protected_total_supply",
-                chain_protected if chain_protected is not None else -1,
-                to_int(silo.get("protected_total_supply", 0)),
             )
 
             vaults = silo.get("vaults", {})

@@ -2,7 +2,7 @@
 
 Builds block-pinned snapshots of all lenders for configured Silos, splitting them into:
 
-- **direct lenders** – every account holding collateral and/or protected shares of the Silo, and
+- **direct lenders** – every account holding collateral shares of the Silo, and
 - **SiloVault depositors** – holders of any SiloVault that itself lends into the Silo, attributed by their share of the vault.
 
 Redeemable `assets` per address are computed purely via on-chain `previewRedeem` at the snapshot block. The subgraph is only used to enumerate addresses (lenders of the Silo and depositors of each vault). The result is a single, incrementally-updated, per-chain JSON file.
@@ -72,17 +72,13 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
         "snapshot_block": 54144258,
         "silo_id": "12",
         "input_token": { "address": "0x..", "decimals": 6, "symbol": "USDC" },
-        "protected_share_token": "0x..",
         "total_assets": "…",              // raw integer string from silo.totalAssets()
         "collateral_total_supply": "…",   // raw integer string
-        "protected_total_supply": "…",
         "direct_lenders": {
           "<addr>": {
             "address_type": "eoa|silo_vault|erc4626_unresolved|contract_other",
             "collateral_shares": "…",
-            "protected_shares": "…",
             "assets_collateral": "…",
-            "assets_protected": "…",
             "total_assets": "…"
           }
         },
@@ -117,7 +113,6 @@ All share/supply amounts are raw integers (as strings, to preserve precision), e
 `qa_check.py` enforces, with **zero tolerance** (exact equality to 1 wei):
 
 - `sum(direct_lenders[].collateral_shares) == collateral_total_supply`
-- `sum(direct_lenders[].protected_shares) == protected_total_supply`
 - for each indexed vault with `in_withdraw_queue == true`: `sum(depositors[].vault_shares) == vault_total_supply`
 
 Vaults with `status == vault_not_indexed` or `in_withdraw_queue == false` are reported as warnings (their depositors are intentionally not enumerated), not errors.

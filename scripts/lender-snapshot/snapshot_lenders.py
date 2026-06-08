@@ -3,7 +3,7 @@
 Trevee lender snapshot.
 
 Builds block-pinned snapshots of all lenders for configured Silos:
-  - direct lenders (every account holding collateral and/or protected shares), and
+  - direct lenders (every account holding collateral shares), and
   - SiloVault depositors (holders of any SiloVault that itself lends into the Silo),
     attributed by their fraction of the vault.
 
@@ -75,8 +75,7 @@ MULTICALL_BATCH = 300
 GETCODE_BATCH = 200
 SUBGRAPH_PAGE = 1000
 
-# CollateralType enum (ISilo.sol): Protected = 0, Collateral = 1
-COLLATERAL_TYPE_PROTECTED = 0
+# CollateralType enum (ISilo.sol): Collateral = 1
 COLLATERAL_TYPE_COLLATERAL = 1
 
 # Secrets (env-only).
@@ -383,13 +382,11 @@ query Lenders($m:String!,$first:Int!,$skip:Int!){
     block:{number:%d}
     first:$first
     skip:$skip
-    where:{ or:[ {market:$m, sTokenBalance_gt:0}, {market:$m, spTokenBalance_gt:0} ] }
+    where:{ market:$m, sTokenBalance_gt:0 }
   ){
     account{ id }
     sToken{ id }
-    spToken{ id }
     sTokenBalance
-    spTokenBalance
   }
 }
 """
@@ -415,11 +412,10 @@ query VaultDepositors($v:String!,$first:Int!,$skip:Int!){
 """
 
 
-def fetch_lenders(market: str) -> tuple[list[str], str | None]:
-    """Return (unique lender addresses, protected share token address or None)."""
+def fetch_lenders(market: str) -> list[str]:
+    """Return unique collateral lender addresses."""
     accounts: list[str] = []
     seen: set[str] = set()
-    sp_token: str | None = None
     skip = 0
     while True:
         data = graph_query(Q_LENDERS_TEMPLATE % BLOCK, {"m": market, "first": SUBGRAPH_PAGE, "skip": skip})
@@ -431,12 +427,10 @@ def fetch_lenders(market: str) -> tuple[list[str], str | None]:
             if acc not in seen:
                 seen.add(acc)
                 accounts.append(acc)
-            if sp_token is None and row.get("spToken") and row["spToken"].get("id"):
-                sp_token = norm(row["spToken"]["id"])
         if len(rows) < SUBGRAPH_PAGE:
             break
         skip += SUBGRAPH_PAGE
-    return accounts, sp_token
+    return accounts
 
 
 def fetch_vault_indexed(vault: str) -> dict[str, Any] | None:
@@ -521,21 +515,19 @@ def classify_addresses(
 # --------------------------------------------------------------------------------------
 # Snapshot building
 # --------------------------------------------------------------------------------------
-def fetch_silo_metadata(rpc: RpcClient, mc: Multicall, protected_token: str) -> dict[str, Any]:
+def fetch_silo_metadata(rpc: RpcClient, mc: Multicall) -> dict[str, Any]:
     res = mc.aggregate(
         [
             (SILO_ADDRESS, call_asset()),
             (SILO_ADDRESS, call_total_supply()),
-            (protected_token, call_total_supply()),
             (SILO_ADDRESS, call_total_assets()),
             (SILO_ADDRESS, call_silo_config()),
         ]
     )
     asset_addr = dec_address(res[0][1]) if res[0][0] else None
     collateral_total_supply = dec_uint(res[1][1]) if res[1][0] else 0
-    protected_total_supply = dec_uint(res[2][1]) if res[2][0] else 0
-    total_assets = dec_uint(res[3][1]) if res[3][0] else None
-    config_addr = dec_address(res[4][1]) if res[4][0] else None
+    total_assets = dec_uint(res[2][1]) if res[2][0] else None
+    config_addr = dec_address(res[3][1]) if res[3][0] else None
 
     decimals = None
     symbol = None
@@ -563,63 +555,38 @@ def fetch_silo_metadata(rpc: RpcClient, mc: Multicall, protected_token: str) -> 
         "input_token": {"address": asset_addr, "decimals": decimals, "symbol": symbol},
         "total_assets": total_assets,
         "collateral_total_supply": collateral_total_supply,
-        "protected_total_supply": protected_total_supply,
     }
 
 
-def fetch_direct_lender_shares(
-    addresses: list[str], mc: Multicall, protected_token: str
-) -> dict[str, tuple[int, int]]:
-    """Return {addr: (collateral_shares, protected_shares)} via multicall balanceOf."""
-    calls: list[tuple[str, bytes]] = []
-    for addr in addresses:
-        calls.append((SILO_ADDRESS, call_balance_of(addr)))
-        calls.append((protected_token, call_balance_of(addr)))
+def fetch_direct_lender_shares(addresses: list[str], mc: Multicall) -> dict[str, int]:
+    """Return {addr: collateral_shares} via multicall balanceOf."""
+    calls = [(SILO_ADDRESS, call_balance_of(addr)) for addr in addresses]
     res = mc.aggregate(calls)
-    out: dict[str, tuple[int, int]] = {}
+    out: dict[str, int] = {}
     for idx, addr in enumerate(addresses):
-        c_ok, c_data = res[2 * idx]
-        p_ok, p_data = res[2 * idx + 1]
-        collateral = dec_uint(c_data) if c_ok else 0
-        protected = dec_uint(p_data) if p_ok else 0
-        out[addr] = (collateral, protected)
+        ok, data = res[idx]
+        out[addr] = dec_uint(data) if ok else 0
     return out
 
 
-def preview_redeem_pairs(
-    shares_pairs: list[tuple[int, int]], mc: Multicall
-) -> list[tuple[int, int]]:
-    """
-    For each (collateral_shares, protected_shares) compute
-    (assets_collateral, assets_protected) via Silo.previewRedeem at BLOCK.
-    """
-    calls: list[tuple[str, bytes]] = []
-    for collateral_shares, protected_shares in shares_pairs:
-        calls.append((SILO_ADDRESS, call_preview_redeem_silo(collateral_shares, COLLATERAL_TYPE_COLLATERAL)))
-        calls.append((SILO_ADDRESS, call_preview_redeem_silo(protected_shares, COLLATERAL_TYPE_PROTECTED)))
+def preview_redeem_collateral(shares: list[int], mc: Multicall) -> list[int]:
+    """Compute collateral assets via Silo.previewRedeem at BLOCK."""
+    calls = [(SILO_ADDRESS, call_preview_redeem_silo(amount, COLLATERAL_TYPE_COLLATERAL)) for amount in shares]
     res = mc.aggregate(calls)
-    out: list[tuple[int, int]] = []
-    for idx in range(len(shares_pairs)):
-        c_ok, c_data = res[2 * idx]
-        p_ok, p_data = res[2 * idx + 1]
-        assets_collateral = dec_uint(c_data) if c_ok else 0
-        assets_protected = dec_uint(p_data) if p_ok else 0
-        out.append((assets_collateral, assets_protected))
+    out: list[int] = []
+    for ok, data in res:
+        out.append(dec_uint(data) if ok else 0)
     return out
 
 
 def expand_vault(
     vault: str,
-    vault_shares: tuple[int, int],
-    vault_assets: tuple[int, int],
+    vault_shares: int,
+    vault_silo_assets: int,
     rpc: RpcClient,
     mc: Multicall,
 ) -> dict[str, Any]:
     """Build the vaults[vault] entry, including depositor attribution."""
-    collateral_shares, protected_shares = vault_shares
-    assets_collateral, assets_protected = vault_assets
-    vault_silo_assets = assets_collateral + assets_protected
-
     # config(SILO).enabled -> in withdraw queue?
     cfg = mc.aggregate([(vault, call_config(SILO_ADDRESS))])
     in_withdraw_queue = False
@@ -686,37 +653,30 @@ def build_snapshot(rpc_url: str) -> dict[str, Any]:
     mc = Multicall(rpc, MULTICALL3, MULTICALL_BATCH)
 
     print(f"[info] fetching lenders for silo {SILO_ADDRESS} at block {BLOCK} ...")
-    accounts, sp_token = fetch_lenders(SILO_ADDRESS)
-    print(f"[info] {len(accounts)} unique lender accounts; protected share token = {sp_token}")
-    if sp_token is None:
-        raise SystemExit("Could not determine protected share token from subgraph (no positions?).")
+    accounts = fetch_lenders(SILO_ADDRESS)
+    print(f"[info] {len(accounts)} unique collateral lender accounts")
 
     print("[info] fetching silo metadata + total supplies ...")
-    meta = fetch_silo_metadata(rpc, mc, sp_token)
+    meta = fetch_silo_metadata(rpc, mc)
 
     print("[info] classifying lender addresses ...")
     types, _incentives = classify_addresses(accounts, rpc, mc)
 
     print("[info] reading direct lender share balances ...")
-    shares_by_addr = fetch_direct_lender_shares(accounts, mc, sp_token)
+    shares_by_addr = fetch_direct_lender_shares(accounts, mc)
 
     print("[info] computing previewRedeem assets for direct lenders ...")
     ordered = accounts
-    pairs = [shares_by_addr[a] for a in ordered]
-    assets = preview_redeem_pairs(pairs, mc)
+    shares = [shares_by_addr[a] for a in ordered]
+    assets = preview_redeem_collateral(shares, mc)
 
     direct_lenders: dict[str, Any] = {}
-    for addr, (collateral_shares, protected_shares), (assets_collateral, assets_protected) in zip(
-        ordered, pairs, assets
-    ):
-        total_assets = assets_collateral + assets_protected
+    for addr, collateral_shares, assets_collateral in zip(ordered, shares, assets):
         direct_lenders[addr] = {
             "address_type": types.get(addr, "unknown"),
             "collateral_shares": str(collateral_shares),
-            "protected_shares": str(protected_shares),
             "assets_collateral": str(assets_collateral),
-            "assets_protected": str(assets_protected),
-            "total_assets": str(total_assets),
+            "total_assets": str(assets_collateral),
         }
 
     vault_addrs = [a for a in accounts if types.get(a) == "silo_vault"]
@@ -732,10 +692,8 @@ def build_snapshot(rpc_url: str) -> dict[str, Any]:
         "snapshot_block": BLOCK,
         "silo_id": meta["silo_id"],
         "input_token": meta["input_token"],
-        "protected_share_token": sp_token,
         "total_assets": str(meta["total_assets"]) if meta["total_assets"] is not None else None,
         "collateral_total_supply": str(meta["collateral_total_supply"]),
-        "protected_total_supply": str(meta["protected_total_supply"]),
         "direct_lenders": direct_lenders,
         "vaults": vaults,
     }
