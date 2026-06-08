@@ -1,0 +1,361 @@
+import snapshotJson from "../scripts/lender-snapshot/distribution_snapshot.json";
+
+type RawAmount = string | number | null | undefined;
+
+type RawInputToken = {
+  address?: string | null;
+  decimals?: number | string | null;
+  symbol?: string | null;
+};
+
+type RawDirectLender = {
+  address_type?: string;
+  collateral_shares?: RawAmount;
+  assets_collateral?: RawAmount;
+  total_assets?: RawAmount;
+};
+
+type RawDepositor = {
+  address_type?: string;
+  vault_shares?: RawAmount;
+  fraction?: string;
+  attributed_silo_assets?: RawAmount;
+};
+
+type RawVault = {
+  name?: string | null;
+  indexed_in_subgraph?: boolean;
+  in_withdraw_queue?: boolean;
+  status?: string;
+  vault_silo_assets?: RawAmount;
+  vault_total_supply?: RawAmount;
+  depositors?: Record<string, RawDepositor>;
+};
+
+type RawSilo = {
+  snapshot_block?: number | string;
+  silo_id?: string | number | null;
+  input_token?: RawInputToken;
+  total_assets?: RawAmount;
+  collateral_total_supply?: RawAmount;
+  direct_lenders?: Record<string, RawDirectLender>;
+  vaults?: Record<string, RawVault>;
+};
+
+type RawChain = {
+  chain_id?: number;
+  silos?: Record<string, RawSilo>;
+};
+
+type RawRoot = Record<string, RawChain>;
+
+export type InputToken = {
+  address: string | null;
+  decimals: number;
+  symbol: string;
+};
+
+export type DirectLender = {
+  address: string;
+  addressType: string;
+  collateralShares: bigint;
+  totalShares: bigint;
+  assetsCollateral: bigint;
+  totalAssets: bigint;
+  isVault: boolean;
+};
+
+export type VaultDepositor = {
+  address: string;
+  addressType: string;
+  vaultShares: bigint;
+  fraction: string;
+  attributedSiloAssets: bigint;
+};
+
+export type VaultSnapshot = {
+  address: string;
+  name: string | null;
+  indexedInSubgraph: boolean;
+  inWithdrawQueue: boolean;
+  status: string;
+  vaultSiloAssets: bigint;
+  vaultTotalSupply: bigint | null;
+  depositors: VaultDepositor[];
+};
+
+export type SiloSnapshot = {
+  address: string;
+  snapshotBlock: number;
+  siloId: string | null;
+  inputToken: InputToken;
+  collateralTotalSupply: bigint;
+  totalShares: bigint;
+  totalAssets: bigint;
+  directLenders: DirectLender[];
+  vaults: VaultSnapshot[];
+};
+
+export type ChainSnapshot = {
+  chain: string;
+  label: string;
+  chainId: number;
+  silos: SiloSnapshot[];
+};
+
+const KNOWN_CHAINS: Record<string, { label: string; chainId: number; explorer: string }> = {
+  sonic: { label: "Sonic", chainId: 146, explorer: "https://sonicscan.org/address/" },
+  ethereum: { label: "Ethereum", chainId: 1, explorer: "https://etherscan.io/address/" },
+};
+
+const KNOWN_TOKEN_SYMBOLS: Record<string, string> = {
+  "0x29219dd400f2bf60e5a23d13be72b486d4038894": "USDC",
+};
+
+const ZERO = 0n;
+
+function displayAddressType(addressType: string | undefined): string {
+  if (addressType === "gnosis_safe") {
+    return "Gnosis Safe";
+  }
+  return addressType ?? "unknown";
+}
+
+function toBigInt(value: RawAmount): bigint {
+  if (value === null || value === undefined || value === "") {
+    return ZERO;
+  }
+  return BigInt(value);
+}
+
+function toNumber(value: number | string | null | undefined, fallback: number): number {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function prettifyChain(chain: string): string {
+  return KNOWN_CHAINS[chain]?.label ?? chain.replace(/(^|[-_])(\w)/g, (_, prefix: string, letter: string) => {
+    return `${prefix ? " " : ""}${letter.toUpperCase()}`;
+  });
+}
+
+function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
+  const inputToken: InputToken = {
+    address: raw.input_token?.address ?? null,
+    decimals: toNumber(raw.input_token?.decimals, 18),
+    symbol:
+      raw.input_token?.symbol ||
+      (raw.input_token?.address ? KNOWN_TOKEN_SYMBOLS[raw.input_token.address.toLowerCase()] : undefined) ||
+      "Asset",
+  };
+
+  const directLenders = Object.entries(raw.direct_lenders ?? {}).map(([lenderAddress, entry]) => {
+    const collateralShares = toBigInt(entry.collateral_shares);
+    const assetsCollateral = toBigInt(entry.assets_collateral);
+    const totalAssets = toBigInt(entry.total_assets) || assetsCollateral;
+    return {
+      address: lenderAddress,
+      addressType: displayAddressType(entry.address_type),
+      collateralShares,
+      totalShares: collateralShares,
+      assetsCollateral,
+      totalAssets,
+      isVault: entry.address_type === "silo_vault",
+    };
+  });
+
+  const vaults = Object.entries(raw.vaults ?? {}).map(([vaultAddress, entry]) => ({
+    address: vaultAddress,
+    name: entry.name ?? null,
+    indexedInSubgraph: Boolean(entry.indexed_in_subgraph),
+    inWithdrawQueue: Boolean(entry.in_withdraw_queue),
+    status: entry.status ?? "unknown",
+    vaultSiloAssets: toBigInt(entry.vault_silo_assets),
+    vaultTotalSupply:
+      entry.vault_total_supply === null || entry.vault_total_supply === undefined
+        ? null
+        : toBigInt(entry.vault_total_supply),
+    depositors: Object.entries(entry.depositors ?? {}).map(([depositorAddress, depositor]) => ({
+      address: depositorAddress,
+      addressType: displayAddressType(depositor.address_type),
+      vaultShares: toBigInt(depositor.vault_shares),
+      fraction: depositor.fraction ?? "0",
+      attributedSiloAssets: toBigInt(depositor.attributed_silo_assets),
+    })),
+  }));
+
+  const totalAssets = toBigInt(raw.total_assets) || directLenders.reduce((sum, lender) => sum + lender.totalAssets, ZERO);
+  const collateralTotalSupply = toBigInt(raw.collateral_total_supply);
+
+  return {
+    address,
+    snapshotBlock: toNumber(raw.snapshot_block, 0),
+    siloId: raw.silo_id === null || raw.silo_id === undefined ? null : String(raw.silo_id),
+    inputToken,
+    collateralTotalSupply,
+    totalShares: collateralTotalSupply,
+    totalAssets,
+    directLenders: directLenders.sort((a, b) => compareBigIntDesc(a.totalAssets, b.totalAssets)),
+    vaults: vaults.sort((a, b) => compareBigIntDesc(a.vaultSiloAssets, b.vaultSiloAssets)),
+  };
+}
+
+function parseSnapshot(root: RawRoot): ChainSnapshot[] {
+  const chainNames = Array.from(new Set([...Object.keys(KNOWN_CHAINS), ...Object.keys(root)])).sort((a, b) => {
+    const knownOrder = Object.keys(KNOWN_CHAINS);
+    const aIndex = knownOrder.indexOf(a);
+    const bIndex = knownOrder.indexOf(b);
+    if (aIndex !== -1 || bIndex !== -1) {
+      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+    }
+    return a.localeCompare(b);
+  });
+
+  return chainNames.map((chain) => {
+    const rawChain = root[chain];
+    const chainId = rawChain?.chain_id ?? KNOWN_CHAINS[chain]?.chainId ?? 0;
+    const silos = Object.entries(rawChain?.silos ?? {}).map(([address, rawSilo]) => parseSilo(address, rawSilo));
+    return {
+      chain,
+      label: prettifyChain(chain),
+      chainId,
+      silos,
+    };
+  });
+}
+
+export const chains = parseSnapshot(snapshotJson as RawRoot);
+
+export function compareBigIntDesc(a: bigint, b: bigint): number {
+  if (a === b) {
+    return 0;
+  }
+  return a > b ? -1 : 1;
+}
+
+export function compareBigIntAsc(a: bigint, b: bigint): number {
+  if (a === b) {
+    return 0;
+  }
+  return a < b ? -1 : 1;
+}
+
+export function explorerAddressUrl(chain: string, address: string): string {
+  const explorer = KNOWN_CHAINS[chain]?.explorer;
+  return explorer ? `${explorer}${address}` : "#";
+}
+
+export function shortAddress(address: string): string {
+  if (address.length <= 12) {
+    return address;
+  }
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+export function formatUnits(value: bigint, decimals: number, maxFractionDigits = 6): string {
+  const negative = value < ZERO;
+  const absolute = negative ? -value : value;
+  const scale = 10n ** BigInt(decimals);
+  const whole = absolute / scale;
+  const fraction = absolute % scale;
+  const wholeFormatted = new Intl.NumberFormat("en-US").format(Number(whole));
+
+  if (fraction === ZERO || maxFractionDigits === 0) {
+    return `${negative ? "-" : ""}${wholeFormatted}`;
+  }
+
+  const fractionPadded = fraction.toString().padStart(decimals, "0").slice(0, maxFractionDigits);
+  const fractionTrimmed = fractionPadded.replace(/0+$/, "");
+  return `${negative ? "-" : ""}${wholeFormatted}${fractionTrimmed ? `.${fractionTrimmed}` : ""}`;
+}
+
+export function formatUnitsRounded(value: bigint, decimals: number, fractionDigits: number): string {
+  const negative = value < ZERO;
+  const absolute = negative ? -value : value;
+  const scale = 10n ** BigInt(decimals);
+  const displayScale = 10n ** BigInt(fractionDigits);
+  let rounded = (absolute * displayScale) / scale;
+  const remainder = (absolute * displayScale) % scale;
+
+  if (remainder * 2n >= scale) {
+    rounded += 1n;
+  }
+
+  const whole = rounded / displayScale;
+  const fraction = rounded % displayScale;
+  const wholeFormatted = new Intl.NumberFormat("en-US").format(Number(whole));
+
+  if (fractionDigits === 0) {
+    return `${negative ? "-" : ""}${wholeFormatted}`;
+  }
+
+  return `${negative ? "-" : ""}${wholeFormatted}.${fraction.toString().padStart(fractionDigits, "0")}`;
+}
+
+export function formatUnitsPlain(value: bigint, decimals: number): string {
+  const negative = value < ZERO;
+  const absolute = negative ? -value : value;
+  const scale = 10n ** BigInt(decimals);
+  const whole = absolute / scale;
+  const fraction = absolute % scale;
+
+  if (fraction === ZERO) {
+    return `${negative ? "-" : ""}${whole.toString()}`;
+  }
+
+  const fractionPadded = fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
+  return `${negative ? "-" : ""}${whole.toString()}.${fractionPadded}`;
+}
+
+export function formatUnitsFixed(value: bigint, decimals: number): string {
+  const negative = value < ZERO;
+  const absolute = negative ? -value : value;
+  const scale = 10n ** BigInt(decimals);
+  const whole = absolute / scale;
+  const fraction = absolute % scale;
+
+  if (decimals === 0) {
+    return `${negative ? "-" : ""}${whole.toString()}`;
+  }
+
+  return `${negative ? "-" : ""}${whole.toString()}.${fraction.toString().padStart(decimals, "0")}`;
+}
+
+export function parseUnits(value: string, decimals: number): bigint | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (!/^\d+(\.\d*)?$/.test(trimmed)) {
+    return null;
+  }
+
+  const [whole, fraction = ""] = trimmed.split(".");
+  if (fraction.length > decimals) {
+    return null;
+  }
+
+  const wholeRaw = BigInt(whole) * 10n ** BigInt(decimals);
+  const fractionRaw = fraction ? BigInt(fraction.padEnd(decimals, "0")) : ZERO;
+  return wholeRaw + fractionRaw;
+}
+
+export function formatCompactUnits(value: bigint, decimals: number): string {
+  const asNumber = Number(value) / 10 ** decimals;
+  if (!Number.isFinite(asNumber)) {
+    return formatUnits(value, decimals, 2);
+  }
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(asNumber);
+}
+
+export function formatRawInteger(value: bigint): string {
+  const raw = value.toString();
+  return raw.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+

@@ -1,0 +1,82 @@
+name: Version bump
+
+on:
+  pull_request:
+    branches:
+      - master
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Ensure package patch version changed
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Fetch base branch
+        run: git fetch origin ${{ github.base_ref }} --depth=1
+
+      - name: Bump patch version if needed
+        run: |
+          node <<'NODE'
+          const { execFileSync } = require("node:child_process");
+          const fs = require("node:fs");
+
+          const baseRef = "origin/${{ github.base_ref }}";
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          let basePkg;
+          try {
+            basePkg = JSON.parse(execFileSync("git", ["show", `${baseRef}:package.json`], { encoding: "utf8" }));
+          } catch {
+            console.log("package.json does not exist on the base branch yet; skipping version bump.");
+            process.exit(0);
+          }
+
+          if (pkg.version !== basePkg.version) {
+            console.log(`package.json version already changed: ${basePkg.version} -> ${pkg.version}`);
+            process.exit(0);
+          }
+
+          const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(pkg.version);
+          if (!match) {
+            throw new Error(`Unsupported package version: ${pkg.version}`);
+          }
+
+          const [, major, minor, patch] = match;
+          pkg.version = `${major}.${minor}.${Number(patch) + 1}`;
+          fs.writeFileSync("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+          console.log(`Bumped package.json to ${pkg.version}`);
+          NODE
+
+      - name: Sync package-lock
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Commit version bump
+        run: |
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "No version changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "Bump package patch version"
+          git push

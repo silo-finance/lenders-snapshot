@@ -1,0 +1,4 @@
+# Build context only needs requirements.txt; exclude everything else so the
+# image build stays tiny and never accidentally bakes in secrets or outputs.
+*
+!requirements.txt
