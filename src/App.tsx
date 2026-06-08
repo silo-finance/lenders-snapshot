@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import packageJson from "../package.json";
+import { explorerHomePath, parseSiloAddressFromPath } from "./routing";
 import {
   type ChainSnapshot,
   type DirectLender,
@@ -10,6 +11,7 @@ import {
   compareBigIntAsc,
   compareBigIntDesc,
   explorerAddressUrl,
+  findSiloByAddress,
   formatUnits,
   formatUnitsFixed,
   formatUnitsPlain,
@@ -17,12 +19,18 @@ import {
   parseUnits,
   shortAddress,
 } from "./snapshot";
+import { useWallet } from "./useWallet";
 
 type SortDirection = "asc" | "desc";
 type TableSortKey = "address" | "type" | "shares" | "assets";
 type TableSortState = {
   key: TableSortKey;
   direction: SortDirection;
+};
+
+type ShareAssetTotals = {
+  shares: bigint;
+  assets: bigint;
 };
 
 const DEFAULT_EXPANDED_LIMIT = 2;
@@ -73,12 +81,85 @@ function downloadCsv(filename: string, rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
-function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
+function sumDirectLenderTotals(lenders: DirectLender[]): ShareAssetTotals {
+  return lenders.reduce(
+    (acc, lender) => ({
+      shares: acc.shares + lender.totalShares,
+      assets: acc.assets + lender.totalAssets,
+    }),
+    { shares: ZERO, assets: ZERO },
+  );
+}
+
+function sumDepositorTotals(depositors: VaultDepositor[]): ShareAssetTotals {
+  return depositors.reduce(
+    (acc, depositor) => ({
+      shares: acc.shares + depositor.vaultShares,
+      assets: acc.assets + depositor.attributedSiloAssets,
+    }),
+    { shares: ZERO, assets: ZERO },
+  );
+}
+
+function sumDirectShares(silo: SiloSnapshot): bigint {
+  return silo.directLenders.reduce((sum, lender) => sum + lender.collateralShares, ZERO);
+}
+
+function ValidationBadge({ message, valid }: { message: string; valid: boolean }) {
+  if (!valid) {
+    return null;
+  }
+
+  return (
+    <span className="mt-2 inline-flex items-center gap-1.5 text-sm text-emerald-300">
+      <span aria-hidden="true">✓</span>
+      <span>{message}</span>
+    </span>
+  );
+}
+
+function MetricCard({ label, value, hint, footer }: { label: string; value: string; hint?: string; footer?: ReactNode }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-emerald-950/20">
       <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{label}</p>
-      <p className="mt-3 text-2xl font-semibold text-white">{value}</p>
-      <p className="mt-2 text-sm text-slate-400">{hint}</p>
+      <p className="mt-3 font-mono text-2xl font-semibold text-white">{value}</p>
+      {footer}
+      {hint ? <p className="mt-2 text-sm text-slate-400">{hint}</p> : null}
+    </div>
+  );
+}
+
+function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
+  const directSharesSum = sumDirectShares(silo);
+  const sharesValid = directSharesSum === silo.collateralTotalSupply;
+
+  return (
+    <div className="mt-6 grid gap-4 md:grid-cols-3">
+      <MetricCard label="Snapshot block" value={silo.snapshotBlock.toString()} />
+      <MetricCard
+        label="Total assets"
+        value={`${formatUnitsRounded(silo.totalAssets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
+        footer={
+          <>
+            <p className="mt-3 font-mono text-lg text-slate-200">
+              {silo.totalShares.toString()} <span className="text-sm text-slate-400">shares</span>
+            </p>
+            <ValidationBadge
+              message="Total shares equals sum of direct lender shares"
+              valid={sharesValid}
+            />
+          </>
+        }
+      />
+      <MetricCard
+        label="Vault assets"
+        value={`${formatUnitsRounded(
+          silo.vaults.reduce((sum, vault) => sum + vault.vaultSiloAssets, 0n),
+          silo.inputToken.decimals,
+          2,
+        )} ${silo.inputToken.symbol}`}
+        hint="Attributable through vault depositors"
+      />
     </div>
   );
 }
@@ -153,6 +234,63 @@ function AddressLink({ chain, address }: { chain: string; address: string }) {
   );
 }
 
+function AddressFilterInput({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="relative mt-3">
+      <input
+        id={id}
+        className="w-full rounded-2xl border border-white/10 bg-slate-950/80 py-3 pl-4 pr-11 font-mono text-sm text-slate-300 outline-none placeholder:text-slate-600"
+        placeholder="Search by address substring"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {value ? (
+        <button
+          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full px-2 py-1 text-sm text-slate-400 transition hover:bg-white/10 hover:text-slate-200"
+          title="Clear address filter"
+          type="button"
+          onClick={() => onChange("")}
+        >
+          ×
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function TableTotalsHeader({
+  symbol,
+  totals,
+  decimals,
+  showRewardColumn = false,
+}: {
+  symbol: string;
+  totals: ShareAssetTotals;
+  decimals: number;
+  showRewardColumn?: boolean;
+}) {
+  return (
+    <tr className="border-b border-white/10 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+      <th className="px-5 py-2" colSpan={2} />
+      <th className="px-5 py-2 text-right normal-case tracking-normal" colSpan={2}>
+        <div>Total sum:</div>
+        <div className="mt-1 font-mono text-xs normal-case tracking-normal text-slate-300">
+          {totals.shares.toString()} shares · {formatUnitsRounded(totals.assets, decimals, 2)} {symbol}
+        </div>
+      </th>
+      {showRewardColumn ? <th className="px-5 py-2" /> : null}
+    </tr>
+  );
+}
+
 function SortHeader({
   align = "left",
   sortKey,
@@ -220,25 +358,33 @@ function HolderTable({
   silo,
   expanded,
   rewardPlan,
+  showRewardColumn,
   sortState,
+  tableTotals,
   onSort,
   onToggle,
   onJumpToVault,
   onExport,
+  forceExpanded = false,
 }: {
   chain: string;
   rows: DirectLender[];
   silo: SiloSnapshot;
   expanded: boolean;
   rewardPlan: RewardPlan | null;
+  showRewardColumn: boolean;
   sortState: TableSortState;
+  tableTotals: ShareAssetTotals;
   onSort: (key: TableSortKey) => void;
   onToggle: () => void;
   onJumpToVault: (vaultAddress: string) => void;
   onExport: () => void;
+  forceExpanded?: boolean;
 }) {
+  const isExpanded = forceExpanded || expanded;
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
+    <div id="direct-lenders" className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
       <div className="flex flex-col gap-3 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="font-semibold text-white">Direct lenders</h3>
         <div className="flex flex-wrap gap-2">
@@ -250,16 +396,18 @@ function HolderTable({
           >
             Export CSV
           </button>
-          <button
-            className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
-            type="button"
-            onClick={onToggle}
-          >
-            {expanded ? "Collapse" : "Expand"}
-          </button>
+          {forceExpanded ? null : (
+            <button
+              className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
+              type="button"
+              onClick={onToggle}
+            >
+              {isExpanded ? "Collapse" : "Expand"}
+            </button>
+          )}
         </div>
       </div>
-      {!expanded ? (
+      {!isExpanded ? (
         <div className="px-5 py-4 text-sm text-slate-400">
           Direct lenders table is collapsed. Use Expand or Expand all to show it.
         </div>
@@ -269,6 +417,12 @@ function HolderTable({
         <div className="max-h-[38rem] overflow-auto">
           <table className="min-w-full divide-y divide-white/10 text-sm">
             <thead className="sticky top-0 bg-slate-950 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+              <TableTotalsHeader
+                decimals={silo.inputToken.decimals}
+                showRewardColumn={showRewardColumn}
+                symbol={silo.inputToken.symbol}
+                totals={tableTotals}
+              />
               <tr>
                 <th className="px-5 py-3 font-medium">
                   <SortHeader label="Address" sortKey="address" sortState={sortState} onClick={onSort} />
@@ -282,7 +436,7 @@ function HolderTable({
                 <th className="px-5 py-3 text-right font-medium">
                   <SortHeader align="right" label="Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
                 </th>
-                <th className="px-5 py-3 text-right font-medium">Reward</th>
+                {showRewardColumn ? <th className="px-5 py-3 text-right font-medium">Reward</th> : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 text-slate-200">
@@ -308,28 +462,28 @@ function HolderTable({
                       ) : null}
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-right font-mono tabular-nums">
-                    {row.totalShares.toString()}
-                  </td>
+                  <td className="px-5 py-4 text-right font-mono tabular-nums">{row.totalShares.toString()}</td>
                   <td className="px-5 py-4 text-right font-mono tabular-nums">
                     {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                   </td>
-                  <td
-                    className={
-                      row.isVault
-                        ? "px-5 py-4 text-right font-mono tabular-nums text-slate-500"
-                        : "px-5 py-4 text-right font-mono tabular-nums"
-                    }
-                  >
-                    {row.isVault
-                      ? "N/A"
-                      : formatRewardCell(
-                          rewardPlan,
-                          directLeafKey(silo.address, row.address),
-                          silo.inputToken.decimals,
-                          silo.inputToken.symbol,
-                        )}
-                  </td>
+                  {showRewardColumn ? (
+                    <td
+                      className={
+                        row.isVault
+                          ? "px-5 py-4 text-right font-mono tabular-nums text-slate-500"
+                          : "px-5 py-4 text-right font-mono tabular-nums"
+                      }
+                    >
+                      {row.isVault
+                        ? "N/A"
+                        : formatRewardCell(
+                            rewardPlan,
+                            directLeafKey(silo.address, row.address),
+                            silo.inputToken.decimals,
+                            silo.inputToken.symbol,
+                          )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -364,7 +518,10 @@ function DepositorTable({
   addressFilter,
   addressTypeFilter,
   rewardPlan,
+  showRewardColumn,
+  tableTotals,
   onSort,
+  hideTypeFilter = false,
 }: {
   chain: string;
   rows: VaultDepositor[];
@@ -374,12 +531,15 @@ function DepositorTable({
   addressFilter: string;
   addressTypeFilter: string;
   rewardPlan: RewardPlan | null;
+  showRewardColumn: boolean;
+  tableTotals: ShareAssetTotals;
   onSort: (key: TableSortKey) => void;
+  hideTypeFilter?: boolean;
 }) {
   const needle = addressFilter.trim().toLowerCase();
   const visibleRows = rows.filter((row) => {
     const addressMatches = needle ? row.address.toLowerCase().includes(needle) : true;
-    const typeMatches = addressTypeFilter === "all" || row.addressType === addressTypeFilter;
+    const typeMatches = hideTypeFilter || addressTypeFilter === "all" || row.addressType === addressTypeFilter;
     return addressMatches && typeMatches;
   });
   const filteredRows = sortDepositors(visibleRows, sortState);
@@ -393,6 +553,12 @@ function DepositorTable({
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-white/10 text-sm">
           <thead className="bg-white/[0.03] text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+            <TableTotalsHeader
+              decimals={silo.inputToken.decimals}
+              showRewardColumn={showRewardColumn}
+              symbol={silo.inputToken.symbol}
+              totals={tableTotals}
+            />
             <tr>
               <th className="px-5 py-3 font-medium">
                 <SortHeader label="Address" sortKey="address" sortState={sortState} onClick={onSort} />
@@ -401,13 +567,7 @@ function DepositorTable({
                 <SortHeader label="Type" sortKey="type" sortState={sortState} onClick={onSort} />
               </th>
               <th className="px-5 py-3 text-right font-medium">
-                <SortHeader
-                  align="right"
-                  label="Vault shares"
-                  sortKey="shares"
-                  sortState={sortState}
-                  onClick={onSort}
-                />
+                <SortHeader align="right" label="Vault shares" sortKey="shares" sortState={sortState} onClick={onSort} />
               </th>
               <th className="px-5 py-3 text-right font-medium">
                 <SortHeader
@@ -418,7 +578,7 @@ function DepositorTable({
                   onClick={onSort}
                 />
               </th>
-              <th className="px-5 py-3 text-right font-medium">Reward</th>
+              {showRewardColumn ? <th className="px-5 py-3 text-right font-medium">Reward</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10 text-slate-200">
@@ -428,26 +588,24 @@ function DepositorTable({
                   <AddressLink address={row.address} chain={chain} />
                 </td>
                 <td className="px-5 py-4">
-                  <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">
-                    {row.addressType}
-                  </span>
+                  <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">{row.addressType}</span>
                 </td>
-                <td className="px-5 py-4 text-right font-mono tabular-nums">
-                  {row.vaultShares.toString()}
-                </td>
+                <td className="px-5 py-4 text-right font-mono tabular-nums">{row.vaultShares.toString()}</td>
                 <td className="px-5 py-4 text-right font-mono tabular-nums">
                   {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                 </td>
-                <td className="px-5 py-4 text-right font-mono tabular-nums">
-                  {rewardPlan
-                    ? formatRewardCell(
-                        rewardPlan,
-                        vaultLeafKey(silo.address, vaultAddress, row.address),
-                        silo.inputToken.decimals,
-                        silo.inputToken.symbol,
-                      )
-                    : "--"}
-                </td>
+                {showRewardColumn ? (
+                  <td className="px-5 py-4 text-right font-mono tabular-nums">
+                    {rewardPlan
+                      ? formatRewardCell(
+                          rewardPlan,
+                          vaultLeafKey(silo.address, vaultAddress, row.address),
+                          silo.inputToken.decimals,
+                          silo.inputToken.symbol,
+                        )
+                      : "--"}
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>
@@ -613,6 +771,9 @@ function VaultCard({
   addressFilter,
   addressTypeFilter,
   rewardPlan,
+  showRewardColumn,
+  forceExpanded = false,
+  hideTypeFilter = false,
 }: {
   chain: string;
   vault: VaultSnapshot;
@@ -622,9 +783,16 @@ function VaultCard({
   addressFilter: string;
   addressTypeFilter: string;
   rewardPlan: RewardPlan | null;
+  showRewardColumn: boolean;
+  forceExpanded?: boolean;
+  hideTypeFilter?: boolean;
 }) {
   const [depositorSort, setDepositorSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const hasWarning = isVaultWarning(vault);
+  const isExpanded = forceExpanded || expanded;
+  const depositorTotals = sumDepositorTotals(vault.depositors);
+  const vaultSharesValid =
+    vault.vaultTotalSupply !== null && depositorTotals.shares === vault.vaultTotalSupply && vault.status === "ok";
   const unavailableReward =
     hasWarning && rewardPlan && rewardPlan.totalAssets > ZERO
       ? (rewardPlan.rewardRaw * vault.vaultSiloAssets) / rewardPlan.totalAssets
@@ -649,24 +817,33 @@ function VaultCard({
             Vault assets: {formatUnitsRounded(vault.vaultSiloAssets, silo.inputToken.decimals, 2)}{" "}
             {silo.inputToken.symbol}
           </p>
+          {vault.vaultTotalSupply !== null ? (
+            <div className={hasWarning ? "mt-2 text-sm text-amber-100/70" : "mt-2 text-sm text-emerald-100/70"}>
+              <span className="font-mono">{vault.vaultTotalSupply.toString()}</span> shares
+              <ValidationBadge
+                message="Vault shares equal sum of depositor shares"
+                valid={vaultSharesValid}
+              />
+            </div>
+          ) : null}
         </div>
         {hasWarning ? (
           <span className="rounded-full bg-amber-300/20 px-3 py-1 text-sm text-amber-100">{warningLabel(vault)}</span>
-        ) : (
+        ) : forceExpanded ? null : (
           <button
             className="rounded-full bg-emerald-300/20 px-3 py-1 text-sm text-emerald-100 transition hover:bg-emerald-300/30"
             type="button"
             onClick={onToggle}
           >
-            {expanded ? "Collapse" : "Expand"} depositors
+            {isExpanded ? "Collapse" : "Expand"} depositors
           </button>
         )}
       </div>
       {hasWarning ? (
         <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
           <p>
-            Depositors cannot be enumerated for this vault. Its assets are shown here so reward calculations can
-            surface the non-attributable amount.
+            Depositors cannot be enumerated for this vault. Its assets are shown here so reward calculations can surface
+            the non-attributable amount.
           </p>
           {unavailableReward > ZERO ? (
             <p className="font-semibold text-amber-100">
@@ -675,16 +852,19 @@ function VaultCard({
             </p>
           ) : null}
         </div>
-      ) : expanded ? (
+      ) : isExpanded ? (
         <div className="mt-4">
           <DepositorTable
             addressFilter={addressFilter}
             addressTypeFilter={addressTypeFilter}
             chain={chain}
+            hideTypeFilter={hideTypeFilter}
             rewardPlan={rewardPlan}
             rows={vault.depositors}
+            showRewardColumn={showRewardColumn}
             silo={silo}
             sortState={depositorSort}
+            tableTotals={depositorTotals}
             vaultAddress={vault.address}
             onSort={(key) => setDepositorSort((current) => nextSortState(current, key))}
           />
@@ -694,11 +874,470 @@ function VaultCard({
   );
 }
 
+function ScrollControls({ sectionIds }: { sectionIds: string[] }) {
+  const [visible, setVisible] = useState(false);
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 240);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const elements = sectionIds
+      .map((id) => document.getElementById(id))
+      .filter((element): element is HTMLElement => element !== null);
+
+    if (elements.length === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntries = entries.filter((entry) => entry.isIntersecting);
+        if (visibleEntries.length === 0) {
+          return;
+        }
+        const topEntry = visibleEntries.sort(
+          (left, right) => left.boundingClientRect.top - right.boundingClientRect.top,
+        )[0];
+        setActiveSectionId(topEntry.target.id);
+      },
+      { root: null, rootMargin: "-20% 0px -55% 0px", threshold: 0 },
+    );
+
+    for (const element of elements) {
+      observer.observe(element);
+    }
+
+    return () => observer.disconnect();
+  }, [sectionIds]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
+      {activeSectionId ? (
+        <button
+          className="rounded-full border border-white/10 bg-slate-950/90 px-4 py-2 text-xs font-semibold text-slate-200 shadow-lg backdrop-blur transition hover:bg-white/10"
+          type="button"
+          onClick={() => {
+            document.getElementById(activeSectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        >
+          To table header
+        </button>
+      ) : null}
+      <button
+        className="rounded-full bg-emerald-300 px-4 py-2 text-xs font-semibold text-slate-950 shadow-lg transition hover:bg-emerald-200"
+        type="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      >
+        To top
+      </button>
+    </div>
+  );
+}
+
+function AppHeader() {
+  return (
+    <header className="border-b border-white/10 pb-8">
+      <div>
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">Review Silo Lenders</h1>
+          <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-semibold text-slate-400">
+            v{APP_VERSION}
+          </span>
+        </div>
+        <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+          Static, no-RPC snapshot explorer for direct holders and vault depositors across chains.
+        </p>
+      </div>
+    </header>
+  );
+}
+
 function getInitialChain(): ChainSnapshot {
   return chains.find((chain) => chain.silos.length > 0) ?? chains[0];
 }
 
-export default function App() {
+function resetRewardsState(
+  setDistributeRewardsEnabled: (value: boolean) => void,
+  setRewardInput: (value: string) => void,
+  setIncludeOtherContracts: (value: boolean) => void,
+) {
+  setDistributeRewardsEnabled(false);
+  setRewardInput("");
+  setIncludeOtherContracts(false);
+}
+
+function SiloDetailPanel({
+  chain,
+  silo,
+  addressFilter,
+  setAddressFilter,
+  addressTypeFilter,
+  setAddressTypeFilter,
+  addressTypes,
+  directSort,
+  setDirectSort,
+  directExpanded,
+  setDirectExpanded,
+  expandedVaults,
+  setExpandedVaults,
+  distributeRewardsEnabled,
+  setDistributeRewardsEnabled,
+  rewardInput,
+  setRewardInput,
+  includeOtherContracts,
+  setIncludeOtherContracts,
+  rewardPlan,
+  rewardInputInvalid,
+  showRewardColumn,
+  showRewards = true,
+  showTypeFilter = true,
+  showExpandControls = true,
+  forceExpanded = false,
+  showConnectWallet = false,
+}: {
+  chain: ChainSnapshot;
+  silo: SiloSnapshot;
+  addressFilter: string;
+  setAddressFilter: (value: string) => void;
+  addressTypeFilter: string;
+  setAddressTypeFilter: (value: string) => void;
+  addressTypes: string[];
+  directSort: TableSortState;
+  setDirectSort: (value: TableSortState | ((current: TableSortState) => TableSortState)) => void;
+  directExpanded: boolean;
+  setDirectExpanded: (value: boolean | ((current: boolean) => boolean)) => void;
+  expandedVaults: Record<string, boolean>;
+  setExpandedVaults: (value: Record<string, boolean> | ((current: Record<string, boolean>) => Record<string, boolean>)) => void;
+  distributeRewardsEnabled: boolean;
+  setDistributeRewardsEnabled: (value: boolean) => void;
+  rewardInput: string;
+  setRewardInput: (value: string) => void;
+  includeOtherContracts: boolean;
+  setIncludeOtherContracts: (value: boolean) => void;
+  rewardPlan: RewardPlan | null;
+  rewardInputInvalid: boolean;
+  showRewardColumn: boolean;
+  showRewards?: boolean;
+  showTypeFilter?: boolean;
+  showExpandControls?: boolean;
+  forceExpanded?: boolean;
+  showConnectWallet?: boolean;
+}) {
+  const { account, connect, connecting, hasProvider } = useWallet(
+    showConnectWallet ? setAddressFilter : undefined,
+  );
+
+  const lenderNeedle = addressFilter.trim().toLowerCase();
+  const typeMatches = (addressType: string) =>
+    !showTypeFilter || addressTypeFilter === "all" || addressType === addressTypeFilter;
+  const filterActive = lenderNeedle.length > 0 || (showTypeFilter && addressTypeFilter !== "all");
+  const filteredLenders = silo.directLenders.filter((lender) => {
+    const addressMatches = lenderNeedle ? lender.address.toLowerCase().includes(lenderNeedle) : true;
+    return addressMatches && typeMatches(lender.addressType);
+  });
+  const visibleLenders = sortDirectLenders(filteredLenders, directSort);
+  const visibleVaults = silo.vaults.filter((vault) => {
+    if (!filterActive) {
+      return true;
+    }
+    if (isVaultWarning(vault)) {
+      return false;
+    }
+    return vault.depositors.some((depositor) => {
+      const addressMatches = lenderNeedle ? depositor.address.toLowerCase().includes(lenderNeedle) : true;
+      return addressMatches && typeMatches(depositor.addressType);
+    });
+  });
+  const vaultWarnings = silo.vaults.filter(isVaultWarning).length;
+  const hasVisibleFilterResults = !filterActive || visibleLenders.length > 0 || visibleVaults.length > 0;
+  const directTableTotals = sumDirectLenderTotals(silo.directLenders);
+  const sectionIds = ["direct-lenders", ...visibleVaults.map((vault) => vaultElementId(vault.address))];
+
+  function expandAll() {
+    setDirectExpanded(true);
+    setExpandedVaults(Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])));
+  }
+
+  function collapseAll() {
+    setDirectExpanded(false);
+    setExpandedVaults(Object.fromEntries(silo.vaults.map((vault) => [vault.address, false])));
+  }
+
+  function jumpToVault(vaultAddress: string) {
+    setExpandedVaults((current) => ({ ...current, [vaultAddress]: true }));
+    window.requestAnimationFrame(() => {
+      document.getElementById(vaultElementId(vaultAddress))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  return (
+    <section className="min-w-0 space-y-6">
+      <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-slate-950/40">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p className="text-sm font-medium text-emerald-200">
+              {silo.inputToken.symbol} / Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold">Silo lender details</h2>
+            <div className="mt-3">
+              <AddressLink address={silo.address} chain={chain.chain} />
+            </div>
+          </div>
+          {showRewards ? (
+            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+              <label className="flex items-start gap-3 text-sm text-slate-300">
+                <input
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
+                  type="checkbox"
+                  checked={distributeRewardsEnabled}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    setDistributeRewardsEnabled(enabled);
+                    if (!enabled) {
+                      setRewardInput("");
+                      setIncludeOtherContracts(false);
+                    }
+                  }}
+                />
+                <span>Distribute rewards</span>
+              </label>
+              {distributeRewardsEnabled ? (
+                <>
+                  <p className="mt-4 text-xs uppercase tracking-[0.22em] text-slate-500">Global reward amount</p>
+                  <div className="mt-3 flex gap-3">
+                    <input
+                      className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-slate-300 outline-none placeholder:text-slate-600"
+                      placeholder={`0.00 ${silo.inputToken.symbol}`}
+                      value={rewardInput}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setRewardInput(nextValue);
+                        if (nextValue.trim()) {
+                          setDirectExpanded(true);
+                          setExpandedVaults(Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])));
+                        }
+                      }}
+                    />
+                    <button
+                      className="rounded-xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                      disabled={!rewardPlan || rewardPlan.rewardRaw === ZERO || rewardInputInvalid}
+                      type="button"
+                      onClick={() => {
+                        if (!rewardPlan) {
+                          return;
+                        }
+                        const rows = [["address", "raw_amount", "assets"]];
+                        for (const [address, reward] of [...rewardPlan.csvRewards.entries()].sort(([a], [b]) =>
+                          a.localeCompare(b),
+                        )) {
+                          rows.push([
+                            address,
+                            reward === null ? "" : reward.toString(),
+                            reward === null ? "" : formatUnitsFixed(reward, silo.inputToken.decimals),
+                          ]);
+                        }
+                        downloadCsv(`global-snapshot-rewards.csv`, rows);
+                      }}
+                    >
+                      Download CSV
+                    </button>
+                  </div>
+                  <label className="mt-3 flex items-start gap-3 text-xs leading-5 text-slate-300">
+                    <input
+                      className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
+                      type="checkbox"
+                      checked={includeOtherContracts}
+                      onChange={(event) => setIncludeOtherContracts(event.target.checked)}
+                    />
+                    <span>
+                      Distribute to unrecognized contracts (`contract_other`). When disabled, these addresses stay in the
+                      CSV with empty reward fields and their assets are redistributed to eligible recipients.
+                    </span>
+                  </label>
+                  {rewardInputInvalid ? (
+                    <p className="mt-3 text-xs text-amber-200">
+                      Enter a non-negative amount with at most {silo.inputToken.decimals} decimals.
+                    </p>
+                  ) : rewardPlan && rewardPlan.rewardRaw > ZERO ? (
+                    <div className="mt-3 space-y-1 text-xs text-slate-400">
+                      <p>
+                        Global distributed: {formatUnits(rewardPlan.distributed, silo.inputToken.decimals)}{" "}
+                        {silo.inputToken.symbol}
+                      </p>
+                      {rewardPlan.undistributed > ZERO ? (
+                        <p className="text-amber-200">
+                          Undistributed: {formatUnits(rewardPlan.undistributed, silo.inputToken.decimals)}{" "}
+                          {silo.inputToken.symbol}
+                          {rewardPlan.nonAttributableAssets > ZERO
+                            ? " because some vault assets have no enumerable depositors."
+                            : " due to integer rounding."}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-slate-500">
+                      Enter an amount to compute pro-rata rewards across all snapshot assets.
+                    </p>
+                  )}
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <SiloMetrics silo={silo} />
+      </div>
+
+      <div
+        className={`grid gap-4 rounded-3xl border border-white/10 bg-white/[0.04] p-5 ${
+          showTypeFilter && showExpandControls
+            ? "lg:grid-cols-[minmax(0,1.5fr)_minmax(12rem,0.7fr)_auto] lg:items-end"
+            : showConnectWallet
+              ? "lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end"
+              : ""
+        }`}
+      >
+        <div className="min-w-0">
+          <label className="text-xs uppercase tracking-[0.22em] text-slate-500" htmlFor="filter">
+            Address filter
+          </label>
+          <AddressFilterInput id="filter" value={addressFilter} onChange={setAddressFilter} />
+        </div>
+        {showTypeFilter ? (
+          <div className="min-w-0">
+            <label className="text-xs uppercase tracking-[0.22em] text-slate-500" htmlFor="type-filter">
+              Type filter
+            </label>
+            <select
+              id="type-filter"
+              className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-slate-300 outline-none"
+              value={addressTypeFilter}
+              onChange={(event) => setAddressTypeFilter(event.target.value)}
+            >
+              <option value="all">All types</option>
+              {addressTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {showExpandControls ? (
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            <button
+              className="rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200"
+              type="button"
+              onClick={expandAll}
+            >
+              Expand all
+            </button>
+            <button
+              className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
+              type="button"
+              onClick={collapseAll}
+            >
+              Collapse all
+            </button>
+          </div>
+        ) : null}
+        {showConnectWallet ? (
+          <div className="flex flex-wrap items-end gap-2 lg:justify-end">
+            <button
+              className="rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+              disabled={!hasProvider || connecting}
+              type="button"
+              onClick={() => void connect()}
+            >
+              {connecting ? "Connecting..." : account ? `Connected ${shortAddress(account)}` : "Connect Wallet"}
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {(!filterActive || visibleLenders.length > 0) ? (
+        <HolderTable
+          chain={chain.chain}
+          expanded={directExpanded}
+          forceExpanded={forceExpanded}
+          rows={visibleLenders}
+          showRewardColumn={showRewardColumn}
+          silo={silo}
+          rewardPlan={rewardPlan}
+          sortState={directSort}
+          tableTotals={directTableTotals}
+          onJumpToVault={jumpToVault}
+          onExport={() => {
+            downloadCsv(`${chain.chain}-${silo.address}-direct-lenders.csv`, [
+              ["Address", "Type", "Assets"],
+              ...visibleLenders.map((row) => [
+                row.address,
+                row.addressType,
+                formatUnitsPlain(row.totalAssets, silo.inputToken.decimals),
+              ]),
+            ]);
+          }}
+          onSort={(key) => setDirectSort((current) => nextSortState(current, key))}
+          onToggle={() => setDirectExpanded((current) => !current)}
+        />
+      ) : null}
+
+      {(!filterActive || visibleVaults.length > 0) ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">Vaults</h2>
+            <span className="text-sm text-slate-400">
+              {filterActive
+                ? `${visibleVaults.length} matching vault table${visibleVaults.length === 1 ? "" : "s"}`
+                : `${silo.vaults.length - vaultWarnings} indexed, ${vaultWarnings} warning${
+                    vaultWarnings === 1 ? "" : "s"
+                  }`}
+            </span>
+          </div>
+          {visibleVaults.length === 0 ? (
+            <EmptyState message="No vault lender contracts are present in this snapshot." />
+          ) : (
+            visibleVaults.map((vault, index) => (
+              <VaultCard
+                key={vault.address}
+                addressFilter={addressFilter}
+                addressTypeFilter={addressTypeFilter}
+                chain={chain.chain}
+                expanded={forceExpanded || (expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT)}
+                forceExpanded={forceExpanded}
+                hideTypeFilter={!showTypeFilter}
+                rewardPlan={rewardPlan}
+                showRewardColumn={showRewardColumn}
+                silo={silo}
+                vault={vault}
+                onToggle={() =>
+                  setExpandedVaults((current) => ({
+                    ...current,
+                    [vault.address]: !(current[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT),
+                  }))
+                }
+              />
+            ))
+          )}
+        </div>
+      ) : null}
+      {!hasVisibleFilterResults ? (
+        <EmptyState message="No tables contain addresses matching the current filter." />
+      ) : null}
+      <ScrollControls sectionIds={sectionIds} />
+    </section>
+  );
+}
+
+function ExplorerView() {
   const initialChain = getInitialChain();
   const [selectedChainName, setSelectedChainName] = useState(initialChain.chain);
   const [selectedSiloAddress, setSelectedSiloAddress] = useState(initialChain.silos[0]?.address ?? "");
@@ -707,6 +1346,7 @@ export default function App() {
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>({});
+  const [distributeRewardsEnabled, setDistributeRewardsEnabled] = useState(false);
   const [rewardInput, setRewardInput] = useState("");
   const [includeOtherContracts, setIncludeOtherContracts] = useState(false);
 
@@ -721,40 +1361,13 @@ export default function App() {
         ]),
       ).sort((a, b) => a.localeCompare(b))
     : [];
-
-  const lenderNeedle = addressFilter.trim().toLowerCase();
-  const typeMatches = (addressType: string) => addressTypeFilter === "all" || addressType === addressTypeFilter;
-  const filterActive = lenderNeedle.length > 0 || addressTypeFilter !== "all";
-  const filteredLenders = selectedSilo
-    ? selectedSilo.directLenders.filter((lender) => {
-        const addressMatches = lenderNeedle ? lender.address.toLowerCase().includes(lenderNeedle) : true;
-        return addressMatches && typeMatches(lender.addressType);
-      })
-    : [];
-  const visibleLenders = selectedSilo ? sortDirectLenders(filteredLenders, directSort) : [];
-  const visibleVaults = selectedSilo
-    ? selectedSilo.vaults.filter((vault) => {
-        if (!filterActive) {
-          return true;
-        }
-        if (isVaultWarning(vault)) {
-          return false;
-        }
-        return vault.depositors.some((depositor) => {
-          const addressMatches = lenderNeedle ? depositor.address.toLowerCase().includes(lenderNeedle) : true;
-          return addressMatches && typeMatches(depositor.addressType);
-        });
-      })
-    : [];
-
-  const vaultWarnings = selectedSilo?.vaults.filter(isVaultWarning).length ?? 0;
-  const hasVisibleFilterResults = !filterActive || visibleLenders.length > 0 || visibleVaults.length > 0;
   const rewardRaw = selectedSilo ? parseUnits(rewardInput, selectedSilo.inputToken.decimals) : null;
   const rewardInputInvalid = rewardInput.trim() !== "" && rewardRaw === null;
   const rewardPlan =
     selectedSilo && rewardRaw !== null
       ? buildRewardPlan(allSilos, rewardRaw, selectedSilo.inputToken.decimals, includeOtherContracts)
       : null;
+  const showRewardColumn = distributeRewardsEnabled && rewardRaw !== null && rewardRaw > ZERO;
 
   function selectChain(chain: ChainSnapshot) {
     setSelectedChainName(chain.chain);
@@ -762,71 +1375,50 @@ export default function App() {
     setAddressTypeFilter("all");
     setDirectExpanded(true);
     setExpandedVaults({});
-    setRewardInput("");
+    resetRewardsState(setDistributeRewardsEnabled, setRewardInput, setIncludeOtherContracts);
   }
 
-  function expandAll() {
-    if (!selectedSilo) {
-      return;
-    }
+  function selectSilo(siloAddress: string) {
+    setSelectedSiloAddress(siloAddress);
+    setAddressTypeFilter("all");
     setDirectExpanded(true);
-    setExpandedVaults(Object.fromEntries(selectedSilo.vaults.map((vault) => [vault.address, true])));
-  }
-
-  function collapseAll() {
-    if (!selectedSilo) {
-      return;
-    }
-    setDirectExpanded(false);
-    setExpandedVaults(Object.fromEntries(selectedSilo.vaults.map((vault) => [vault.address, false])));
-  }
-
-  function jumpToVault(vaultAddress: string) {
-    setExpandedVaults((current) => ({ ...current, [vaultAddress]: true }));
-    window.requestAnimationFrame(() => {
-      document.getElementById(vaultElementId(vaultAddress))?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    setExpandedVaults({});
+    resetRewardsState(setDistributeRewardsEnabled, setRewardInput, setIncludeOtherContracts);
   }
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
       <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
-        <header className="border-b border-white/10 pb-8">
-          <div>
-            <div className="flex flex-wrap items-baseline gap-3">
-              <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">Review Silo Lenders</h1>
-              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-semibold text-slate-400">
-                v{APP_VERSION}
-              </span>
-            </div>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-              Static, no-RPC snapshot explorer for direct holders and vault depositors across chains.
-            </p>
-          </div>
-        </header>
+        <AppHeader />
 
         <div className="min-w-0 space-y-6 py-8">
           <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-slate-950/30 sm:p-5">
-            <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] xl:items-start">
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Chain</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {chains.map((chain) => (
-                    <button
-                      key={chain.chain}
-                      className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                        selectedChain.chain === chain.chain
-                          ? "bg-emerald-300 text-slate-950 shadow-lg shadow-emerald-500/20"
-                          : "border border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10"
-                      }`}
-                      type="button"
-                      onClick={() => selectChain(chain)}
-                    >
-                      {chain.label}
-                    </button>
-                  ))}
+            <div
+              className={`grid min-w-0 gap-5 ${
+                chains.length > 1 ? "xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] xl:items-start" : ""
+              }`}
+            >
+              {chains.length > 1 ? (
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Chain</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {chains.map((chain) => (
+                      <button
+                        key={chain.chain}
+                        className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                          selectedChain.chain === chain.chain
+                            ? "bg-emerald-300 text-slate-950 shadow-lg shadow-emerald-500/20"
+                            : "border border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10"
+                        }`}
+                        type="button"
+                        onClick={() => selectChain(chain)}
+                      >
+                        {chain.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -851,26 +1443,18 @@ export default function App() {
                         }`}
                         role="button"
                         tabIndex={0}
-                        onClick={() => {
-                          setSelectedSiloAddress(silo.address);
-                          setAddressTypeFilter("all");
-                          setDirectExpanded(true);
-                          setExpandedVaults({});
-                          setRewardInput("");
-                        }}
+                        onClick={() => selectSilo(silo.address)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            setSelectedSiloAddress(silo.address);
-                            setAddressTypeFilter("all");
-                            setDirectExpanded(true);
-                            setExpandedVaults({});
-                            setRewardInput("");
+                            selectSilo(silo.address);
                           }
                         }}
                       >
                         <div className="flex min-w-0 items-center gap-2">
-                          <span className="truncate font-semibold">{silo.inputToken.symbol} Silo</span>
+                          <span className="truncate font-semibold">
+                            {silo.inputToken.symbol} Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
+                          </span>
                           {selectedSilo?.address === silo.address ? (
                             <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">
                               Selected
@@ -879,7 +1463,6 @@ export default function App() {
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
                           <AddressLink address={silo.address} chain={selectedChain.chain} />
-                          <span>Block {new Intl.NumberFormat("en-US").format(silo.snapshotBlock)}</span>
                         </div>
                       </div>
                     ))
@@ -890,242 +1473,30 @@ export default function App() {
           </section>
 
           {selectedSilo ? (
-            <section className="min-w-0 space-y-6">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-slate-950/40">
-              <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-                <div>
-                  <p className="text-sm font-medium text-emerald-200">
-                    {selectedSilo.inputToken.symbol} / Silo {selectedSilo.siloId ? `#${selectedSilo.siloId}` : "#--"}
-                  </p>
-                  <h2 className="mt-2 text-3xl font-semibold">Silo lender details</h2>
-                  <div className="mt-3">
-                    <AddressLink address={selectedSilo.address} chain={selectedChain.chain} />
-                  </div>
-                  <p className="mt-3 text-sm text-slate-400">
-                    Snapshot block {new Intl.NumberFormat("en-US").format(selectedSilo.snapshotBlock)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Global reward amount</p>
-                  <div className="mt-3 flex gap-3">
-                    <input
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-slate-300 outline-none placeholder:text-slate-600"
-                      placeholder={`0.00 ${selectedSilo.inputToken.symbol}`}
-                      value={rewardInput}
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setRewardInput(nextValue);
-                        if (nextValue.trim()) {
-                          setDirectExpanded(true);
-                          setExpandedVaults(Object.fromEntries(selectedSilo.vaults.map((vault) => [vault.address, true])));
-                        }
-                      }}
-                    />
-                    <button
-                      className="rounded-xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
-                      disabled={!rewardPlan || rewardPlan.rewardRaw === ZERO || rewardInputInvalid}
-                      type="button"
-                      onClick={() => {
-                        if (!selectedSilo || !rewardPlan) {
-                          return;
-                        }
-                        const rows = [["address", "raw_amount", "assets"]];
-                        for (const [address, reward] of [...rewardPlan.csvRewards.entries()].sort(([a], [b]) =>
-                          a.localeCompare(b),
-                        )) {
-                          rows.push([
-                            address,
-                            reward === null ? "" : reward.toString(),
-                            reward === null ? "" : formatUnitsFixed(reward, selectedSilo.inputToken.decimals),
-                          ]);
-                        }
-                        downloadCsv(`global-snapshot-rewards.csv`, rows);
-                      }}
-                    >
-                      Download CSV
-                    </button>
-                  </div>
-                  <label className="mt-3 flex items-start gap-3 text-xs leading-5 text-slate-300">
-                    <input
-                      className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
-                      type="checkbox"
-                      checked={includeOtherContracts}
-                      onChange={(event) => setIncludeOtherContracts(event.target.checked)}
-                    />
-                    <span>
-                      Distribute to unrecognized contracts (`contract_other`). When disabled, these addresses stay in
-                      the CSV with empty reward fields and their assets are redistributed to eligible recipients.
-                    </span>
-                  </label>
-                  {rewardInputInvalid ? (
-                    <p className="mt-3 text-xs text-amber-200">
-                      Enter a non-negative amount with at most {selectedSilo.inputToken.decimals} decimals.
-                    </p>
-                  ) : rewardPlan && rewardPlan.rewardRaw > ZERO ? (
-                    <div className="mt-3 space-y-1 text-xs text-slate-400">
-                      <p>
-                        Global distributed: {formatUnits(rewardPlan.distributed, selectedSilo.inputToken.decimals)}{" "}
-                        {selectedSilo.inputToken.symbol}
-                      </p>
-                      {rewardPlan.undistributed > ZERO ? (
-                        <p className="text-amber-200">
-                          Undistributed: {formatUnits(rewardPlan.undistributed, selectedSilo.inputToken.decimals)}{" "}
-                          {selectedSilo.inputToken.symbol}
-                          {rewardPlan.nonAttributableAssets > ZERO
-                            ? " because some vault assets have no enumerable depositors."
-                            : " due to integer rounding."}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-xs text-slate-500">
-                      Enter an amount to compute pro-rata rewards across all snapshot assets.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
-                <MetricCard
-                  label="Total shares"
-                  value={selectedSilo.totalShares.toString()}
-                  hint="Collateral supply"
-                />
-                <MetricCard
-                  label="Total assets"
-                  value={`${formatUnitsRounded(selectedSilo.totalAssets, selectedSilo.inputToken.decimals, 2)} ${
-                    selectedSilo.inputToken.symbol
-                  }`}
-                  hint="Redeemable silo assets"
-                />
-                <MetricCard
-                  label="Vault assets"
-                  value={`${formatUnitsRounded(
-                    selectedSilo.vaults.reduce((sum, vault) => sum + vault.vaultSiloAssets, 0n),
-                    selectedSilo.inputToken.decimals,
-                    2,
-                  )} ${selectedSilo.inputToken.symbol}`}
-                  hint="Attributable through vault depositors"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 rounded-3xl border border-white/10 bg-white/[0.04] p-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(12rem,0.7fr)_auto] lg:items-end">
-              <div className="min-w-0">
-                <label className="text-xs uppercase tracking-[0.22em] text-slate-500" htmlFor="filter">
-                  Address filter
-                </label>
-                <input
-                  id="filter"
-                  className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 font-mono text-sm text-slate-300 outline-none placeholder:text-slate-600"
-                  placeholder="Search by address substring"
-                  value={addressFilter}
-                  onChange={(event) => setAddressFilter(event.target.value)}
-                />
-              </div>
-              <div className="min-w-0">
-                <label className="text-xs uppercase tracking-[0.22em] text-slate-500" htmlFor="type-filter">
-                  Type filter
-                </label>
-                <select
-                  id="type-filter"
-                  className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-slate-300 outline-none"
-                  value={addressTypeFilter}
-                  onChange={(event) => setAddressTypeFilter(event.target.value)}
-                >
-                  <option value="all">All types</option>
-                  {addressTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-wrap gap-2 lg:justify-end">
-                <button
-                  className="rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200"
-                  type="button"
-                  onClick={expandAll}
-                >
-                  Expand all
-                </button>
-                <button
-                  className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
-                  type="button"
-                  onClick={collapseAll}
-                >
-                  Collapse all
-                </button>
-              </div>
-            </div>
-
-            {(!filterActive || visibleLenders.length > 0) ? (
-              <HolderTable
-                chain={selectedChain.chain}
-                expanded={directExpanded}
-                rows={visibleLenders}
-                silo={selectedSilo}
-                rewardPlan={rewardPlan}
-                sortState={directSort}
-                onJumpToVault={jumpToVault}
-                onExport={() => {
-                  downloadCsv(
-                    `${selectedChain.chain}-${selectedSilo.address}-direct-lenders.csv`,
-                    [
-                      ["Address", "Type", "Assets"],
-                      ...visibleLenders.map((row) => [
-                        row.address,
-                        row.addressType,
-                        formatUnitsPlain(row.totalAssets, selectedSilo.inputToken.decimals),
-                      ]),
-                    ],
-                  );
-                }}
-                onSort={(key) => setDirectSort((current) => nextSortState(current, key))}
-                onToggle={() => setDirectExpanded((current) => !current)}
-              />
-            ) : null}
-
-            {(!filterActive || visibleVaults.length > 0) ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Vaults</h2>
-                  <span className="text-sm text-slate-400">
-                    {filterActive
-                      ? `${visibleVaults.length} matching vault table${visibleVaults.length === 1 ? "" : "s"}`
-                      : `${selectedSilo.vaults.length - vaultWarnings} indexed, ${vaultWarnings} warning${
-                          vaultWarnings === 1 ? "" : "s"
-                        }`}
-                  </span>
-                </div>
-                {visibleVaults.length === 0 ? (
-                  <EmptyState message="No vault lender contracts are present in this snapshot." />
-                ) : (
-                  visibleVaults.map((vault, index) => (
-                    <VaultCard
-                      key={vault.address}
-                      addressFilter={addressFilter}
-                      addressTypeFilter={addressTypeFilter}
-                      chain={selectedChain.chain}
-                      expanded={expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT}
-                      silo={selectedSilo}
-                      rewardPlan={rewardPlan}
-                      vault={vault}
-                      onToggle={() =>
-                        setExpandedVaults((current) => ({
-                          ...current,
-                          [vault.address]: !(current[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT),
-                        }))
-                      }
-                    />
-                  ))
-                )}
-              </div>
-            ) : null}
-            {!hasVisibleFilterResults ? (
-              <EmptyState message="No tables contain addresses matching the current filter." />
-            ) : null}
-          </section>
+            <SiloDetailPanel
+              addressFilter={addressFilter}
+              addressTypeFilter={addressTypeFilter}
+              addressTypes={addressTypes}
+              chain={selectedChain}
+              directExpanded={directExpanded}
+              directSort={directSort}
+              distributeRewardsEnabled={distributeRewardsEnabled}
+              expandedVaults={expandedVaults}
+              includeOtherContracts={includeOtherContracts}
+              rewardInput={rewardInput}
+              rewardInputInvalid={rewardInputInvalid}
+              rewardPlan={rewardPlan}
+              setAddressFilter={setAddressFilter}
+              setAddressTypeFilter={setAddressTypeFilter}
+              setDirectExpanded={setDirectExpanded}
+              setDirectSort={setDirectSort}
+              setDistributeRewardsEnabled={setDistributeRewardsEnabled}
+              setExpandedVaults={setExpandedVaults}
+              setIncludeOtherContracts={setIncludeOtherContracts}
+              setRewardInput={setRewardInput}
+              showRewardColumn={showRewardColumn}
+              silo={selectedSilo}
+            />
           ) : (
             <section className="min-w-0">
               <EmptyState message="Select a chain with bundled silo data to view snapshot details." />
@@ -1135,4 +1506,109 @@ export default function App() {
       </section>
     </main>
   );
+}
+
+function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapshot }) {
+  const [addressFilter, setAddressFilter] = useState("");
+  const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
+  const [directExpanded, setDirectExpanded] = useState(true);
+  const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>(
+    Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])),
+  );
+
+  return (
+    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
+      <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
+        <header className="border-b border-white/10 pb-8">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="flex flex-wrap items-baseline gap-3">
+                <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Review Silo Lenders</h1>
+                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-semibold text-slate-400">
+                  v{APP_VERSION}
+                </span>
+              </div>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+                Silo-only snapshot view for {silo.inputToken.symbol} #{silo.siloId ?? "--"}.
+              </p>
+            </div>
+            <a
+              className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
+              href={explorerHomePath()}
+            >
+              Back to explorer
+            </a>
+          </div>
+        </header>
+
+        <div className="min-w-0 space-y-6 py-8">
+          <SiloDetailPanel
+            addressFilter={addressFilter}
+            addressTypeFilter="all"
+            addressTypes={[]}
+            chain={chain}
+            directExpanded={directExpanded}
+            directSort={directSort}
+            distributeRewardsEnabled={false}
+            expandedVaults={expandedVaults}
+            forceExpanded
+            includeOtherContracts={false}
+            rewardInput=""
+            rewardInputInvalid={false}
+            rewardPlan={null}
+            setAddressFilter={setAddressFilter}
+            setAddressTypeFilter={() => undefined}
+            setDirectExpanded={setDirectExpanded}
+            setDirectSort={setDirectSort}
+            setDistributeRewardsEnabled={() => undefined}
+            setExpandedVaults={setExpandedVaults}
+            setIncludeOtherContracts={() => undefined}
+            setRewardInput={() => undefined}
+            showConnectWallet
+            showExpandControls={false}
+            showRewardColumn={false}
+            showRewards={false}
+            showTypeFilter={false}
+            silo={silo}
+          />
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function SiloNotFoundView({ address }: { address: string }) {
+  return (
+    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
+      <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
+        <AppHeader />
+        <div className="py-8">
+          <EmptyState message={`No snapshot data found for silo address ${address}.`} />
+          <div className="mt-4">
+            <a
+              className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
+              href={explorerHomePath()}
+            >
+              Back to explorer
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+export default function App() {
+  const pathSiloAddress = parseSiloAddressFromPath();
+  const siloMatch = pathSiloAddress ? findSiloByAddress(pathSiloAddress) : null;
+
+  if (pathSiloAddress && !siloMatch) {
+    return <SiloNotFoundView address={pathSiloAddress} />;
+  }
+
+  if (siloMatch) {
+    return <SiloOnlyView chain={siloMatch.chain} silo={siloMatch.silo} />;
+  }
+
+  return <ExplorerView />;
 }
