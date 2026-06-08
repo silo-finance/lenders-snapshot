@@ -185,6 +185,25 @@ function scrollToSection(sectionId: string) {
   document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function ChevronIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      height="14"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      width="14"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
 function SectionNavButtons({ prevId, nextId }: { prevId?: string; nextId?: string }) {
   if (!prevId && !nextId) {
     return null;
@@ -194,22 +213,22 @@ function SectionNavButtons({ prevId, nextId }: { prevId?: string; nextId?: strin
     <span className="inline-flex items-center gap-0.5">
       {prevId ? (
         <button
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-xs text-slate-300 transition hover:bg-white/10 hover:text-emerald-200"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:bg-white/10 hover:text-emerald-200"
           title="Previous table"
           type="button"
           onClick={() => scrollToSection(prevId)}
         >
-          ⌃
+          <ChevronIcon className="rotate-180" />
         </button>
       ) : null}
       {nextId ? (
         <button
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-base leading-none text-slate-300 transition hover:bg-white/10 hover:text-emerald-200"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:bg-white/10 hover:text-emerald-200"
           title="Next table"
           type="button"
           onClick={() => scrollToSection(nextId)}
         >
-          ▼
+          <ChevronIcon />
         </button>
       ) : null}
     </span>
