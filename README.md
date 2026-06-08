@@ -30,6 +30,7 @@ npm run dev
 - `version-bump.yml` keeps PR package patch versions bumped.
 - `snapshot-scan.yml` manually generates a fresh snapshot release asset.
 - `snapshot-qa.yml` validates PR changes to `distribution_snapshot.json`.
+- `remove-silo.yml` removes a silo from the snapshot JSON by address, bumps the minor package version, opens a `release/X.Y.0` PR to `master`, and creates a draft GitHub release.
 
 ## Snapshot tooling
 

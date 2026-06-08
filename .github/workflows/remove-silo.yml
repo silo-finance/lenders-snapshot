@@ -1,0 +1,118 @@
+name: Remove silo from snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      silo_address:
+        description: Silo contract address to remove from distribution_snapshot.json
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  remove:
+    name: Remove silo and open release PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Remove silo from snapshot JSON
+        run: python scripts/lender-snapshot/remove_silo.py --address "${{ inputs.silo_address }}"
+
+      - name: QA snapshot
+        run: python scripts/lender-snapshot/qa_check.py
+
+      - name: Bump minor package version
+        id: version
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(pkg.version);
+          if (!match) {
+            throw new Error(`Unsupported package version: ${pkg.version}`);
+          }
+
+          const [, major, minor] = match;
+          const nextVersion = `${major}.${Number(minor) + 1}.0`;
+          pkg.version = nextVersion;
+          fs.writeFileSync("package.json", `${JSON.stringify(pkg, null, 2)}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${nextVersion}\n`);
+          console.log(`Bumped package.json to ${nextVersion}`);
+          NODE
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Sync package-lock
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Create release branch and commit
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SILO: ${{ inputs.silo_address }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git show-ref --verify --quiet "refs/remotes/origin/release/${VERSION}"; then
+            echo "Release branch release/${VERSION} already exists"
+            exit 1
+          fi
+
+          git checkout -b "release/${VERSION}"
+          git add scripts/lender-snapshot/distribution_snapshot.json package.json package-lock.json
+          git commit -m "Remove silo ${SILO} from snapshot and bump version to ${VERSION}"
+          git push -u origin "release/${VERSION}"
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SILO: ${{ inputs.silo_address }}
+        run: |
+          gh pr create \
+            --base master \
+            --head "release/${VERSION}" \
+            --title "Release ${VERSION}: remove silo ${SILO}" \
+            --body "$(cat <<EOF
+          ## Summary
+          - remove silo \`${SILO}\` from \`distribution_snapshot.json\`
+          - bump package version to \`${VERSION}\` (minor release)
+
+          ## Automation
+          Triggered by the **Remove silo from snapshot** workflow.
+
+          ## Next steps
+          - review QA output from this workflow run
+          - merge into \`master\` to complete the release
+          EOF
+          )"
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SILO: ${{ inputs.silo_address }}
+        run: |
+          gh release create "${VERSION}" \
+            --draft \
+            --target "release/${VERSION}" \
+            --title "Release ${VERSION}" \
+            --notes "Removes silo \`${SILO}\` from the bundled lender snapshot JSON." \
+            scripts/lender-snapshot/distribution_snapshot.json

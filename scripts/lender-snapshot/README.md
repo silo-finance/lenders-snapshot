@@ -10,6 +10,7 @@ Redeemable `assets` per address are computed purely via on-chain `previewRedeem`
 ## Layout
 
 - `snapshot_lenders.py` – main script that produces `distribution_snapshot.json`.
+- `remove_silo.py` – removes one silo entry from `distribution_snapshot.json` by contract address.
 - `qa_check.py` – pure-JSON validator (no RPC/graph) that asserts share-sum invariants against the stored total supplies.
 - `requirements.txt` – Python dependencies (`web3`).
 - `.env.example` – template for the required secrets.
