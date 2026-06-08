@@ -44,40 +44,6 @@ jobs:
       - name: Add SPA fallback
         run: cp dist/index.html dist/404.html
 
-      - name: Force Pages source to GitHub Actions
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const current = await github.request("GET /repos/{owner}/{repo}/pages", {
-              owner,
-              repo,
-            });
-            const before = current.data.build_type ?? "null";
-            core.info(`Current Pages build_type: ${before}`);
-
-            if (before !== "workflow") {
-              await github.request("PUT /repos/{owner}/{repo}/pages", {
-                owner,
-                repo,
-                build_type: "workflow",
-              });
-              core.info("Requested Pages build_type update to workflow.");
-            }
-
-            const afterCheck = await github.request("GET /repos/{owner}/{repo}/pages", {
-              owner,
-              repo,
-            });
-            const after = afterCheck.data.build_type ?? "null";
-            core.info(`Pages build_type after update attempt: ${after}`);
-
-            if (after !== "workflow") {
-              core.setFailed(
-                `Pages build_type is still '${after}'. Switch Settings > Pages > Build and deployment > Source to 'GitHub Actions'.`
-              );
-            }
-
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
