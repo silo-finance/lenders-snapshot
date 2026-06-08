@@ -3,7 +3,6 @@ import {
   type ChainSnapshot,
   type DirectLender,
   type SiloSnapshot,
-  type SortKey,
   type VaultDepositor,
   type VaultSnapshot,
   chains,
@@ -16,10 +15,14 @@ import {
   formatUnitsPlain,
   parseUnits,
   shortAddress,
-  sortLenders,
 } from "./snapshot";
 
 type SortDirection = "asc" | "desc";
+type TableSortKey = "address" | "type" | "shares" | "assets";
+type TableSortState = {
+  key: TableSortKey;
+  direction: SortDirection;
+};
 
 const DEFAULT_EXPANDED_LIMIT = 2;
 
@@ -74,77 +77,123 @@ function AddressLink({ chain, address }: { chain: string; address: string }) {
   );
 }
 
-function SortButton({
-  active,
-  direction,
+function SortHeader({
+  align = "left",
+  sortKey,
+  sortState,
   label,
   onClick,
 }: {
-  active: boolean;
-  direction: SortDirection;
+  align?: "left" | "right";
+  sortKey: TableSortKey;
+  sortState: TableSortState;
   label: string;
-  onClick: () => void;
+  onClick: (key: TableSortKey) => void;
 }) {
+  const active = sortState.key === sortKey;
   return (
     <button
-      className={`rounded-full border px-3 py-1 transition ${
-        active ? "border-emerald-300/40 text-emerald-200" : "border-white/10 text-slate-400 hover:bg-white/10"
+      className={`inline-flex items-center gap-1 transition hover:text-emerald-200 ${
+        align === "right" ? "justify-end text-right" : "justify-start text-left"
       }`}
       type="button"
-      onClick={onClick}
+      onClick={() => onClick(sortKey)}
     >
-      {label} {active ? (direction === "asc" ? "↑" : "↓") : ""}
+      <span>{label}</span>
+      <span className={active ? "text-emerald-200" : "text-slate-600"}>
+        {active ? (sortState.direction === "asc" ? "↑" : "↓") : "↕"}
+      </span>
     </button>
   );
+}
+
+function nextSortState(current: TableSortState, key: TableSortKey): TableSortState {
+  if (current.key === key) {
+    return { key, direction: current.direction === "asc" ? "desc" : "asc" };
+  }
+  return { key, direction: key === "type" || key === "address" ? "asc" : "desc" };
+}
+
+function compareStrings(left: string, right: string, direction: SortDirection): number {
+  const result = left.localeCompare(right);
+  return direction === "asc" ? result : -result;
+}
+
+function compareValues(left: bigint, right: bigint, direction: SortDirection): number {
+  return direction === "asc" ? compareBigIntAsc(left, right) : compareBigIntDesc(left, right);
+}
+
+function sortDirectLenders(rows: DirectLender[], sortState: TableSortState): DirectLender[] {
+  return [...rows].sort((left, right) => {
+    if (sortState.key === "address") {
+      return compareStrings(left.address, right.address, sortState.direction);
+    }
+    if (sortState.key === "type") {
+      return compareStrings(left.addressType, right.addressType, sortState.direction);
+    }
+    if (sortState.key === "shares") {
+      return compareValues(left.totalShares, right.totalShares, sortState.direction);
+    }
+    return compareValues(left.totalAssets, right.totalAssets, sortState.direction);
+  });
 }
 
 function HolderTable({
   chain,
   rows,
   silo,
-  sortKey,
-  sortDirection,
+  expanded,
   rewardPlan,
+  sortState,
   onSort,
+  onToggle,
+  onJumpToVault,
 }: {
   chain: string;
   rows: DirectLender[];
   silo: SiloSnapshot;
-  sortKey: SortKey;
-  sortDirection: SortDirection;
+  expanded: boolean;
   rewardPlan: RewardPlan | null;
-  onSort: (key: SortKey) => void;
+  sortState: TableSortState;
+  onSort: (key: TableSortKey) => void;
+  onToggle: () => void;
+  onJumpToVault: (vaultAddress: string) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
       <div className="flex flex-col gap-3 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="font-semibold text-white">Direct lenders</h3>
-        <div className="flex gap-2 text-xs">
-          <SortButton
-            active={sortKey === "shares"}
-            direction={sortDirection}
-            label="Shares"
-            onClick={() => onSort("shares")}
-          />
-          <SortButton
-            active={sortKey === "assets"}
-            direction={sortDirection}
-            label="Assets"
-            onClick={() => onSort("assets")}
-          />
-        </div>
+        <button
+          className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
+          type="button"
+          onClick={onToggle}
+        >
+          {expanded ? "Collapse" : "Expand"}
+        </button>
       </div>
-      {rows.length === 0 ? (
+      {!expanded ? (
+        <div className="px-5 py-4 text-sm text-slate-400">
+          Direct lenders table is collapsed. Use Expand or Expand all to show it.
+        </div>
+      ) : rows.length === 0 ? (
         <EmptyState message="No direct lenders match the current address filter." />
       ) : (
         <div className="max-h-[38rem] overflow-auto">
           <table className="min-w-full divide-y divide-white/10 text-sm">
             <thead className="sticky top-0 bg-slate-950 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
               <tr>
-                <th className="px-5 py-3 font-medium">Address</th>
-                <th className="px-5 py-3 font-medium">Type</th>
-                <th className="px-5 py-3 text-right font-medium">Shares</th>
-                <th className="px-5 py-3 text-right font-medium">Assets</th>
+                <th className="px-5 py-3 font-medium">
+                  <SortHeader label="Address" sortKey="address" sortState={sortState} onClick={onSort} />
+                </th>
+                <th className="px-5 py-3 font-medium">
+                  <SortHeader label="Type" sortKey="type" sortState={sortState} onClick={onSort} />
+                </th>
+                <th className="px-5 py-3 text-right font-medium">
+                  <SortHeader align="right" label="Shares" sortKey="shares" sortState={sortState} onClick={onSort} />
+                </th>
+                <th className="px-5 py-3 text-right font-medium">
+                  <SortHeader align="right" label="Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
+                </th>
                 <th className="px-5 py-3 text-right font-medium">Reward</th>
               </tr>
             </thead>
@@ -155,9 +204,21 @@ function HolderTable({
                     <AddressLink address={row.address} chain={chain} />
                   </td>
                   <td className="px-5 py-4">
-                    <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">
-                      {row.addressType}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">
+                        {row.addressType}
+                      </span>
+                      {row.isVault ? (
+                        <button
+                          className="rounded-full border border-emerald-300/30 px-2 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10"
+                          title="Show this vault depositors table"
+                          type="button"
+                          onClick={() => onJumpToVault(row.address)}
+                        >
+                          ↴
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-5 py-4 text-right tabular-nums">{formatRawInteger(row.totalShares)}</td>
                   <td className="px-5 py-4 text-right tabular-nums">
@@ -183,11 +244,18 @@ function HolderTable({
   );
 }
 
-function sortDepositors(rows: VaultDepositor[], sortKey: SortKey, direction: SortDirection): VaultDepositor[] {
+function sortDepositors(rows: VaultDepositor[], sortState: TableSortState): VaultDepositor[] {
   return [...rows].sort((a, b) => {
-    const left = sortKey === "shares" ? a.vaultShares : a.attributedSiloAssets;
-    const right = sortKey === "shares" ? b.vaultShares : b.attributedSiloAssets;
-    return direction === "asc" ? compareBigIntAsc(left, right) : compareBigIntDesc(left, right);
+    if (sortState.key === "address") {
+      return compareStrings(a.address, b.address, sortState.direction);
+    }
+    if (sortState.key === "type") {
+      return compareStrings(a.addressType, b.addressType, sortState.direction);
+    }
+    if (sortState.key === "shares") {
+      return compareValues(a.vaultShares, b.vaultShares, sortState.direction);
+    }
+    return compareValues(a.attributedSiloAssets, b.attributedSiloAssets, sortState.direction);
   });
 }
 
@@ -196,23 +264,23 @@ function DepositorTable({
   rows,
   silo,
   vaultAddress,
-  sortKey,
-  sortDirection,
+  sortState,
   addressFilter,
   rewardPlan,
+  onSort,
 }: {
   chain: string;
   rows: VaultDepositor[];
   silo: SiloSnapshot;
   vaultAddress: string;
-  sortKey: SortKey;
-  sortDirection: SortDirection;
+  sortState: TableSortState;
   addressFilter: string;
   rewardPlan: RewardPlan | null;
+  onSort: (key: TableSortKey) => void;
 }) {
   const needle = addressFilter.trim().toLowerCase();
   const visibleRows = needle ? rows.filter((row) => row.address.toLowerCase().includes(needle)) : rows;
-  const filteredRows = sortDepositors(visibleRows, sortKey, sortDirection);
+  const filteredRows = sortDepositors(visibleRows, sortState);
 
   if (filteredRows.length === 0) {
     return <EmptyState message="No vault depositors match the current address filter." />;
@@ -224,10 +292,30 @@ function DepositorTable({
         <table className="min-w-full divide-y divide-white/10 text-sm">
           <thead className="bg-white/[0.03] text-left text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
-              <th className="px-5 py-3 font-medium">Address</th>
-              <th className="px-5 py-3 font-medium">Type</th>
-              <th className="px-5 py-3 text-right font-medium">Vault shares</th>
-              <th className="px-5 py-3 text-right font-medium">Attributed assets</th>
+              <th className="px-5 py-3 font-medium">
+                <SortHeader label="Address" sortKey="address" sortState={sortState} onClick={onSort} />
+              </th>
+              <th className="px-5 py-3 font-medium">
+                <SortHeader label="Type" sortKey="type" sortState={sortState} onClick={onSort} />
+              </th>
+              <th className="px-5 py-3 text-right font-medium">
+                <SortHeader
+                  align="right"
+                  label="Vault shares"
+                  sortKey="shares"
+                  sortState={sortState}
+                  onClick={onSort}
+                />
+              </th>
+              <th className="px-5 py-3 text-right font-medium">
+                <SortHeader
+                  align="right"
+                  label="Attributed assets"
+                  sortKey="assets"
+                  sortState={sortState}
+                  onClick={onSort}
+                />
+              </th>
               <th className="px-5 py-3 text-right font-medium">Reward</th>
             </tr>
           </thead>
@@ -275,6 +363,10 @@ function warningLabel(vault: VaultSnapshot): string {
     return "Vault not indexed";
   }
   return `Vault status: ${vault.status}`;
+}
+
+function vaultElementId(address: string): string {
+  return `vault-${address.toLowerCase()}`;
 }
 
 function addCsvReward(csvRewards: Map<string, bigint>, address: string, amount: bigint) {
@@ -338,8 +430,6 @@ function VaultCard({
   silo,
   expanded,
   onToggle,
-  sortKey,
-  sortDirection,
   addressFilter,
   rewardPlan,
 }: {
@@ -348,17 +438,17 @@ function VaultCard({
   silo: SiloSnapshot;
   expanded: boolean;
   onToggle: () => void;
-  sortKey: SortKey;
-  sortDirection: SortDirection;
   addressFilter: string;
   rewardPlan: RewardPlan | null;
 }) {
+  const [depositorSort, setDepositorSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const hasWarning = isVaultWarning(vault);
   const unavailableReward =
     hasWarning && rewardPlan && silo.totalAssets > ZERO ? (rewardPlan.rewardRaw * vault.vaultSiloAssets) / silo.totalAssets : ZERO;
 
   return (
     <div
+      id={vaultElementId(vault.address)}
       className={`rounded-3xl border p-5 ${
         hasWarning ? "border-amber-300/30 bg-amber-300/[0.08]" : "border-emerald-300/20 bg-emerald-300/[0.06]"
       }`}
@@ -408,9 +498,9 @@ function VaultCard({
             rewardPlan={rewardPlan}
             rows={vault.depositors}
             silo={silo}
-            sortDirection={sortDirection}
-            sortKey={sortKey}
+            sortState={depositorSort}
             vaultAddress={vault.address}
+            onSort={(key) => setDepositorSort((current) => nextSortState(current, key))}
           />
         </div>
       ) : null}
@@ -427,8 +517,8 @@ export default function App() {
   const [selectedChainName, setSelectedChainName] = useState(initialChain.chain);
   const [selectedSiloAddress, setSelectedSiloAddress] = useState(initialChain.silos[0]?.address ?? "");
   const [addressFilter, setAddressFilter] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("assets");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
+  const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>({});
   const [rewardInput, setRewardInput] = useState("");
 
@@ -441,7 +531,7 @@ export default function App() {
       ? selectedSilo.directLenders.filter((lender) => lender.address.toLowerCase().includes(lenderNeedle))
       : selectedSilo.directLenders
     : [];
-  const visibleLenders = selectedSilo ? sortLenders(filteredLenders, sortKey, sortDirection) : [];
+  const visibleLenders = selectedSilo ? sortDirectLenders(filteredLenders, directSort) : [];
 
   const vaultWarnings = selectedSilo?.vaults.filter(isVaultWarning).length ?? 0;
   const rewardRaw = selectedSilo ? parseUnits(rewardInput, selectedSilo.inputToken.decimals) : null;
@@ -451,17 +541,32 @@ export default function App() {
   function selectChain(chain: ChainSnapshot) {
     setSelectedChainName(chain.chain);
     setSelectedSiloAddress(chain.silos[0]?.address ?? "");
+    setDirectExpanded(true);
     setExpandedVaults({});
     setRewardInput("");
   }
 
-  function handleSort(nextKey: SortKey) {
-    if (sortKey === nextKey) {
-      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+  function expandAll() {
+    if (!selectedSilo) {
       return;
     }
-    setSortKey(nextKey);
-    setSortDirection("desc");
+    setDirectExpanded(true);
+    setExpandedVaults(Object.fromEntries(selectedSilo.vaults.map((vault) => [vault.address, true])));
+  }
+
+  function collapseAll() {
+    if (!selectedSilo) {
+      return;
+    }
+    setDirectExpanded(false);
+    setExpandedVaults(Object.fromEntries(selectedSilo.vaults.map((vault) => [vault.address, false])));
+  }
+
+  function jumpToVault(vaultAddress: string) {
+    setExpandedVaults((current) => ({ ...current, [vaultAddress]: true }));
+    window.requestAnimationFrame(() => {
+      document.getElementById(vaultElementId(vaultAddress))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   return (
@@ -523,6 +628,7 @@ export default function App() {
                         type="button"
                         onClick={() => {
                           setSelectedSiloAddress(silo.address);
+                          setDirectExpanded(true);
                           setExpandedVaults({});
                           setRewardInput("");
                         }}
@@ -574,6 +680,7 @@ export default function App() {
                         const nextValue = event.target.value;
                         setRewardInput(nextValue);
                         if (nextValue.trim()) {
+                          setDirectExpanded(true);
                           setExpandedVaults(Object.fromEntries(selectedSilo.vaults.map((vault) => [vault.address, true])));
                         }
                       }}
@@ -655,27 +762,47 @@ export default function App() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-              <label className="text-xs uppercase tracking-[0.22em] text-slate-500" htmlFor="filter">
-                Address filter
-              </label>
-              <input
-                id="filter"
-                className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 font-mono text-sm text-slate-300 outline-none placeholder:text-slate-600"
-                placeholder="Search by address substring"
-                value={addressFilter}
-                onChange={(event) => setAddressFilter(event.target.value)}
-              />
+            <div className="grid gap-4 rounded-3xl border border-white/10 bg-white/[0.04] p-5 lg:grid-cols-[minmax(0,2fr)_auto] lg:items-end">
+              <div className="min-w-0">
+                <label className="text-xs uppercase tracking-[0.22em] text-slate-500" htmlFor="filter">
+                  Address filter
+                </label>
+                <input
+                  id="filter"
+                  className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 font-mono text-sm text-slate-300 outline-none placeholder:text-slate-600"
+                  placeholder="Search by address substring"
+                  value={addressFilter}
+                  onChange={(event) => setAddressFilter(event.target.value)}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2 lg:justify-end">
+                <button
+                  className="rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200"
+                  type="button"
+                  onClick={expandAll}
+                >
+                  Expand all
+                </button>
+                <button
+                  className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
+                  type="button"
+                  onClick={collapseAll}
+                >
+                  Collapse all
+                </button>
+              </div>
             </div>
 
             <HolderTable
               chain={selectedChain.chain}
+              expanded={directExpanded}
               rows={visibleLenders}
               silo={selectedSilo}
-              sortDirection={sortDirection}
-              sortKey={sortKey}
               rewardPlan={rewardPlan}
-              onSort={handleSort}
+              sortState={directSort}
+              onJumpToVault={jumpToVault}
+              onSort={(key) => setDirectSort((current) => nextSortState(current, key))}
+              onToggle={() => setDirectExpanded((current) => !current)}
             />
 
             <div className="space-y-4">
@@ -696,8 +823,6 @@ export default function App() {
                     chain={selectedChain.chain}
                     expanded={expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT}
                     silo={selectedSilo}
-                    sortDirection={sortDirection}
-                    sortKey={sortKey}
                     rewardPlan={rewardPlan}
                     vault={vault}
                     onToggle={() =>
