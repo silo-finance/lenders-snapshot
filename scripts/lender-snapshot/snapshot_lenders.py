@@ -102,6 +102,11 @@ SEL_PREVIEW_REDEEM_SILO = _sel("previewRedeem(uint256,uint8)")
 SEL_CONFIG = _sel("config(address)")
 SEL_SILO_CONFIG = _sel("config()")
 SEL_SILO_ID = _sel("SILO_ID()")
+SEL_SAFE_VERSION = _sel("VERSION()")
+SEL_SAFE_CHAIN_ID = _sel("getChainId()")
+SEL_SAFE_OWNERS = _sel("getOwners()")
+SEL_SAFE_THRESHOLD = _sel("getThreshold()")
+SEL_SAFE_NONCE = _sel("nonce()")
 
 
 # --------------------------------------------------------------------------------------
@@ -319,6 +324,26 @@ def call_incentives_module() -> bytes:
     return SEL_INCENTIVES_MODULE
 
 
+def call_safe_version() -> bytes:
+    return SEL_SAFE_VERSION
+
+
+def call_safe_chain_id() -> bytes:
+    return SEL_SAFE_CHAIN_ID
+
+
+def call_safe_owners() -> bytes:
+    return SEL_SAFE_OWNERS
+
+
+def call_safe_threshold() -> bytes:
+    return SEL_SAFE_THRESHOLD
+
+
+def call_safe_nonce() -> bytes:
+    return SEL_SAFE_NONCE
+
+
 def call_preview_redeem_erc4626(shares: int) -> bytes:
     return SEL_PREVIEW_REDEEM_ERC4626 + abi_encode(["uint256"], [shares])
 
@@ -347,6 +372,10 @@ def dec_address(data: bytes) -> str:
     return norm(abi_decode(["address"], data)[0])
 
 
+def dec_address_array(data: bytes) -> list[str]:
+    return [norm(addr) for addr in abi_decode(["address[]"], data)[0]]
+
+
 def dec_config(data: bytes) -> tuple[int, bool, int]:
     cap, enabled, removable_at = abi_decode(["uint184", "bool", "uint64"], data)
     return int(cap), bool(enabled), int(removable_at)
@@ -358,6 +387,32 @@ def dec_string(data: bytes) -> str:
     except Exception:
         raw = abi_decode(["bytes32"], data)[0]
         return bytes(raw).split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+
+
+def is_gnosis_safe_probe(
+    version_ok: bool,
+    version_data: bytes,
+    chain_id_ok: bool,
+    chain_id_data: bytes,
+    owners_ok: bool,
+    owners_data: bytes,
+    threshold_ok: bool,
+    threshold_data: bytes,
+    nonce_ok: bool,
+    nonce_data: bytes,
+) -> bool:
+    """Return true when a contract satisfies the core Gnosis Safe read interface."""
+    if not (version_ok and chain_id_ok and owners_ok and threshold_ok and nonce_ok):
+        return False
+    try:
+        version = dec_string(version_data).strip()
+        chain_id = dec_uint(chain_id_data)
+        owners = dec_address_array(owners_data)
+        threshold = dec_uint(threshold_data)
+        dec_uint(nonce_data)
+    except Exception:
+        return False
+    return bool(version) and chain_id > 0 and len(owners) > 0 and threshold > 0
 
 
 # --------------------------------------------------------------------------------------
@@ -469,8 +524,8 @@ def classify_addresses(
     Classify each address at BLOCK.
 
     Returns (address_type, vault_incentives_module) where address_type is one of
-    eoa | silo_vault | erc4626_unresolved | contract_other, and the second map holds
-    the non-zero INCENTIVES_MODULE() address for silo_vault entries.
+    eoa | silo_vault | gnosis_safe | erc4626_unresolved | contract_other, and the
+    second map holds the non-zero INCENTIVES_MODULE() address for silo_vault entries.
     """
     types: dict[str, str] = {}
     incentives: dict[str, str] = {}
@@ -485,16 +540,27 @@ def classify_addresses(
     if not contracts:
         return types, incentives
 
-    # One multicall: INCENTIVES_MODULE() and previewRedeem(uint256) probe per contract.
+    # One multicall: SiloVault, Gnosis Safe, and ERC4626 probes per contract.
     calls: list[tuple[str, bytes]] = []
     for addr in contracts:
         calls.append((addr, call_incentives_module()))
         calls.append((addr, call_preview_redeem_erc4626(0)))
+        calls.append((addr, call_safe_version()))
+        calls.append((addr, call_safe_chain_id()))
+        calls.append((addr, call_safe_owners()))
+        calls.append((addr, call_safe_threshold()))
+        calls.append((addr, call_safe_nonce()))
     res = mc.aggregate(calls)
 
     for idx, addr in enumerate(contracts):
-        inc_ok, inc_data = res[2 * idx]
-        pr_ok, _pr_data = res[2 * idx + 1]
+        base = 7 * idx
+        inc_ok, inc_data = res[base]
+        pr_ok, _pr_data = res[base + 1]
+        version_ok, version_data = res[base + 2]
+        chain_id_ok, chain_id_data = res[base + 3]
+        owners_ok, owners_data = res[base + 4]
+        threshold_ok, threshold_data = res[base + 5]
+        nonce_ok, nonce_data = res[base + 6]
         inc_addr = ""
         if inc_ok and len(inc_data) >= 32:
             try:
@@ -504,6 +570,19 @@ def classify_addresses(
         if inc_addr and int(inc_addr, 16) != 0:
             types[addr] = "silo_vault"
             incentives[addr] = inc_addr
+        elif is_gnosis_safe_probe(
+            version_ok,
+            version_data,
+            chain_id_ok,
+            chain_id_data,
+            owners_ok,
+            owners_data,
+            threshold_ok,
+            threshold_data,
+            nonce_ok,
+            nonce_data,
+        ):
+            types[addr] = "gnosis_safe"
         elif pr_ok:
             types[addr] = "erc4626_unresolved"
         else:
