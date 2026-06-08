@@ -32,6 +32,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - name: Switch Pages to GitHub Actions source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method PUT "repos/${{ github.repository }}/pages" \
+            -H "Accept: application/vnd.github+json" \
+            -f build_type=workflow
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
