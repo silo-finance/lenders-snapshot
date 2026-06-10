@@ -467,7 +467,14 @@ function PendingAssetsBreakdown({
   decimals: number;
   symbol: string;
 }) {
-  let running = baseAssets;
+  const withdrawalRows = withdrawals.reduce<
+    Array<{ event: WithdrawalEntry; next: bigint }>
+  >((acc, event) => {
+    const previous = acc.length > 0 ? acc[acc.length - 1].next : baseAssets;
+    const next = previous > event.assets ? previous - event.assets : ZERO;
+    acc.push({ event, next });
+    return acc;
+  }, []);
 
   return (
     <div className="rounded-xl border border-white/10 bg-slate-950/80 p-4 font-mono text-xs text-slate-300">
@@ -483,10 +490,9 @@ function PendingAssetsBreakdown({
         </div>
       ) : (
         <div className="mt-2 space-y-2">
-          {withdrawals.map((event, index) => {
-            const next = running > event.assets ? running - event.assets : ZERO;
+          {withdrawalRows.map(({ event, next }, index) => {
             const txUrl = explorerTxUrl(chain, event.txHash);
-            const row = (
+            return (
               <div key={`${event.txHash}-${event.logIndex}-${index}`} className="space-y-1">
                 <div className="flex justify-between gap-3">
                   <span className="text-slate-400">
@@ -513,8 +519,6 @@ function PendingAssetsBreakdown({
                 </div>
               </div>
             );
-            running = next;
-            return row;
           })}
         </div>
       )}
