@@ -817,6 +817,12 @@ def enrich_snapshot_with_withdrawals(
     for entry in direct_lenders.values():
         if not isinstance(entry, dict):
             continue
+        if entry.get("address_type") == "silo_vault":
+            # We do not distribute directly to vault contracts.
+            entry.pop("withdrawals", None)
+            entry.pop("total_withdrawals", None)
+            entry.pop("pending_assets", None)
+            continue
         base_assets = int(entry.get("assets_collateral", 0))
         entry["withdrawals"] = []
         entry["total_withdrawals"] = "0"
@@ -863,6 +869,8 @@ def enrich_snapshot_with_withdrawals(
             # This is a vault rebalance at silo level, not end-user withdrawal.
             skipped_rebalances += 1
             continue
+        if entry.get("address_type") == "silo_vault":
+            continue
         matched_direct += 1
         withdrawals = entry.get("withdrawals")
         if not isinstance(withdrawals, list):
@@ -883,6 +891,8 @@ def enrich_snapshot_with_withdrawals(
 
     for entry in direct_lenders.values():
         if not isinstance(entry, dict):
+            continue
+        if entry.get("address_type") == "silo_vault":
             continue
         base_assets = int(entry.get("assets_collateral", 0))
         total_withdrawals = int(entry.get("total_withdrawals", 0))

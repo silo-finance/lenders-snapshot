@@ -275,10 +275,7 @@
             "address_type": "silo_vault",
             "collateral_shares": "187",
             "assets_collateral": "0",
-            "total_assets": "0",
-            "total_withdrawals": "0",
-            "pending_assets": "0",
-            "withdrawals": []
+            "total_assets": "0"
           },
           "0x30ef7087862f3c99242efc9633394eae629d6e9d": {
             "address_type": "eoa",
@@ -896,10 +893,7 @@
             "address_type": "silo_vault",
             "collateral_shares": "4894500705",
             "assets_collateral": "5247365",
-            "total_assets": "5247365",
-            "total_withdrawals": "0",
-            "pending_assets": "5247365",
-            "withdrawals": []
+            "total_assets": "5247365"
           },
           "0xacc0fc3df0529717f50fa560b462b1ec1d13a276": {
             "address_type": "eoa",
@@ -1103,10 +1097,7 @@
             "address_type": "silo_vault",
             "collateral_shares": "72672166875967",
             "assets_collateral": "77911405011",
-            "total_assets": "77911405011",
-            "total_withdrawals": "0",
-            "pending_assets": "77911405011",
-            "withdrawals": []
+            "total_assets": "77911405011"
           },
           "0xcd2ae93e311ad463ca1a6bfae080f6718776268e": {
             "address_type": "eoa",
@@ -1310,10 +1301,7 @@
             "address_type": "silo_vault",
             "collateral_shares": "1928",
             "assets_collateral": "2",
-            "total_assets": "2",
-            "total_withdrawals": "0",
-            "pending_assets": "2",
-            "withdrawals": []
+            "total_assets": "2"
           },
           "0xf681a2f3a9a773b4fab46d6725f43b1762674698": {
             "address_type": "eoa",
@@ -1328,28 +1316,19 @@
             "address_type": "silo_vault",
             "collateral_shares": "597",
             "assets_collateral": "0",
-            "total_assets": "0",
-            "total_withdrawals": "0",
-            "pending_assets": "0",
-            "withdrawals": []
+            "total_assets": "0"
           },
           "0xf6f87073cf8929c206a77b0694619dc776f89885": {
             "address_type": "silo_vault",
             "collateral_shares": "378",
             "assets_collateral": "0",
-            "total_assets": "0",
-            "total_withdrawals": "0",
-            "pending_assets": "0",
-            "withdrawals": []
+            "total_assets": "0"
           },
           "0xf75ae954d30217b4ee70dbfb33f04162aa3cf260": {
             "address_type": "silo_vault",
             "collateral_shares": "760",
             "assets_collateral": "0",
-            "total_assets": "0",
-            "total_withdrawals": "0",
-            "pending_assets": "0",
-            "withdrawals": []
+            "total_assets": "0"
           },
           "0xf903672ba62039591812141eecb4cfd9416cfc83": {
             "address_type": "eoa",
@@ -4965,10 +4944,7 @@
             "address_type": "silo_vault",
             "collateral_shares": "7400693926203",
             "assets_collateral": "7852595352",
-            "total_assets": "7852595352",
-            "withdrawals": [],
-            "total_withdrawals": "0",
-            "pending_assets": "7852595352"
+            "total_assets": "7852595352"
           },
           "0xceb0129e97713db7c5a76be199fa0bdb880dd185": {
             "address_type": "erc4626_unresolved",
@@ -5082,10 +5058,7 @@
             "address_type": "silo_vault",
             "collateral_shares": "11388581403778",
             "assets_collateral": "12083991351",
-            "total_assets": "12083991351",
-            "withdrawals": [],
-            "total_withdrawals": "0",
-            "pending_assets": "12083991351"
+            "total_assets": "12083991351"
           },
           "0xf7bba5d8c5595aaa4eb6ccea8e3509f4eefb31be": {
             "address_type": "eoa",

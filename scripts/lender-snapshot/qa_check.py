@@ -101,6 +101,10 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
     for lender_addr, entry in direct.items():
         if not isinstance(entry, dict):
             continue
+        if entry.get("address_type") == "silo_vault":
+            # Direct vault rows are not distribution recipients; withdrawals/pending
+            # are tracked at depositor level under vaults[*].depositors.
+            continue
         base_assets = to_int(entry.get("assets_collateral", entry.get("total_assets", 0)))
         total_withdrawals = to_int(entry.get("total_withdrawals", 0))
         pending_assets = to_int(entry.get("pending_assets", base_assets))
