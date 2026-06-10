@@ -6,6 +6,10 @@
 # up without rebuilding the image. Only requirements.txt is needed at build time.
 FROM python:3.12-slim
 
+# Stream logs immediately (docker run without a TTY would otherwise block-buffer
+# Python stdout, hiding progress output until the process exits).
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
