@@ -34,8 +34,6 @@ type RawWithdrawalEntry = {
   log_index?: number | string;
   assets?: RawAmount;
   shares?: RawAmount;
-  attributed_assets?: RawAmount;
-  deducted_assets?: RawAmount;
 };
 
 type RawVault = {
@@ -101,8 +99,6 @@ export type WithdrawalEntry = {
   logIndex: number;
   assets: bigint;
   shares: bigint;
-  attributedAssets: bigint;
-  deductedAssets: bigint;
 };
 
 export type VaultSnapshot = {
@@ -192,21 +188,12 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       .map((entry) => {
         const assets = toBigInt(entry.assets);
         const shares = toBigInt(entry.shares);
-        const attributedAssets = toBigInt(entry.attributed_assets);
-        const deductedAssets =
-          entry.deducted_assets !== undefined && entry.deducted_assets !== null && entry.deducted_assets !== ""
-            ? toBigInt(entry.deducted_assets)
-            : entry.attributed_assets !== undefined && entry.attributed_assets !== null && entry.attributed_assets !== ""
-              ? attributedAssets
-              : assets;
         return {
           blockNumber: toNumber(entry.block_number, 0),
           txHash: (entry.tx_hash ?? "").toLowerCase(),
           logIndex: toNumber(entry.log_index, 0),
           assets,
           shares,
-          attributedAssets,
-          deductedAssets,
         };
       })
       .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex || a.txHash.localeCompare(b.txHash));

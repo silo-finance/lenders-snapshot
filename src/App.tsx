@@ -484,7 +484,7 @@ function PendingAssetsBreakdown({
       ) : (
         <div className="mt-2 space-y-2">
           {withdrawals.map((event, index) => {
-            const next = running > event.deductedAssets ? running - event.deductedAssets : ZERO;
+            const next = running > event.assets ? running - event.assets : ZERO;
             const txUrl = explorerTxUrl(chain, event.txHash);
             const row = (
               <div key={`${event.txHash}-${event.logIndex}-${index}`} className="space-y-1">
@@ -505,7 +505,7 @@ function PendingAssetsBreakdown({
                     )}
                     )
                   </span>
-                  <span>-{formatUnitsFixed(event.deductedAssets, decimals)}</span>
+                  <span>-{formatUnitsFixed(event.assets, decimals)}</span>
                 </div>
                 <div className="flex justify-between gap-3 text-[11px] text-slate-500">
                   <span>running</span>
