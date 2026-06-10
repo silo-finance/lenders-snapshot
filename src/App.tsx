@@ -89,8 +89,8 @@ function sumDirectLenderTotals(lenders: DirectLender[]): AggregateTotals {
     (acc, lender) => ({
       shares: acc.shares + lender.totalShares,
       assets: acc.assets + lender.totalAssets,
-      withdrawals: acc.withdrawals + lender.totalWithdrawals,
-      pending: acc.pending + lender.pendingAssets,
+      withdrawals: acc.withdrawals + (lender.isVault ? ZERO : lender.totalWithdrawals),
+      pending: acc.pending + (lender.isVault ? ZERO : lender.pendingAssets),
     }),
     { shares: ZERO, assets: ZERO, withdrawals: ZERO, pending: ZERO },
   );
@@ -623,7 +623,7 @@ function HolderTable({
             <tbody className="divide-y divide-white/10 text-slate-200">
               {rows.map((row) => {
                 const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-                const hasWithdrawals = row.withdrawals.length > 0;
+                const hasWithdrawals = !row.isVault && row.withdrawals.length > 0;
                 return (
                   <Fragment key={row.address}>
                     <tr className="hover:bg-white/[0.03]">
@@ -651,12 +651,22 @@ function HolderTable({
                         {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                       </td>
                       <td className="px-5 py-4 text-right font-mono tabular-nums">
-                        {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                        {row.isVault ? (
+                          <span className="text-slate-500">N/A</span>
+                        ) : (
+                          <>
+                            {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                          </>
+                        )}
                       </td>
                       <td className="px-5 py-4 text-right font-mono tabular-nums">
-                        <span>
-                          {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                        </span>
+                        {row.isVault ? (
+                          <span className="text-slate-500">N/A</span>
+                        ) : (
+                          <span>
+                            {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                          </span>
+                        )}
                         {hasWithdrawals ? (
                           <button
                             className="ml-2 font-sans text-xs font-semibold text-emerald-200 transition hover:text-emerald-100"
@@ -688,7 +698,7 @@ function HolderTable({
                         </td>
                       ) : null}
                     </tr>
-                    {breakdownOpen && hasWithdrawals ? (
+                    {breakdownOpen && hasWithdrawals && !row.isVault ? (
                       <tr className="bg-slate-950/40">
                         <td className="px-5 pb-4" colSpan={showRewardColumn ? 6 : 5}>
                           <PendingAssetsBreakdown
@@ -1537,8 +1547,8 @@ function SiloDetailPanel({
                 row.address,
                 row.addressType,
                 formatUnitsPlain(row.totalAssets, silo.inputToken.decimals),
-                formatUnitsPlain(row.totalWithdrawals, silo.inputToken.decimals),
-                formatUnitsPlain(row.pendingAssets, silo.inputToken.decimals),
+                row.isVault ? "N/A" : formatUnitsPlain(row.totalWithdrawals, silo.inputToken.decimals),
+                row.isVault ? "N/A" : formatUnitsPlain(row.pendingAssets, silo.inputToken.decimals),
               ]),
             ]);
           }}
