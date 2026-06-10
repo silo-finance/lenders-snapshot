@@ -642,7 +642,7 @@ function HolderTable({
                 </th>
                 <th className="w-24 px-2 py-3 text-center font-medium">
                   <div className="flex flex-col items-center gap-1">
-                    <span>±</span>
+                    <span className="text-2xl leading-none normal-case tracking-normal">±</span>
                     <input
                       aria-label="Show only rows with plus minus details"
                       checked={showOnlyPlusMinus}
@@ -871,7 +871,7 @@ function DepositorTable({
               </th>
               <th className="w-24 px-2 py-3 text-center font-medium">
                 <div className="flex flex-col items-center gap-1">
-                  <span>±</span>
+                  <span className="text-2xl leading-none normal-case tracking-normal">±</span>
                   <input
                     aria-label="Show only rows with plus minus details"
                     checked={showOnlyPlusMinus}
