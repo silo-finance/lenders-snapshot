@@ -623,6 +623,7 @@ function HolderTable({
             <tbody className="divide-y divide-white/10 text-slate-200">
               {rows.map((row) => {
                 const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
+                const hasWithdrawals = row.withdrawals.length > 0;
                 return (
                   <Fragment key={row.address}>
                     <tr className="hover:bg-white/[0.03]">
@@ -656,15 +657,17 @@ function HolderTable({
                         <span>
                           {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                         </span>
-                        <button
-                          className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300/30 text-sm text-emerald-200 transition hover:bg-emerald-300/10"
-                          title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
-                          type="button"
-                          onClick={() => toggleBreakdown(row.address)}
-                        >
-                          <span aria-hidden="true">🧮</span>
-                          <span className="sr-only">Toggle pending assets calculator</span>
-                        </button>
+                        {hasWithdrawals ? (
+                          <button
+                            className="ml-2 font-sans text-xs font-semibold text-emerald-200 transition hover:text-emerald-100"
+                            title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
+                            type="button"
+                            onClick={() => toggleBreakdown(row.address)}
+                          >
+                            <span aria-hidden="true">±</span>
+                            <span className="sr-only">Toggle pending assets calculation details</span>
+                          </button>
+                        ) : null}
                       </td>
                       {showRewardColumn ? (
                         <td
@@ -685,7 +688,7 @@ function HolderTable({
                         </td>
                       ) : null}
                     </tr>
-                    {breakdownOpen ? (
+                    {breakdownOpen && hasWithdrawals ? (
                       <tr className="bg-slate-950/40">
                         <td className="px-5 pb-4" colSpan={showRewardColumn ? 6 : 5}>
                           <PendingAssetsBreakdown
@@ -814,6 +817,7 @@ function DepositorTable({
           <tbody className="divide-y divide-white/10 text-slate-200">
             {filteredRows.map((row) => {
               const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
+              const hasWithdrawals = row.withdrawals.length > 0;
               return (
                 <Fragment key={row.address}>
                   <tr className="hover:bg-white/[0.03]">
@@ -833,15 +837,17 @@ function DepositorTable({
                       <span>
                         {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                       </span>
-                      <button
-                        className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300/30 text-sm text-emerald-200 transition hover:bg-emerald-300/10"
-                        title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
-                        type="button"
-                        onClick={() => toggleBreakdown(row.address)}
-                      >
-                        <span aria-hidden="true">🧮</span>
-                        <span className="sr-only">Toggle pending assets calculator</span>
-                      </button>
+                      {hasWithdrawals ? (
+                        <button
+                          className="ml-2 font-sans text-xs font-semibold text-emerald-200 transition hover:text-emerald-100"
+                          title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
+                          type="button"
+                          onClick={() => toggleBreakdown(row.address)}
+                        >
+                          <span aria-hidden="true">±</span>
+                          <span className="sr-only">Toggle pending assets calculation details</span>
+                        </button>
+                      ) : null}
                     </td>
                     {showRewardColumn ? (
                       <td className="px-5 py-4 text-right font-mono tabular-nums">
@@ -856,7 +862,7 @@ function DepositorTable({
                       </td>
                     ) : null}
                   </tr>
-                  {breakdownOpen ? (
+                  {breakdownOpen && hasWithdrawals ? (
                     <tr className="bg-slate-950/40">
                       <td className="px-5 pb-4" colSpan={showRewardColumn ? 6 : 5}>
                         <PendingAssetsBreakdown
