@@ -588,14 +588,6 @@ function HolderTable({
         <div className="px-5 py-4 text-sm text-slate-400">
           Direct lenders table is collapsed. Use Expand or Expand all to show it.
         </div>
-      ) : tableRows.length === 0 ? (
-        <EmptyState
-          message={
-            showOnlyPlusMinus
-              ? "No direct lenders with plus/minus match the current filters."
-              : "No direct lenders match the current address filter."
-          }
-        />
       ) : (
         <div className="max-h-[38rem] overflow-auto">
           <table className="min-w-full divide-y divide-white/10 text-sm">
@@ -633,7 +625,13 @@ function HolderTable({
                 </th>
                 <th className="w-24 px-2 py-3 text-center font-medium">
                   <div className="flex flex-col items-center gap-1">
-                    <span>Plus minus</span>
+                    <span
+                      aria-label="Plus minus column"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-emerald-300/40 text-base font-semibold text-emerald-200"
+                      title="Plus minus"
+                    >
+                      ±
+                    </span>
                     <input
                       aria-label="Show only rows with plus minus details"
                       checked={showOnlyPlusMinus}
@@ -647,102 +645,112 @@ function HolderTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 text-slate-200">
-              {tableRows.map((row) => {
-                const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-                const hasWithdrawals = !row.isVault && row.totalWithdrawals > ZERO;
-                return (
-                  <Fragment key={row.address}>
-                    <tr className="hover:bg-white/[0.03]">
-                      <td className="px-5 py-4">
-                        <AddressLink address={row.address} chain={chain} />
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">
-                            {row.addressType}
-                          </span>
+              {tableRows.length === 0 ? (
+                <tr>
+                  <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={showRewardColumn ? 7 : 6}>
+                    {showOnlyPlusMinus
+                      ? "No direct lenders with plus/minus match the current filters."
+                      : "No direct lenders match the current address filter."}
+                  </td>
+                </tr>
+              ) : (
+                tableRows.map((row) => {
+                  const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
+                  const hasWithdrawals = !row.isVault && row.totalWithdrawals > ZERO;
+                  return (
+                    <Fragment key={row.address}>
+                      <tr className="hover:bg-white/[0.03]">
+                        <td className="px-5 py-4">
+                          <AddressLink address={row.address} chain={chain} />
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">
+                              {row.addressType}
+                            </span>
+                            {row.isVault ? (
+                              <button
+                                className="rounded-full border border-emerald-300/30 px-2 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10"
+                                title="Show this vault depositors table"
+                                type="button"
+                                onClick={() => onJumpToVault(row.address)}
+                              >
+                                ↴
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-right font-mono tabular-nums">
+                          {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                        </td>
+                        <td className="px-5 py-4 text-right font-mono tabular-nums">
                           {row.isVault ? (
+                            <span className="text-slate-500">N/A</span>
+                          ) : (
+                            <>
+                              {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                            </>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-right font-mono tabular-nums">
+                          {row.isVault ? (
+                            <span className="text-slate-500">N/A</span>
+                          ) : (
+                            <span>
+                              {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-4 text-center font-mono tabular-nums">
+                          {hasWithdrawals ? (
                             <button
-                              className="rounded-full border border-emerald-300/30 px-2 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10"
-                              title="Show this vault depositors table"
+                              className="font-sans text-lg font-semibold leading-none text-emerald-200 transition hover:text-emerald-100"
+                              title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
                               type="button"
-                              onClick={() => onJumpToVault(row.address)}
+                              onClick={() => toggleBreakdown(row.address)}
                             >
-                              ↴
+                              <span aria-hidden="true">±</span>
+                              <span className="sr-only">Toggle pending assets calculation details</span>
                             </button>
                           ) : null}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-right font-mono tabular-nums">
-                        {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                      </td>
-                      <td className="px-5 py-4 text-right font-mono tabular-nums">
-                        {row.isVault ? (
-                          <span className="text-slate-500">N/A</span>
-                        ) : (
-                          <>
-                            {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                          </>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 text-right font-mono tabular-nums">
-                        {row.isVault ? (
-                          <span className="text-slate-500">N/A</span>
-                        ) : (
-                          <span>
-                            {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-2 py-4 text-center font-mono tabular-nums">
-                        {hasWithdrawals ? (
-                          <button
-                            className="font-sans text-xs font-semibold text-emerald-200 transition hover:text-emerald-100"
-                            title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
-                            type="button"
-                            onClick={() => toggleBreakdown(row.address)}
+                        </td>
+                        {showRewardColumn ? (
+                          <td
+                            className={
+                              row.isVault
+                                ? "px-5 py-4 text-right font-mono tabular-nums text-slate-500"
+                                : "px-5 py-4 text-right font-mono tabular-nums"
+                            }
                           >
-                            <span aria-hidden="true">±</span>
-                            <span className="sr-only">Toggle pending assets calculation details</span>
-                          </button>
+                            {row.isVault
+                              ? "N/A"
+                              : formatRewardCell(
+                                  rewardPlan,
+                                  directLeafKey(silo.address, row.address),
+                                  silo.inputToken.decimals,
+                                  silo.inputToken.symbol,
+                                )}
+                          </td>
                         ) : null}
-                      </td>
-                      {showRewardColumn ? (
-                        <td
-                          className={
-                            row.isVault
-                              ? "px-5 py-4 text-right font-mono tabular-nums text-slate-500"
-                              : "px-5 py-4 text-right font-mono tabular-nums"
-                          }
-                        >
-                          {row.isVault
-                            ? "N/A"
-                            : formatRewardCell(
-                                rewardPlan,
-                                directLeafKey(silo.address, row.address),
-                                silo.inputToken.decimals,
-                                silo.inputToken.symbol,
-                              )}
-                        </td>
-                      ) : null}
-                    </tr>
-                    {breakdownOpen && hasWithdrawals && !row.isVault ? (
-                      <tr className="bg-slate-950/40">
-                        <td className="px-5 pb-4" colSpan={showRewardColumn ? 7 : 6}>
-                          <PendingAssetsBreakdown
-                            baseAssets={row.totalAssets}
-                            decimals={silo.inputToken.decimals}
-                            pendingAssets={row.pendingAssets}
-                            symbol={silo.inputToken.symbol}
-                            totalWithdrawals={row.totalWithdrawals}
-                            withdrawals={row.withdrawals}
-                          />
-                        </td>
                       </tr>
-                    ) : null}
-                  </Fragment>
-                );
-              })}
+                      {breakdownOpen && hasWithdrawals && !row.isVault ? (
+                        <tr className="bg-slate-950/40">
+                          <td className="px-5 pb-4" colSpan={showRewardColumn ? 7 : 6}>
+                            <PendingAssetsBreakdown
+                              baseAssets={row.totalAssets}
+                              decimals={silo.inputToken.decimals}
+                              pendingAssets={row.pendingAssets}
+                              symbol={silo.inputToken.symbol}
+                              totalWithdrawals={row.totalWithdrawals}
+                              withdrawals={row.withdrawals}
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -813,18 +821,6 @@ function DepositorTable({
     setExpandedBreakdowns((current) => ({ ...current, [address]: !current[address] }));
   }
 
-  if (filteredRows.length === 0) {
-    return (
-      <EmptyState
-        message={
-          showOnlyPlusMinus
-            ? "No vault depositors with plus/minus match the current filters."
-            : "No vault depositors match the current address filter."
-        }
-      />
-    );
-  }
-
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
       <div className="overflow-x-auto">
@@ -863,7 +859,13 @@ function DepositorTable({
               </th>
               <th className="w-24 px-2 py-3 text-center font-medium">
                 <div className="flex flex-col items-center gap-1">
-                  <span>Plus minus</span>
+                  <span
+                    aria-label="Plus minus column"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-emerald-300/40 text-base font-semibold text-emerald-200"
+                    title="Plus minus"
+                  >
+                    ±
+                  </span>
                   <input
                     aria-label="Show only rows with plus minus details"
                     checked={showOnlyPlusMinus}
@@ -877,72 +879,82 @@ function DepositorTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10 text-slate-200">
-            {filteredRows.map((row) => {
-              const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-              const hasWithdrawals = row.totalWithdrawals > ZERO;
-              return (
-                <Fragment key={row.address}>
-                  <tr className="hover:bg-white/[0.03]">
-                    <td className="px-5 py-4">
-                      <AddressLink address={row.address} chain={chain} />
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">{row.addressType}</span>
-                    </td>
-                    <td className="px-5 py-4 text-right font-mono tabular-nums">
-                      {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                    </td>
-                    <td className="px-5 py-4 text-right font-mono tabular-nums">
-                      {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                    </td>
-                    <td className="px-5 py-4 text-right font-mono tabular-nums">
-                      <span>
-                        {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                      </span>
-                    </td>
-                    <td className="px-2 py-4 text-center font-mono tabular-nums">
-                      {hasWithdrawals ? (
-                        <button
-                          className="font-sans text-xs font-semibold text-emerald-200 transition hover:text-emerald-100"
-                          title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
-                          type="button"
-                          onClick={() => toggleBreakdown(row.address)}
-                        >
-                          <span aria-hidden="true">±</span>
-                          <span className="sr-only">Toggle pending assets calculation details</span>
-                        </button>
-                      ) : null}
-                    </td>
-                    {showRewardColumn ? (
+            {filteredRows.length === 0 ? (
+              <tr>
+                <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={showRewardColumn ? 7 : 6}>
+                  {showOnlyPlusMinus
+                    ? "No vault depositors with plus/minus match the current filters."
+                    : "No vault depositors match the current address filter."}
+                </td>
+              </tr>
+            ) : (
+              filteredRows.map((row) => {
+                const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
+                const hasWithdrawals = row.totalWithdrawals > ZERO;
+                return (
+                  <Fragment key={row.address}>
+                    <tr className="hover:bg-white/[0.03]">
+                      <td className="px-5 py-4">
+                        <AddressLink address={row.address} chain={chain} />
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">{row.addressType}</span>
+                      </td>
                       <td className="px-5 py-4 text-right font-mono tabular-nums">
-                        {rewardPlan
-                          ? formatRewardCell(
-                              rewardPlan,
-                              vaultLeafKey(silo.address, vaultAddress, row.address),
-                              silo.inputToken.decimals,
-                              silo.inputToken.symbol,
-                            )
-                          : "--"}
+                        {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                       </td>
-                    ) : null}
-                  </tr>
-                  {breakdownOpen && hasWithdrawals ? (
-                    <tr className="bg-slate-950/40">
-                      <td className="px-5 pb-4" colSpan={showRewardColumn ? 7 : 6}>
-                        <PendingAssetsBreakdown
-                          baseAssets={row.attributedSiloAssets}
-                          decimals={silo.inputToken.decimals}
-                          pendingAssets={row.pendingAssets}
-                          symbol={silo.inputToken.symbol}
-                          totalWithdrawals={row.totalWithdrawals}
-                          withdrawals={row.withdrawals}
-                        />
+                      <td className="px-5 py-4 text-right font-mono tabular-nums">
+                        {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                       </td>
+                      <td className="px-5 py-4 text-right font-mono tabular-nums">
+                        <span>
+                          {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                        </span>
+                      </td>
+                      <td className="px-2 py-4 text-center font-mono tabular-nums">
+                        {hasWithdrawals ? (
+                          <button
+                            className="font-sans text-lg font-semibold leading-none text-emerald-200 transition hover:text-emerald-100"
+                            title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
+                            type="button"
+                            onClick={() => toggleBreakdown(row.address)}
+                          >
+                            <span aria-hidden="true">±</span>
+                            <span className="sr-only">Toggle pending assets calculation details</span>
+                          </button>
+                        ) : null}
+                      </td>
+                      {showRewardColumn ? (
+                        <td className="px-5 py-4 text-right font-mono tabular-nums">
+                          {rewardPlan
+                            ? formatRewardCell(
+                                rewardPlan,
+                                vaultLeafKey(silo.address, vaultAddress, row.address),
+                                silo.inputToken.decimals,
+                                silo.inputToken.symbol,
+                              )
+                            : "--"}
+                        </td>
+                      ) : null}
                     </tr>
-                  ) : null}
-                </Fragment>
-              );
-            })}
+                    {breakdownOpen && hasWithdrawals ? (
+                      <tr className="bg-slate-950/40">
+                        <td className="px-5 pb-4" colSpan={showRewardColumn ? 7 : 6}>
+                          <PendingAssetsBreakdown
+                            baseAssets={row.attributedSiloAssets}
+                            decimals={silo.inputToken.decimals}
+                            pendingAssets={row.pendingAssets}
+                            symbol={silo.inputToken.symbol}
+                            totalWithdrawals={row.totalWithdrawals}
+                            withdrawals={row.withdrawals}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
