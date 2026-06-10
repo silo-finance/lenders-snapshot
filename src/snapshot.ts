@@ -343,6 +343,15 @@ export function explorerAddressUrl(chain: string, address: string): string {
   return explorer ? `${explorer}${address}` : "#";
 }
 
+export function explorerTxUrl(chain: string, txHash: string): string {
+  const explorer = KNOWN_CHAINS[chain]?.explorer;
+  if (!explorer) {
+    return "#";
+  }
+  const txBase = explorer.includes("/address/") ? explorer.replace("/address/", "/tx/") : explorer;
+  return `${txBase}${txHash}`;
+}
+
 export function shortAddress(address: string): string {
   if (address.length <= 12) {
     return address;
