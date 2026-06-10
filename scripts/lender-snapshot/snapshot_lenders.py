@@ -74,7 +74,7 @@ MULTICALL_BATCH = 300
 
 GETCODE_BATCH = 200
 SUBGRAPH_PAGE = 1000
-WITHDRAW_LOG_BLOCK_CHUNK = 5_000
+WITHDRAW_LOG_BLOCK_CHUNK = 2_000
 
 # CollateralType enum (ISilo.sol): Collateral = 1
 COLLATERAL_TYPE_COLLATERAL = 1
@@ -709,19 +709,24 @@ def preview_redeem_collateral(shares: list[int], mc: Multicall) -> list[int]:
 
 
 def fetch_withdraw_events(
-    rpc: RpcClient, contract_address: str, from_block: int, to_block: int, label: str = ""
+    rpc: RpcClient,
+    contract_address: str,
+    from_block: int,
+    to_block: int,
+    label: str = "",
+    block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
 ) -> list[dict[str, Any]]:
     if to_block < from_block:
         return []
 
     tag = label or contract_address
     total_blocks = to_block - from_block + 1
-    progress_step = max(WITHDRAW_LOG_BLOCK_CHUNK, total_blocks // 20)
+    progress_step = max(block_chunk, total_blocks // 20)
     next_progress_at = from_block + progress_step
 
     events: list[dict[str, Any]] = []
     start = from_block
-    chunk = WITHDRAW_LOG_BLOCK_CHUNK
+    chunk = block_chunk
     print(f"[info]   [{tag}] scanning Withdraw logs in blocks {from_block}..{to_block} ({total_blocks} blocks) ...")
     while start <= to_block:
         end = min(start + chunk - 1, to_block)
@@ -779,14 +784,28 @@ def resolve_withdrawals_to_block(silo: dict[str, Any]) -> int | None:
         raw = os.environ.get("WITHDRAWALS_TO_BLOCK", "").strip()
     if raw in (None, ""):
         return None
+    if isinstance(raw, str) and raw.strip().lower() == "latest":
+        return None
     value = int(raw)
     if value < 0:
         raise ValueError("withdrawals_to_block must be non-negative")
     return value
 
 
+def resolve_withdrawals_block_chunk(silo: dict[str, Any]) -> int:
+    raw = silo.get("withdrawals_block_chunk")
+    if raw in (None, ""):
+        raw = os.environ.get("WITHDRAWALS_BLOCK_CHUNK", "").strip()
+    if raw in (None, ""):
+        return WITHDRAW_LOG_BLOCK_CHUNK
+    value = int(raw)
+    if value <= 0:
+        raise ValueError("withdrawals_block_chunk must be positive")
+    return value
+
+
 def enrich_snapshot_with_withdrawals(
-    silo_entry: dict[str, Any], rpc: RpcClient, from_block: int, to_block: int
+    silo_entry: dict[str, Any], rpc: RpcClient, from_block: int, to_block: int, block_chunk: int
 ) -> None:
     direct_lenders = silo_entry.get("direct_lenders")
     if not isinstance(direct_lenders, dict):
@@ -824,7 +843,14 @@ def enrich_snapshot_with_withdrawals(
     ]
     print(f"[info] withdrawals scan plan: 1 silo contract + {len(scannable_vaults)} vault contract(s)")
 
-    silo_events = fetch_withdraw_events(rpc, SILO_ADDRESS, from_block, to_block, label="silo")
+    silo_events = fetch_withdraw_events(
+        rpc,
+        SILO_ADDRESS,
+        from_block,
+        to_block,
+        label=f"silo {SILO_ADDRESS}",
+        block_chunk=block_chunk,
+    )
     vault_addresses = {addr for addr, entry in direct_lenders.items() if entry.get("address_type") == "silo_vault"}
     matched_direct = 0
     skipped_rebalances = 0
@@ -884,7 +910,14 @@ def enrich_snapshot_with_withdrawals(
 
         vault_index += 1
         vault_label = f"vault {vault_index}/{len(scannable_vaults)} {vault_addr}"
-        vault_events = fetch_withdraw_events(rpc, vault_addr, from_block, to_block, label=vault_label)
+        vault_events = fetch_withdraw_events(
+            rpc,
+            vault_addr,
+            from_block,
+            to_block,
+            label=vault_label,
+            block_chunk=block_chunk,
+        )
         matched_depositors = 0
         for event in vault_events:
             owner = event["owner"]
@@ -989,7 +1022,11 @@ def expand_vault(
     return entry
 
 
-def build_snapshot(rpc_url: str, withdrawals_to_block: int | None = None) -> dict[str, Any]:
+def build_snapshot(
+    rpc_url: str,
+    withdrawals_to_block: int | None = None,
+    withdrawals_block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
+) -> dict[str, Any]:
     rpc = RpcClient(rpc_url, BLOCK)
     mc = Multicall(rpc, MULTICALL3, MULTICALL_BATCH)
 
@@ -1041,12 +1078,17 @@ def build_snapshot(rpc_url: str, withdrawals_to_block: int | None = None) -> dic
     latest = rpc.eth_block_number()
     scan_to = latest if withdrawals_to_block is None else min(withdrawals_to_block, latest)
     scan_from = BLOCK + 1
+    target_label = "latest" if withdrawals_to_block is None else str(withdrawals_to_block)
+    print(
+        f"[info] withdrawals target for silo {SILO_ADDRESS}: requested={target_label}, "
+        f"resolved_to={scan_to}, chunk={withdrawals_block_chunk}"
+    )
     if scan_to >= scan_from:
         print(f"[info] fetching Withdraw events from blocks {scan_from}..{scan_to} ...")
-        enrich_snapshot_with_withdrawals(silo_entry, rpc, scan_from, scan_to)
+        enrich_snapshot_with_withdrawals(silo_entry, rpc, scan_from, scan_to, withdrawals_block_chunk)
     else:
         print(f"[info] skipping Withdraw scan: target block {scan_to} is before {scan_from}")
-        enrich_snapshot_with_withdrawals(silo_entry, rpc, scan_from, scan_from - 1)
+        enrich_snapshot_with_withdrawals(silo_entry, rpc, scan_from, scan_from - 1, withdrawals_block_chunk)
     silo_entry["withdrawals_scanned_to_block"] = scan_to
     return silo_entry
 
@@ -1104,7 +1146,12 @@ def main() -> int:
             )
             silo_started_at = time.monotonic()
             withdrawals_to_block = resolve_withdrawals_to_block(silo)
-            silo_entry = build_snapshot(rpc_url, withdrawals_to_block=withdrawals_to_block)
+            withdrawals_block_chunk = resolve_withdrawals_block_chunk(silo)
+            silo_entry = build_snapshot(
+                rpc_url,
+                withdrawals_to_block=withdrawals_to_block,
+                withdrawals_block_chunk=withdrawals_block_chunk,
+            )
             write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS)
             direct = len(silo_entry["direct_lenders"])
             vaults = len(silo_entry["vaults"])
