@@ -625,13 +625,7 @@ function HolderTable({
                 </th>
                 <th className="w-24 px-2 py-3 text-center font-medium">
                   <div className="flex flex-col items-center gap-1">
-                    <span
-                      aria-label="Plus minus column"
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-emerald-300/40 text-base font-semibold text-emerald-200"
-                      title="Plus minus"
-                    >
-                      ±
-                    </span>
+                    <span>Plus minus</span>
                     <input
                       aria-label="Show only rows with plus minus details"
                       checked={showOnlyPlusMinus}
@@ -859,13 +853,7 @@ function DepositorTable({
               </th>
               <th className="w-24 px-2 py-3 text-center font-medium">
                 <div className="flex flex-col items-center gap-1">
-                  <span
-                    aria-label="Plus minus column"
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-emerald-300/40 text-base font-semibold text-emerald-200"
-                    title="Plus minus"
-                  >
-                    ±
-                  </span>
+                  <span>Plus minus</span>
                   <input
                     aria-label="Show only rows with plus minus details"
                     checked={showOnlyPlusMinus}
