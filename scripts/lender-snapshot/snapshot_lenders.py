@@ -709,14 +709,20 @@ def preview_redeem_collateral(shares: list[int], mc: Multicall) -> list[int]:
 
 
 def fetch_withdraw_events(
-    rpc: RpcClient, contract_address: str, from_block: int, to_block: int
+    rpc: RpcClient, contract_address: str, from_block: int, to_block: int, label: str = ""
 ) -> list[dict[str, Any]]:
     if to_block < from_block:
         return []
 
+    tag = label or contract_address
+    total_blocks = to_block - from_block + 1
+    progress_step = max(WITHDRAW_LOG_BLOCK_CHUNK, total_blocks // 20)
+    next_progress_at = from_block + progress_step
+
     events: list[dict[str, Any]] = []
     start = from_block
     chunk = WITHDRAW_LOG_BLOCK_CHUNK
+    print(f"[info]   [{tag}] scanning Withdraw logs in blocks {from_block}..{to_block} ({total_blocks} blocks) ...")
     while start <= to_block:
         end = min(start + chunk - 1, to_block)
         try:
@@ -730,6 +736,15 @@ def fetch_withdraw_events(
                 f"blocks after error: {exc}"
             )
             continue
+
+        if end >= next_progress_at or end == to_block:
+            done_blocks = end - from_block + 1
+            pct = (done_blocks * 100) // total_blocks
+            print(
+                f"[info]   [{tag}] progress: block {end} ({done_blocks}/{total_blocks} = {pct}%), "
+                f"events so far: {len(events) + len(logs)}"
+            )
+            next_progress_at = end + progress_step
 
         for log in logs:
             topics = log.get("topics")
@@ -754,6 +769,7 @@ def fetch_withdraw_events(
         start = end + 1
 
     events.sort(key=lambda item: (item["block_number"], item["log_index"], item["tx_hash"]))
+    print(f"[info]   [{tag}] done: {len(events)} Withdraw event(s) found")
     return events
 
 
@@ -801,8 +817,17 @@ def enrich_snapshot_with_withdrawals(
             depositor["total_withdrawals"] = "0"
             depositor["pending_assets"] = str(base_assets)
 
-    silo_events = fetch_withdraw_events(rpc, SILO_ADDRESS, from_block, to_block)
+    scannable_vaults = [
+        vault_addr
+        for vault_addr, vault in vaults.items()
+        if isinstance(vault, dict) and vault.get("status") == "ok" and isinstance(vault.get("depositors"), dict)
+    ]
+    print(f"[info] withdrawals scan plan: 1 silo contract + {len(scannable_vaults)} vault contract(s)")
+
+    silo_events = fetch_withdraw_events(rpc, SILO_ADDRESS, from_block, to_block, label="silo")
     vault_addresses = {addr for addr, entry in direct_lenders.items() if entry.get("address_type") == "silo_vault"}
+    matched_direct = 0
+    skipped_rebalances = 0
     for event in silo_events:
         owner = event["owner"]
         entry = direct_lenders.get(owner)
@@ -810,7 +835,9 @@ def enrich_snapshot_with_withdrawals(
             continue
         if owner in vault_addresses:
             # This is a vault rebalance at silo level, not end-user withdrawal.
+            skipped_rebalances += 1
             continue
+        matched_direct += 1
         withdrawals = entry.get("withdrawals")
         if not isinstance(withdrawals, list):
             withdrawals = []
@@ -835,6 +862,12 @@ def enrich_snapshot_with_withdrawals(
         total_withdrawals = int(entry.get("total_withdrawals", 0))
         entry["pending_assets"] = str(max(0, base_assets - total_withdrawals))
 
+    print(
+        f"[info]   [silo] attributed {matched_direct} direct-lender withdrawal(s), "
+        f"skipped {skipped_rebalances} vault rebalance event(s)"
+    )
+
+    vault_index = 0
     for vault_addr, vault in vaults.items():
         if not isinstance(vault, dict):
             continue
@@ -849,12 +882,16 @@ def enrich_snapshot_with_withdrawals(
             print(f"[warn] vault {vault_addr} has zero vault_total_supply; skipping withdrawals attribution")
             continue
 
-        vault_events = fetch_withdraw_events(rpc, vault_addr, from_block, to_block)
+        vault_index += 1
+        vault_label = f"vault {vault_index}/{len(scannable_vaults)} {vault_addr}"
+        vault_events = fetch_withdraw_events(rpc, vault_addr, from_block, to_block, label=vault_label)
+        matched_depositors = 0
         for event in vault_events:
             owner = event["owner"]
             depositor = depositors.get(owner)
             if not isinstance(depositor, dict):
                 continue
+            matched_depositors += 1
             attributed_assets = (vault_silo_assets * event["shares"]) // vault_total_supply
             withdrawals = depositor.get("withdrawals")
             if not isinstance(withdrawals, list):
@@ -879,6 +916,8 @@ def enrich_snapshot_with_withdrawals(
             base_assets = int(depositor.get("attributed_silo_assets", 0))
             total_withdrawals = int(depositor.get("total_withdrawals", 0))
             depositor["pending_assets"] = str(max(0, base_assets - total_withdrawals))
+
+        print(f"[info]   [{vault_label}] attributed {matched_depositors} depositor withdrawal(s)")
 
 
 def expand_vault(
@@ -1042,8 +1081,14 @@ def write_output(silo_entry: dict[str, Any], chain: str, chain_id: int, silo_add
 
 
 def main() -> int:
+    import time
+
     load_secrets()
+    total_silos = sum(len(target.get("silos") or []) for target in TARGETS)
+    print(f"[info] configured targets: {total_silos} silo(s) across {len(TARGETS)} chain(s)")
     completed = 0
+    silo_index = 0
+    started_at = time.monotonic()
     for target in TARGETS:
         silos = target.get("silos") or []
         if not silos:
@@ -1051,16 +1096,29 @@ def main() -> int:
             continue
         rpc_url = resolve_rpc_url(str(target["chain"]))
         for silo in silos:
+            silo_index += 1
             configure_context(target, silo)
+            print(
+                f"[info] ===== silo {silo_index}/{total_silos}: chain={CHAIN} "
+                f"silo={SILO_ADDRESS} block={BLOCK} ====="
+            )
+            silo_started_at = time.monotonic()
             withdrawals_to_block = resolve_withdrawals_to_block(silo)
             silo_entry = build_snapshot(rpc_url, withdrawals_to_block=withdrawals_to_block)
             write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS)
             direct = len(silo_entry["direct_lenders"])
             vaults = len(silo_entry["vaults"])
-            print(f"[done] chain={CHAIN} silo={SILO_ADDRESS} direct_lenders={direct} vaults={vaults}")
+            elapsed = time.monotonic() - silo_started_at
+            print(
+                f"[done] silo {silo_index}/{total_silos} chain={CHAIN} silo={SILO_ADDRESS} "
+                f"direct_lenders={direct} vaults={vaults} elapsed={elapsed:.1f}s"
+            )
             completed += 1
     if completed == 0:
         print("[done] no silos configured")
+    else:
+        total_elapsed = time.monotonic() - started_at
+        print(f"[done] all {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
     return 0
 
 

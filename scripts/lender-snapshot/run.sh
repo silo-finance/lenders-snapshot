@@ -35,4 +35,4 @@ docker run --rm \
   -w /app \
   ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
   "$IMAGE" \
-  python "$SCRIPT" "$@"
+  python -u "$SCRIPT" "$@"
