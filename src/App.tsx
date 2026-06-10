@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import packageJson from "../package.json";
 import { buildSiloPath, explorerHomePath, parseSiloPathFromUrl } from "./routing";
 import {
@@ -7,6 +7,7 @@ import {
   type SiloSnapshot,
   type VaultDepositor,
   type VaultSnapshot,
+  type WithdrawalEntry,
   chains,
   compareBigIntAsc,
   compareBigIntDesc,
@@ -22,15 +23,17 @@ import {
 import { useWallet } from "./useWallet";
 
 type SortDirection = "asc" | "desc";
-type TableSortKey = "address" | "type" | "shares" | "assets";
+type TableSortKey = "address" | "type" | "assets" | "withdrawals" | "pending";
 type TableSortState = {
   key: TableSortKey;
   direction: SortDirection;
 };
 
-type ShareAssetTotals = {
+type AggregateTotals = {
   shares: bigint;
   assets: bigint;
+  withdrawals: bigint;
+  pending: bigint;
 };
 
 const DEFAULT_EXPANDED_LIMIT = 2;
@@ -41,7 +44,7 @@ type RewardPlan = {
   byLeafKey: Map<string, bigint>;
   csvRewards: Map<string, bigint | null>;
   excludedLeafKeys: Set<string>;
-  totalAssets: bigint;
+  totalPendingAssets: bigint;
   distributed: bigint;
   undistributed: bigint;
   nonAttributableAssets: bigint;
@@ -81,23 +84,27 @@ function downloadCsv(filename: string, rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
-function sumDirectLenderTotals(lenders: DirectLender[]): ShareAssetTotals {
+function sumDirectLenderTotals(lenders: DirectLender[]): AggregateTotals {
   return lenders.reduce(
     (acc, lender) => ({
       shares: acc.shares + lender.totalShares,
       assets: acc.assets + lender.totalAssets,
+      withdrawals: acc.withdrawals + lender.totalWithdrawals,
+      pending: acc.pending + lender.pendingAssets,
     }),
-    { shares: ZERO, assets: ZERO },
+    { shares: ZERO, assets: ZERO, withdrawals: ZERO, pending: ZERO },
   );
 }
 
-function sumDepositorTotals(depositors: VaultDepositor[]): ShareAssetTotals {
+function sumDepositorTotals(depositors: VaultDepositor[]): AggregateTotals {
   return depositors.reduce(
     (acc, depositor) => ({
       shares: acc.shares + depositor.vaultShares,
       assets: acc.assets + depositor.attributedSiloAssets,
+      withdrawals: acc.withdrawals + depositor.totalWithdrawals,
+      pending: acc.pending + depositor.pendingAssets,
     }),
-    { shares: ZERO, assets: ZERO },
+    { shares: ZERO, assets: ZERO, withdrawals: ZERO, pending: ZERO },
   );
 }
 
@@ -422,11 +429,86 @@ function sortDirectLenders(rows: DirectLender[], sortState: TableSortState): Dir
     if (sortState.key === "type") {
       return compareStrings(left.addressType, right.addressType, sortState.direction);
     }
-    if (sortState.key === "shares") {
-      return compareValues(left.totalShares, right.totalShares, sortState.direction);
+    if (sortState.key === "withdrawals") {
+      return compareValues(left.totalWithdrawals, right.totalWithdrawals, sortState.direction);
+    }
+    if (sortState.key === "pending") {
+      return compareValues(left.pendingAssets, right.pendingAssets, sortState.direction);
     }
     return compareValues(left.totalAssets, right.totalAssets, sortState.direction);
   });
+}
+
+function shortHash(hash: string): string {
+  if (!hash) {
+    return "n/a";
+  }
+  if (hash.length <= 16) {
+    return hash;
+  }
+  return `${hash.slice(0, 10)}...${hash.slice(-8)}`;
+}
+
+function PendingAssetsBreakdown({
+  baseAssets,
+  totalWithdrawals,
+  pendingAssets,
+  withdrawals,
+  decimals,
+  symbol,
+}: {
+  baseAssets: bigint;
+  totalWithdrawals: bigint;
+  pendingAssets: bigint;
+  withdrawals: WithdrawalEntry[];
+  decimals: number;
+  symbol: string;
+}) {
+  let running = baseAssets;
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-slate-950/80 p-4 font-mono text-xs text-slate-300">
+      <div className="flex justify-between gap-3">
+        <span className="text-slate-400">snapshot assets</span>
+        <span>{formatUnitsFixed(baseAssets, decimals)}</span>
+      </div>
+      {withdrawals.length === 0 ? (
+        <div className="mt-2 text-slate-500">No withdrawals after snapshot block.</div>
+      ) : (
+        <div className="mt-2 space-y-2">
+          {withdrawals.map((event, index) => {
+            const next = running > event.deductedAssets ? running - event.deductedAssets : ZERO;
+            const row = (
+              <div key={`${event.txHash}-${event.logIndex}-${index}`} className="space-y-1">
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-400">
+                    - withdrawal #{index + 1} (block {event.blockNumber}, tx {shortHash(event.txHash)})
+                  </span>
+                  <span>-{formatUnitsFixed(event.deductedAssets, decimals)}</span>
+                </div>
+                <div className="flex justify-between gap-3 text-[11px] text-slate-500">
+                  <span>running</span>
+                  <span>{formatUnitsFixed(next, decimals)}</span>
+                </div>
+              </div>
+            );
+            running = next;
+            return row;
+          })}
+        </div>
+      )}
+      <div className="mt-3 border-t border-dashed border-white/10 pt-3">
+        <div className="flex justify-between gap-3">
+          <span className="text-slate-400">total withdrawals</span>
+          <span>-{formatUnitsFixed(totalWithdrawals, decimals)}</span>
+        </div>
+        <div className="mt-1 flex justify-between gap-3 text-emerald-200">
+          <span>= pending assets ({symbol})</span>
+          <span>{formatUnitsFixed(pendingAssets, decimals)}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function HolderTable({
@@ -452,7 +534,7 @@ function HolderTable({
   rewardPlan: RewardPlan | null;
   showRewardColumn: boolean;
   sortState: TableSortState;
-  tableTotals: ShareAssetTotals;
+  tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
   onToggle: () => void;
   onJumpToVault: (vaultAddress: string) => void;
@@ -461,6 +543,11 @@ function HolderTable({
   navNextId?: string;
 }) {
   const isExpanded = forceExpanded || expanded;
+  const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
+
+  function toggleBreakdown(address: string) {
+    setExpandedBreakdowns((current) => ({ ...current, [address]: !current[address] }));
+  }
 
   return (
     <div id="direct-lenders" className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
@@ -507,65 +594,114 @@ function HolderTable({
                   <SortHeader label="Type" sortKey="type" sortState={sortState} onClick={onSort} />
                 </th>
                 <th className="px-5 py-3 text-right font-medium">
-                  <ColumnHeaderSum value={tableTotals.shares.toString()} />
-                  <SortHeader align="right" label="Shares" sortKey="shares" sortState={sortState} onClick={onSort} />
-                </th>
-                <th className="px-5 py-3 text-right font-medium">
                   <ColumnHeaderSum
                     value={`${formatUnitsRounded(tableTotals.assets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                   />
                   <SortHeader align="right" label="Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
                 </th>
+                <th className="px-5 py-3 text-right font-medium">
+                  <ColumnHeaderSum
+                    value={`${formatUnitsRounded(tableTotals.withdrawals, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
+                  />
+                  <SortHeader
+                    align="right"
+                    label="Withdrawals"
+                    sortKey="withdrawals"
+                    sortState={sortState}
+                    onClick={onSort}
+                  />
+                </th>
+                <th className="px-5 py-3 text-right font-medium">
+                  <ColumnHeaderSum
+                    value={`${formatUnitsRounded(tableTotals.pending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
+                  />
+                  <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
+                </th>
                 {showRewardColumn ? <th className="px-5 py-3 text-right font-medium">Reward</th> : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 text-slate-200">
-              {rows.map((row) => (
-                <tr key={row.address} className="hover:bg-white/[0.03]">
-                  <td className="px-5 py-4">
-                    <AddressLink address={row.address} chain={chain} />
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">
-                        {row.addressType}
-                      </span>
-                      {row.isVault ? (
+              {rows.map((row) => {
+                const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
+                return (
+                  <Fragment key={row.address}>
+                    <tr className="hover:bg-white/[0.03]">
+                      <td className="px-5 py-4">
+                        <AddressLink address={row.address} chain={chain} />
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">
+                            {row.addressType}
+                          </span>
+                          {row.isVault ? (
+                            <button
+                              className="rounded-full border border-emerald-300/30 px-2 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10"
+                              title="Show this vault depositors table"
+                              type="button"
+                              onClick={() => onJumpToVault(row.address)}
+                            >
+                              ↴
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-right font-mono tabular-nums">
+                        {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                      </td>
+                      <td className="px-5 py-4 text-right font-mono tabular-nums">
+                        {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                      </td>
+                      <td className="px-5 py-4 text-right font-mono tabular-nums">
+                        <span>
+                          {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                        </span>
                         <button
-                          className="rounded-full border border-emerald-300/30 px-2 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10"
-                          title="Show this vault depositors table"
+                          className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300/30 text-sm text-emerald-200 transition hover:bg-emerald-300/10"
+                          title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
                           type="button"
-                          onClick={() => onJumpToVault(row.address)}
+                          onClick={() => toggleBreakdown(row.address)}
                         >
-                          ↴
+                          <span aria-hidden="true">🧮</span>
+                          <span className="sr-only">Toggle pending assets calculator</span>
                         </button>
+                      </td>
+                      {showRewardColumn ? (
+                        <td
+                          className={
+                            row.isVault
+                              ? "px-5 py-4 text-right font-mono tabular-nums text-slate-500"
+                              : "px-5 py-4 text-right font-mono tabular-nums"
+                          }
+                        >
+                          {row.isVault
+                            ? "N/A"
+                            : formatRewardCell(
+                                rewardPlan,
+                                directLeafKey(silo.address, row.address),
+                                silo.inputToken.decimals,
+                                silo.inputToken.symbol,
+                              )}
+                        </td>
                       ) : null}
-                    </div>
-                  </td>
-                  <td className="px-5 py-4 text-right font-mono tabular-nums">{row.totalShares.toString()}</td>
-                  <td className="px-5 py-4 text-right font-mono tabular-nums">
-                    {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                  </td>
-                  {showRewardColumn ? (
-                    <td
-                      className={
-                        row.isVault
-                          ? "px-5 py-4 text-right font-mono tabular-nums text-slate-500"
-                          : "px-5 py-4 text-right font-mono tabular-nums"
-                      }
-                    >
-                      {row.isVault
-                        ? "N/A"
-                        : formatRewardCell(
-                            rewardPlan,
-                            directLeafKey(silo.address, row.address),
-                            silo.inputToken.decimals,
-                            silo.inputToken.symbol,
-                          )}
-                    </td>
-                  ) : null}
-                </tr>
-              ))}
+                    </tr>
+                    {breakdownOpen ? (
+                      <tr className="bg-slate-950/40">
+                        <td className="px-5 pb-4" colSpan={showRewardColumn ? 6 : 5}>
+                          <PendingAssetsBreakdown
+                            baseAssets={row.totalAssets}
+                            decimals={silo.inputToken.decimals}
+                            pendingAssets={row.pendingAssets}
+                            symbol={silo.inputToken.symbol}
+                            totalWithdrawals={row.totalWithdrawals}
+                            withdrawals={row.withdrawals}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -582,8 +718,11 @@ function sortDepositors(rows: VaultDepositor[], sortState: TableSortState): Vaul
     if (sortState.key === "type") {
       return compareStrings(a.addressType, b.addressType, sortState.direction);
     }
-    if (sortState.key === "shares") {
-      return compareValues(a.vaultShares, b.vaultShares, sortState.direction);
+    if (sortState.key === "withdrawals") {
+      return compareValues(a.totalWithdrawals, b.totalWithdrawals, sortState.direction);
+    }
+    if (sortState.key === "pending") {
+      return compareValues(a.pendingAssets, b.pendingAssets, sortState.direction);
     }
     return compareValues(a.attributedSiloAssets, b.attributedSiloAssets, sortState.direction);
   });
@@ -612,10 +751,11 @@ function DepositorTable({
   addressTypeFilter: string;
   rewardPlan: RewardPlan | null;
   showRewardColumn: boolean;
-  tableTotals: ShareAssetTotals;
+  tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
   hideTypeFilter?: boolean;
 }) {
+  const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
   const needle = addressFilter.trim().toLowerCase();
   const visibleRows = rows.filter((row) => {
     const addressMatches = needle ? row.address.toLowerCase().includes(needle) : true;
@@ -623,6 +763,10 @@ function DepositorTable({
     return addressMatches && typeMatches;
   });
   const filteredRows = sortDepositors(visibleRows, sortState);
+
+  function toggleBreakdown(address: string) {
+    setExpandedBreakdowns((current) => ({ ...current, [address]: !current[address] }));
+  }
 
   if (filteredRows.length === 0) {
     return <EmptyState message="No vault depositors match the current address filter." />;
@@ -641,45 +785,94 @@ function DepositorTable({
                 <SortHeader label="Type" sortKey="type" sortState={sortState} onClick={onSort} />
               </th>
               <th className="px-5 py-3 text-right font-medium">
-                <ColumnHeaderSum value={tableTotals.shares.toString()} />
-                <SortHeader align="right" label="Vault shares" sortKey="shares" sortState={sortState} onClick={onSort} />
-              </th>
-              <th className="px-5 py-3 text-right font-medium">
                 <ColumnHeaderSum
                   value={`${formatUnitsRounded(tableTotals.assets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                 />
                 <SortHeader align="right" label="Vault assets" sortKey="assets" sortState={sortState} onClick={onSort} />
               </th>
+              <th className="px-5 py-3 text-right font-medium">
+                <ColumnHeaderSum
+                  value={`${formatUnitsRounded(tableTotals.withdrawals, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
+                />
+                <SortHeader
+                  align="right"
+                  label="Withdrawals"
+                  sortKey="withdrawals"
+                  sortState={sortState}
+                  onClick={onSort}
+                />
+              </th>
+              <th className="px-5 py-3 text-right font-medium">
+                <ColumnHeaderSum
+                  value={`${formatUnitsRounded(tableTotals.pending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
+                />
+                <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
+              </th>
               {showRewardColumn ? <th className="px-5 py-3 text-right font-medium">Reward</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10 text-slate-200">
-            {filteredRows.map((row) => (
-              <tr key={row.address} className="hover:bg-white/[0.03]">
-                <td className="px-5 py-4">
-                  <AddressLink address={row.address} chain={chain} />
-                </td>
-                <td className="px-5 py-4">
-                  <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">{row.addressType}</span>
-                </td>
-                <td className="px-5 py-4 text-right font-mono tabular-nums">{row.vaultShares.toString()}</td>
-                <td className="px-5 py-4 text-right font-mono tabular-nums">
-                  {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                </td>
-                {showRewardColumn ? (
-                  <td className="px-5 py-4 text-right font-mono tabular-nums">
-                    {rewardPlan
-                      ? formatRewardCell(
-                          rewardPlan,
-                          vaultLeafKey(silo.address, vaultAddress, row.address),
-                          silo.inputToken.decimals,
-                          silo.inputToken.symbol,
-                        )
-                      : "--"}
-                  </td>
-                ) : null}
-              </tr>
-            ))}
+            {filteredRows.map((row) => {
+              const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
+              return (
+                <Fragment key={row.address}>
+                  <tr className="hover:bg-white/[0.03]">
+                    <td className="px-5 py-4">
+                      <AddressLink address={row.address} chain={chain} />
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">{row.addressType}</span>
+                    </td>
+                    <td className="px-5 py-4 text-right font-mono tabular-nums">
+                      {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                    </td>
+                    <td className="px-5 py-4 text-right font-mono tabular-nums">
+                      {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                    </td>
+                    <td className="px-5 py-4 text-right font-mono tabular-nums">
+                      <span>
+                        {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                      </span>
+                      <button
+                        className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300/30 text-sm text-emerald-200 transition hover:bg-emerald-300/10"
+                        title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
+                        type="button"
+                        onClick={() => toggleBreakdown(row.address)}
+                      >
+                        <span aria-hidden="true">🧮</span>
+                        <span className="sr-only">Toggle pending assets calculator</span>
+                      </button>
+                    </td>
+                    {showRewardColumn ? (
+                      <td className="px-5 py-4 text-right font-mono tabular-nums">
+                        {rewardPlan
+                          ? formatRewardCell(
+                              rewardPlan,
+                              vaultLeafKey(silo.address, vaultAddress, row.address),
+                              silo.inputToken.decimals,
+                              silo.inputToken.symbol,
+                            )
+                          : "--"}
+                      </td>
+                    ) : null}
+                  </tr>
+                  {breakdownOpen ? (
+                    <tr className="bg-slate-950/40">
+                      <td className="px-5 pb-4" colSpan={showRewardColumn ? 6 : 5}>
+                        <PendingAssetsBreakdown
+                          baseAssets={row.attributedSiloAssets}
+                          decimals={silo.inputToken.decimals}
+                          pendingAssets={row.pendingAssets}
+                          symbol={silo.inputToken.symbol}
+                          totalWithdrawals={row.totalWithdrawals}
+                          withdrawals={row.withdrawals}
+                        />
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -740,33 +933,37 @@ function buildRewardPlan(
   const csvRewards = new Map<string, bigint | null>();
   const excludedLeafKeys = new Set<string>();
   let distributed = ZERO;
-  let leafAssets = ZERO;
-  let excludedAssets = ZERO;
-  const totalAssets = allSilos.reduce((sum, silo) => sum + silo.totalAssets, ZERO);
+  let leafPending = ZERO;
+  let excludedPending = ZERO;
+  let totalPendingAssets = ZERO;
+  let nonAttributableAssets = ZERO;
 
   for (const silo of allSilos) {
     for (const lender of silo.directLenders) {
       if (lender.isVault) {
         continue;
       }
+      totalPendingAssets += lender.pendingAssets;
       if (!isRewardEligible(lender.addressType, includeOtherContracts)) {
-        excludedAssets += lender.totalAssets;
+        excludedPending += lender.pendingAssets;
       }
     }
 
     for (const vault of silo.vaults) {
       if (isVaultWarning(vault)) {
+        nonAttributableAssets += vault.vaultSiloAssets;
         continue;
       }
       for (const depositor of vault.depositors) {
+        totalPendingAssets += depositor.pendingAssets;
         if (!isRewardEligible(depositor.addressType, includeOtherContracts)) {
-          excludedAssets += depositor.attributedSiloAssets;
+          excludedPending += depositor.pendingAssets;
         }
       }
     }
   }
 
-  const rewardDenominator = totalAssets > excludedAssets ? totalAssets - excludedAssets : ZERO;
+  const rewardDenominator = totalPendingAssets > excludedPending ? totalPendingAssets - excludedPending : ZERO;
 
   if (rewardRaw === ZERO || rewardDenominator === ZERO) {
     return {
@@ -774,10 +971,10 @@ function buildRewardPlan(
       byLeafKey,
       csvRewards,
       excludedLeafKeys,
-      totalAssets: rewardDenominator,
+      totalPendingAssets: rewardDenominator,
       distributed,
       undistributed: rewardRaw,
-      nonAttributableAssets: rewardDenominator,
+      nonAttributableAssets,
     };
   }
 
@@ -792,11 +989,11 @@ function buildRewardPlan(
         addCsvReward(csvRewards, lender.address, null);
         continue;
       }
-      const reward = floorToWholeUnits((rewardRaw * lender.totalAssets) / rewardDenominator, rewardDecimals);
+      const reward = floorToWholeUnits((rewardRaw * lender.pendingAssets) / rewardDenominator, rewardDecimals);
       byLeafKey.set(leafKey, reward);
       addCsvReward(csvRewards, lender.address, reward);
       distributed += reward;
-      leafAssets += lender.totalAssets;
+      leafPending += lender.pendingAssets;
     }
 
     for (const vault of silo.vaults) {
@@ -811,13 +1008,13 @@ function buildRewardPlan(
           continue;
         }
         const reward = floorToWholeUnits(
-          (rewardRaw * depositor.attributedSiloAssets) / rewardDenominator,
+          (rewardRaw * depositor.pendingAssets) / rewardDenominator,
           rewardDecimals,
         );
         byLeafKey.set(leafKey, reward);
         addCsvReward(csvRewards, depositor.address, reward);
         distributed += reward;
-        leafAssets += depositor.attributedSiloAssets;
+        leafPending += depositor.pendingAssets;
       }
     }
   }
@@ -827,10 +1024,11 @@ function buildRewardPlan(
     byLeafKey,
     csvRewards,
     excludedLeafKeys,
-    totalAssets: rewardDenominator,
+    totalPendingAssets: rewardDenominator,
     distributed,
     undistributed: rewardRaw > distributed ? rewardRaw - distributed : ZERO,
-    nonAttributableAssets: rewardDenominator > leafAssets ? rewardDenominator - leafAssets : ZERO,
+    nonAttributableAssets:
+      nonAttributableAssets + (rewardDenominator > leafPending ? rewardDenominator - leafPending : ZERO),
   };
 }
 
@@ -870,8 +1068,8 @@ function VaultCard({
   const vaultSharesValid =
     vault.vaultTotalSupply !== null && depositorTotals.shares === vault.vaultTotalSupply && vault.status === "ok";
   const unavailableReward =
-    hasWarning && rewardPlan && rewardPlan.totalAssets > ZERO
-      ? (rewardPlan.rewardRaw * vault.vaultSiloAssets) / rewardPlan.totalAssets
+    hasWarning && rewardPlan && rewardPlan.totalPendingAssets > ZERO
+      ? (rewardPlan.rewardRaw * vault.vaultSiloAssets) / rewardPlan.totalPendingAssets
       : ZERO;
 
   return (
@@ -1210,7 +1408,7 @@ function SiloDetailPanel({
                     />
                     <span>
                       Distribute to unrecognized contracts (`contract_other`). When disabled, these addresses stay in the
-                      CSV with empty reward fields and their assets are redistributed to eligible recipients.
+                      CSV with empty reward fields and their pending assets are redistributed to eligible recipients.
                     </span>
                   </label>
                   {rewardInputInvalid ? (
@@ -1235,7 +1433,7 @@ function SiloDetailPanel({
                     </div>
                   ) : (
                     <p className="mt-3 text-xs text-slate-500">
-                      Enter an amount to compute pro-rata rewards across all snapshot assets.
+                      Enter an amount to compute pro-rata rewards across pending assets.
                     </p>
                   )}
                 </>
@@ -1328,11 +1526,13 @@ function SiloDetailPanel({
           onJumpToVault={jumpToVault}
           onExport={() => {
             downloadCsv(`${chain.chain}-${silo.address}-direct-lenders.csv`, [
-              ["Address", "Type", "Assets"],
+              ["Address", "Type", "Assets", "Withdrawals", "Pending assets"],
               ...visibleLenders.map((row) => [
                 row.address,
                 row.addressType,
                 formatUnitsPlain(row.totalAssets, silo.inputToken.decimals),
+                formatUnitsPlain(row.totalWithdrawals, silo.inputToken.decimals),
+                formatUnitsPlain(row.pendingAssets, silo.inputToken.decimals),
               ]),
             ]);
           }}
