@@ -12,7 +12,7 @@ share-sum invariants against the stored total supplies, with ZERO tolerance
   - for each lender/depositor:
     pending_assets == max(0, base_assets - total_withdrawals)
   - for each lender/depositor:
-    sum(withdrawals[].deducted_assets) == total_withdrawals
+    sum(withdrawals[].assets) == total_withdrawals
 
 Any non-zero difference is an error and yields a non-zero exit code, with an
 expected/actual/diff report per contract.
@@ -102,8 +102,14 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
         if not isinstance(entry, dict):
             continue
         if entry.get("address_type") == "silo_vault":
-            # Direct vault rows are not distribution recipients; withdrawals/pending
-            # are tracked at depositor level under vaults[*].depositors.
+            # Direct vault rows are not distribution recipients in the UI.
+            # They still should map to a vault object under silo.vaults.
+            vaults_obj = silo.get("vaults", {})
+            if not isinstance(vaults_obj, dict):
+                vaults_obj = {}
+            vault_keys = {str(addr).lower() for addr in vaults_obj}
+            if lender_addr.lower() not in vault_keys:
+                report.warn(f"{prefix} silo_vault {lender_addr} missing matching vaults entry")
             continue
         base_assets = to_int(entry.get("assets_collateral", entry.get("total_assets", 0)))
         total_withdrawals = to_int(entry.get("total_withdrawals", 0))
@@ -123,7 +129,7 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
             for item in withdrawals:
                 if not isinstance(item, dict):
                     continue
-                summed += to_int(item.get("deducted_assets", item.get("assets", 0)))
+                summed += to_int(item.get("assets", 0))
             report.check_equal(
                 f"{prefix} lender {lender_addr} withdrawals_sum vs total_withdrawals",
                 total_withdrawals,
@@ -131,15 +137,6 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
             )
         else:
             report.warn(f"{prefix} lender {lender_addr}: withdrawals must be an array")
-
-        if entry.get("address_type") != "silo_vault":
-            continue
-        vaults_obj = silo.get("vaults", {})
-        if not isinstance(vaults_obj, dict):
-            vaults_obj = {}
-        vault_keys = {str(addr).lower() for addr in vaults_obj}
-        if lender_addr.lower() not in vault_keys:
-            report.warn(f"{prefix} silo_vault {lender_addr} missing matching vaults entry")
 
     vaults = silo.get("vaults", {})
     if not isinstance(vaults, dict):
@@ -190,9 +187,7 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
                 for item in withdrawals:
                     if not isinstance(item, dict):
                         continue
-                    summed += to_int(
-                        item.get("deducted_assets", item.get("attributed_assets", item.get("assets", 0)))
-                    )
+                    summed += to_int(item.get("assets", 0))
                 report.check_equal(
                     f"{vlabel} depositor {depositor_addr} withdrawals_sum vs total_withdrawals",
                     total_withdrawals,

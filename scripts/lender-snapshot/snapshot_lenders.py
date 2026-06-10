@@ -916,7 +916,6 @@ def enrich_snapshot_with_withdrawals(
                 "log_index": event["log_index"],
                 "assets": str(event["assets"]),
                 "shares": str(event["shares"]),
-                "deducted_assets": str(deductions),
             }
         )
         entry["total_withdrawals"] = str(int(entry.get("total_withdrawals", 0)) + deductions)
@@ -931,7 +930,7 @@ def enrich_snapshot_with_withdrawals(
         entry["pending_assets"] = str(max(0, base_assets - total_withdrawals))
 
     print(
-        f"[info]   [silo] attributed {matched_direct} direct-lender withdrawal(s), "
+        f"[info]   [silo] matched {matched_direct} direct-lender withdrawal(s), "
         f"skipped {skipped_rebalances} vault rebalance event(s)"
     )
 
@@ -941,13 +940,8 @@ def enrich_snapshot_with_withdrawals(
             continue
         if vault.get("status") != "ok":
             continue
-        vault_total_supply = int(vault.get("vault_total_supply") or 0)
-        vault_silo_assets = int(vault.get("vault_silo_assets") or 0)
         depositors = vault.get("depositors")
         if not isinstance(depositors, dict) or not depositors:
-            continue
-        if vault_total_supply <= 0:
-            print(f"[warn] vault {vault_addr} has zero vault_total_supply; skipping withdrawals attribution")
             continue
 
         vault_index += 1
@@ -967,7 +961,6 @@ def enrich_snapshot_with_withdrawals(
             if not isinstance(depositor, dict):
                 continue
             matched_depositors += 1
-            attributed_assets = (vault_silo_assets * event["shares"]) // vault_total_supply
             withdrawals = depositor.get("withdrawals")
             if not isinstance(withdrawals, list):
                 withdrawals = []
@@ -979,11 +972,9 @@ def enrich_snapshot_with_withdrawals(
                     "log_index": event["log_index"],
                     "assets": str(event["assets"]),
                     "shares": str(event["shares"]),
-                    "attributed_assets": str(attributed_assets),
-                    "deducted_assets": str(attributed_assets),
                 }
             )
-            depositor["total_withdrawals"] = str(int(depositor.get("total_withdrawals", 0)) + attributed_assets)
+            depositor["total_withdrawals"] = str(int(depositor.get("total_withdrawals", 0)) + int(event["assets"]))
 
         for depositor in depositors.values():
             if not isinstance(depositor, dict):
@@ -992,7 +983,7 @@ def enrich_snapshot_with_withdrawals(
             total_withdrawals = int(depositor.get("total_withdrawals", 0))
             depositor["pending_assets"] = str(max(0, base_assets - total_withdrawals))
 
-        print(f"[info]   [{vault_label}] attributed {matched_depositors} depositor withdrawal(s)")
+        print(f"[info]   [{vault_label}] matched {matched_depositors} depositor withdrawal(s)")
 
 
 def expand_vault(

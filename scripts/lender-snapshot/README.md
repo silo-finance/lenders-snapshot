@@ -124,9 +124,7 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
                     "tx_hash": "0x…",
                     "log_index": 7,
                     "assets": "…",
-                    "shares": "…",
-                    "attributed_assets": "…",
-                    "deducted_assets": "…"
+                    "shares": "…"
                   }
                 ]
               }
@@ -148,6 +146,6 @@ All share/supply amounts are raw integers (as strings, to preserve precision), e
 - `sum(direct_lenders[].collateral_shares) == collateral_total_supply`
 - for each indexed vault with `in_withdraw_queue == true`: `sum(depositors[].vault_shares) == vault_total_supply`
 - for each lender/depositor: `pending_assets == max(0, base_assets - total_withdrawals)`
-- for each lender/depositor: `sum(withdrawals[].deducted_assets) == total_withdrawals`
+- for each lender/depositor: `sum(withdrawals[].assets) == total_withdrawals`
 
 Vaults with `status == vault_not_indexed` or `in_withdraw_queue == false` are reported as warnings (their depositors are intentionally not enumerated), not errors.
