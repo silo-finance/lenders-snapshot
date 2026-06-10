@@ -473,7 +473,11 @@ function PendingAssetsBreakdown({
         <span>{formatUnitsFixed(baseAssets, decimals)}</span>
       </div>
       {withdrawals.length === 0 ? (
-        <div className="mt-2 text-slate-500">No withdrawals after snapshot block.</div>
+        <div className="mt-2 text-slate-500">
+          {totalWithdrawals > ZERO
+            ? "Itemized withdrawal events are unavailable in this snapshot payload."
+            : "No withdrawals after snapshot block."}
+        </div>
       ) : (
         <div className="mt-2 space-y-2">
           {withdrawals.map((event, index) => {
@@ -623,7 +627,7 @@ function HolderTable({
             <tbody className="divide-y divide-white/10 text-slate-200">
               {rows.map((row) => {
                 const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-                const hasWithdrawals = !row.isVault && row.withdrawals.length > 0;
+                const hasWithdrawals = !row.isVault && row.totalWithdrawals > ZERO;
                 return (
                   <Fragment key={row.address}>
                     <tr className="hover:bg-white/[0.03]">
@@ -827,7 +831,7 @@ function DepositorTable({
           <tbody className="divide-y divide-white/10 text-slate-200">
             {filteredRows.map((row) => {
               const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-              const hasWithdrawals = row.withdrawals.length > 0;
+              const hasWithdrawals = row.totalWithdrawals > ZERO;
               return (
                 <Fragment key={row.address}>
                   <tr className="hover:bg-white/[0.03]">
