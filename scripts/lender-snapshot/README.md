@@ -5,7 +5,14 @@ Builds block-pinned snapshots of all lenders for configured Silos, splitting the
 - **direct lenders** – every account holding collateral shares of the Silo, and
 - **SiloVault depositors** – holders of any SiloVault that itself lends into the Silo, attributed by their share of the vault.
 
-Redeemable `assets` per address are computed purely via on-chain `previewRedeem` at the snapshot block. The subgraph is only used to enumerate addresses (lenders of the Silo and depositors of each vault). The result is a single, incrementally-updated, per-chain JSON file.
+Redeemable `assets` per address are computed purely via on-chain `previewRedeem` at the snapshot block. The subgraph is only used to enumerate addresses (lenders of the Silo and depositors of each vault).
+
+After the snapshot is assembled, the script also scans post-snapshot `Withdraw(address,address,address,uint256,uint256)` events (`snapshot_block + 1` to latest) on:
+
+- the Silo contract (for direct lenders), and
+- each indexed vault contract (for vault depositors).
+
+The withdrawals are merged into the same `distribution_snapshot.json` consumed by the UI (`total_withdrawals`, `pending_assets`, and per-event `withdrawals[]` breakdown).
 
 ## Layout
 
@@ -19,7 +26,13 @@ Redeemable `assets` per address are computed purely via on-chain `previewRedeem`
 Non-secret parameters are hardcoded near the top of `snapshot_lenders.py` in `TARGETS`:
 
 - `chain`, `chain_id`, `subgraph_url`
-- `silos[]` entries with `address` and `block`
+- `silos[]` entries with:
+  - `address`
+  - `block`
+  - optional `withdrawals_to_block`:
+    - integer block number, or
+    - `"latest"` (resolved right before the withdraw scan starts for that silo)
+  - optional `withdrawals_block_chunk` (number of blocks per `eth_getLogs` call for this silo)
 - `OUTPUT_JSON`
 - `MULTICALL3` address and `MULTICALL_BATCH`
 
@@ -32,6 +45,8 @@ Secrets are read **only** from the environment (or a local, gitignored `.env`):
 - `ETHEREUM_RPC_URL` – future archive RPC endpoint for Ethereum once Ethereum silos are configured.
 - `RPC_URL` – optional fallback used if a chain-specific URL is not set.
 - `THE_GRAPH_API_KEY` – The Graph gateway Bearer token.
+- `WITHDRAWALS_TO_BLOCK` – optional global override for scan end block (`latest` or integer).
+- `WITHDRAWALS_BLOCK_CHUNK` – optional global override for `eth_getLogs` chunk size.
 
 ```bash
 cp scripts/lender-snapshot/.env.example scripts/lender-snapshot/.env
@@ -74,12 +89,17 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
         "input_token": { "address": "0x..", "decimals": 6, "symbol": "USDC" },
         "total_assets": "…",              // raw integer string from silo.totalAssets()
         "collateral_total_supply": "…",   // raw integer string
+        "withdrawals_scanned_to_block": 55000000,
         "direct_lenders": {
           "<addr>": {
             "address_type": "eoa|silo_vault|gnosis_safe|erc4626_unresolved|contract_other",
             "collateral_shares": "…",
             "assets_collateral": "…",
-            "total_assets": "…"
+            "total_assets": "…",
+            // present for non-vault direct lenders:
+            "total_withdrawals": "…",
+            "pending_assets": "…",
+            "withdrawals": [ { "...": "..." } ]
           }
         },
         "vaults": {
@@ -95,7 +115,18 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
                 "address_type": "…",
                 "vault_shares": "…",
                 "fraction": "0.1234",
-                "attributed_silo_assets": "…"
+                "attributed_silo_assets": "…",
+                "total_withdrawals": "…",
+                "pending_assets": "…",
+                "withdrawals": [
+                  {
+                    "block_number": 54150000,
+                    "tx_hash": "0x…",
+                    "log_index": 7,
+                    "assets": "…",
+                    "shares": "…"
+                  }
+                ]
               }
             }
           }
@@ -114,5 +145,7 @@ All share/supply amounts are raw integers (as strings, to preserve precision), e
 
 - `sum(direct_lenders[].collateral_shares) == collateral_total_supply`
 - for each indexed vault with `in_withdraw_queue == true`: `sum(depositors[].vault_shares) == vault_total_supply`
+- for each lender/depositor: `pending_assets == max(0, base_assets - total_withdrawals)`
+- for each lender/depositor: `sum(withdrawals[].assets) == total_withdrawals`
 
 Vaults with `status == vault_not_indexed` or `in_withdraw_queue == false` are reported as warnings (their depositors are intentionally not enumerated), not errors.

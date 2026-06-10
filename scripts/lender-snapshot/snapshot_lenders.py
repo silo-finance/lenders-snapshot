@@ -31,7 +31,7 @@ from typing import Any
 
 from eth_abi import decode as abi_decode
 from eth_abi import encode as abi_encode
-from eth_utils import function_signature_to_4byte_selector, to_checksum_address
+from eth_utils import function_signature_to_4byte_selector, keccak, to_checksum_address
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -47,9 +47,41 @@ TARGETS: list[dict[str, Any]] = [
         "subgraph_url": DEFAULT_SUBGRAPH_URL,
         "silos": [
             {
+                "address": "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de",
+                "block": 54144258,
+            },
+            {
                 "address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64",
                 "block": 54144258,
-            }
+            },
+            {
+                "address": "0x4935fadb17df859667cc4f7bfe6a8cb24f86f8d0",
+                "block": 54144258,
+            },
+            {
+                "address": "0x4f55e28d36b30a638c3aa1d5cbf9c4ccb3831506",
+                "block": 54144258,
+            },
+            {
+                "address": "0xc3a18f1efa66234e7d233c8ad00d597f6e585f2b",
+                "block": 54144258,
+            },
+            {
+                "address": "0x24c74b30d1a4261608e84bf5a618693032681dac",
+                "block": 54144258,
+            },
+            {
+                "address": "0x219656f33c58488d09d518badf50aa8cdcaca2aa",
+                "block": 54144258,
+            },
+            {
+                "address": "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2",
+                "block": 54144258,
+            },
+            {
+                "address": "0x08c320a84a59c6f533e0dca655cf497594bca1f9",
+                "block": 54144258,
+            },
         ],
     },
     {
@@ -74,6 +106,7 @@ MULTICALL_BATCH = 300
 
 GETCODE_BATCH = 200
 SUBGRAPH_PAGE = 1000
+WITHDRAW_LOG_BLOCK_CHUNK = 100_000
 
 # CollateralType enum (ISilo.sol): Collateral = 1
 COLLATERAL_TYPE_COLLATERAL = 1
@@ -107,6 +140,7 @@ SEL_SAFE_CHAIN_ID = _sel("getChainId()")
 SEL_SAFE_OWNERS = _sel("getOwners()")
 SEL_SAFE_THRESHOLD = _sel("getThreshold()")
 SEL_SAFE_NONCE = _sel("nonce()")
+TOPIC_WITHDRAW = "0x" + keccak(text="Withdraw(address,address,address,uint256,uint256)").hex()
 
 
 # --------------------------------------------------------------------------------------
@@ -234,6 +268,40 @@ class RpcClient:
         if "error" in res and res["error"]:
             raise RuntimeError(f"eth_call error: {res['error']}")
         return bytes.fromhex(res["result"][2:])
+
+    def eth_block_number(self) -> int:
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._next_id(),
+            "method": "eth_blockNumber",
+            "params": [],
+        }
+        res = _http_post_json(self.url, payload, self._headers)
+        if "error" in res and res["error"]:
+            raise RuntimeError(f"eth_blockNumber error: {res['error']}")
+        return int(res["result"], 16)
+
+    def eth_get_logs(self, address: str, topics: list[str], from_block: int, to_block: int) -> list[dict[str, Any]]:
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._next_id(),
+            "method": "eth_getLogs",
+            "params": [
+                {
+                    "address": cs(address),
+                    "topics": topics,
+                    "fromBlock": hex(from_block),
+                    "toBlock": hex(to_block),
+                }
+            ],
+        }
+        res = _http_post_json(self.url, payload, self._headers)
+        if "error" in res and res["error"]:
+            raise RuntimeError(f"eth_getLogs error: {res['error']}")
+        logs = res.get("result", [])
+        if not isinstance(logs, list):
+            raise RuntimeError(f"eth_getLogs invalid result: {logs!r}")
+        return logs
 
     def get_code_batch(self, addresses: list[str]) -> dict[str, bytes]:
         """Return {address: code bytes} for a batch via JSON-RPC batch request."""
@@ -387,6 +455,20 @@ def dec_string(data: bytes) -> str:
     except Exception:
         raw = abi_decode(["bytes32"], data)[0]
         return bytes(raw).split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+
+
+def dec_event_topic_address(topic: str) -> str:
+    if not isinstance(topic, str) or not topic.startswith("0x") or len(topic) != 66:
+        raise ValueError(f"invalid topic address: {topic!r}")
+    return norm("0x" + topic[-40:])
+
+
+def dec_withdraw_data(data_hex: str) -> tuple[int, int]:
+    if not isinstance(data_hex, str) or not data_hex.startswith("0x"):
+        raise ValueError(f"invalid withdraw data: {data_hex!r}")
+    payload = bytes.fromhex(data_hex[2:])
+    assets, shares = abi_decode(["uint256", "uint256"], payload)
+    return int(assets), int(shares)
 
 
 def is_gnosis_safe_probe(
@@ -658,6 +740,252 @@ def preview_redeem_collateral(shares: list[int], mc: Multicall) -> list[int]:
     return out
 
 
+def fetch_withdraw_events(
+    rpc: RpcClient,
+    contract_address: str,
+    from_block: int,
+    to_block: int,
+    label: str = "",
+    block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
+) -> list[dict[str, Any]]:
+    if to_block < from_block:
+        return []
+
+    tag = label or contract_address
+    total_blocks = to_block - from_block + 1
+    progress_step = max(block_chunk, total_blocks // 20)
+    next_progress_at = from_block + progress_step
+
+    events: list[dict[str, Any]] = []
+    start = from_block
+    chunk = block_chunk
+    print(f"[info]   [{tag}] scanning Withdraw logs in blocks {from_block}..{to_block} ({total_blocks} blocks) ...")
+    while start <= to_block:
+        end = min(start + chunk - 1, to_block)
+        try:
+            logs = rpc.eth_get_logs(contract_address, [TOPIC_WITHDRAW], start, end)
+        except RuntimeError as exc:
+            if chunk <= 100:
+                raise
+            chunk = max(100, chunk // 2)
+            print(
+                f"[warn] reducing eth_getLogs chunk for {contract_address} to {chunk} "
+                f"blocks after error: {exc}"
+            )
+            continue
+
+        if end >= next_progress_at or end == to_block:
+            done_blocks = end - from_block + 1
+            pct = (done_blocks * 100) // total_blocks
+            print(
+                f"[info]   [{tag}] progress: block {end} ({done_blocks}/{total_blocks} = {pct}%), "
+                f"events so far: {len(events) + len(logs)}"
+            )
+            next_progress_at = end + progress_step
+
+        for log in logs:
+            topics = log.get("topics")
+            if not isinstance(topics, list) or len(topics) < 4:
+                continue
+            try:
+                assets, shares = dec_withdraw_data(str(log.get("data", "0x")))
+                event = {
+                    "block_number": int(str(log.get("blockNumber", "0x0")), 16),
+                    "tx_hash": str(log.get("transactionHash", "")).lower(),
+                    "log_index": int(str(log.get("logIndex", "0x0")), 16),
+                    "caller": dec_event_topic_address(topics[1]),
+                    "receiver": dec_event_topic_address(topics[2]),
+                    "owner": dec_event_topic_address(topics[3]),
+                    "assets": assets,
+                    "shares": shares,
+                }
+            except Exception:
+                continue
+            events.append(event)
+
+        start = end + 1
+
+    events.sort(key=lambda item: (item["block_number"], item["log_index"], item["tx_hash"]))
+    print(f"[info]   [{tag}] done: {len(events)} Withdraw event(s) found")
+    return events
+
+
+def resolve_withdrawals_to_block(silo: dict[str, Any]) -> int | None:
+    raw = silo.get("withdrawals_to_block")
+    if raw in (None, ""):
+        raw = os.environ.get("WITHDRAWALS_TO_BLOCK", "").strip()
+    if raw in (None, ""):
+        return None
+    if isinstance(raw, str) and raw.strip().lower() == "latest":
+        return None
+    value = int(raw)
+    if value < 0:
+        raise ValueError("withdrawals_to_block must be non-negative")
+    return value
+
+
+def resolve_withdrawals_block_chunk(silo: dict[str, Any]) -> int:
+    raw = silo.get("withdrawals_block_chunk")
+    if raw in (None, ""):
+        raw = os.environ.get("WITHDRAWALS_BLOCK_CHUNK", "").strip()
+    if raw in (None, ""):
+        return WITHDRAW_LOG_BLOCK_CHUNK
+    value = int(raw)
+    if value <= 0:
+        raise ValueError("withdrawals_block_chunk must be positive")
+    return value
+
+
+def enrich_snapshot_with_withdrawals(
+    silo_entry: dict[str, Any], rpc: RpcClient, from_block: int, to_block: int, block_chunk: int
+) -> None:
+    direct_lenders = silo_entry.get("direct_lenders")
+    if not isinstance(direct_lenders, dict):
+        direct_lenders = {}
+    vaults = silo_entry.get("vaults")
+    if not isinstance(vaults, dict):
+        vaults = {}
+
+    for entry in direct_lenders.values():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("address_type") == "silo_vault":
+            # We do not distribute directly to vault contracts.
+            entry.pop("withdrawals", None)
+            entry.pop("total_withdrawals", None)
+            entry.pop("pending_assets", None)
+            continue
+        base_assets = int(entry.get("assets_collateral", 0))
+        entry["withdrawals"] = []
+        entry["total_withdrawals"] = "0"
+        entry["pending_assets"] = str(base_assets)
+
+    for vault in vaults.values():
+        if not isinstance(vault, dict):
+            continue
+        depositors = vault.get("depositors")
+        if not isinstance(depositors, dict):
+            continue
+        for depositor in depositors.values():
+            if not isinstance(depositor, dict):
+                continue
+            base_assets = int(depositor.get("attributed_silo_assets", 0))
+            depositor["withdrawals"] = []
+            depositor["total_withdrawals"] = "0"
+            depositor["pending_assets"] = str(base_assets)
+
+    scannable_vaults = [
+        vault_addr
+        for vault_addr, vault in vaults.items()
+        if isinstance(vault, dict) and vault.get("status") == "ok" and isinstance(vault.get("depositors"), dict)
+    ]
+    print(f"[info] withdrawals scan plan: 1 silo contract + {len(scannable_vaults)} vault contract(s)")
+
+    silo_events = fetch_withdraw_events(
+        rpc,
+        SILO_ADDRESS,
+        from_block,
+        to_block,
+        label=f"silo {SILO_ADDRESS}",
+        block_chunk=block_chunk,
+    )
+    vault_addresses = {addr for addr, entry in direct_lenders.items() if entry.get("address_type") == "silo_vault"}
+    matched_direct = 0
+    skipped_rebalances = 0
+    for event in silo_events:
+        owner = event["owner"]
+        entry = direct_lenders.get(owner)
+        if not isinstance(entry, dict):
+            continue
+        if owner in vault_addresses:
+            # This is a vault rebalance at silo level, not end-user withdrawal.
+            skipped_rebalances += 1
+            continue
+        if entry.get("address_type") == "silo_vault":
+            continue
+        matched_direct += 1
+        withdrawals = entry.get("withdrawals")
+        if not isinstance(withdrawals, list):
+            withdrawals = []
+            entry["withdrawals"] = withdrawals
+        deductions = event["assets"]
+        withdrawals.append(
+            {
+                "block_number": event["block_number"],
+                "tx_hash": event["tx_hash"],
+                "log_index": event["log_index"],
+                "assets": str(event["assets"]),
+                "shares": str(event["shares"]),
+            }
+        )
+        entry["total_withdrawals"] = str(int(entry.get("total_withdrawals", 0)) + deductions)
+
+    for entry in direct_lenders.values():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("address_type") == "silo_vault":
+            continue
+        base_assets = int(entry.get("assets_collateral", 0))
+        total_withdrawals = int(entry.get("total_withdrawals", 0))
+        entry["pending_assets"] = str(max(0, base_assets - total_withdrawals))
+
+    print(
+        f"[info]   [silo] matched {matched_direct} direct-lender withdrawal(s), "
+        f"skipped {skipped_rebalances} vault rebalance event(s)"
+    )
+
+    vault_index = 0
+    for vault_addr, vault in vaults.items():
+        if not isinstance(vault, dict):
+            continue
+        if vault.get("status") != "ok":
+            continue
+        depositors = vault.get("depositors")
+        if not isinstance(depositors, dict) or not depositors:
+            continue
+
+        vault_index += 1
+        vault_label = f"vault {vault_index}/{len(scannable_vaults)} {vault_addr}"
+        vault_events = fetch_withdraw_events(
+            rpc,
+            vault_addr,
+            from_block,
+            to_block,
+            label=vault_label,
+            block_chunk=block_chunk,
+        )
+        matched_depositors = 0
+        for event in vault_events:
+            owner = event["owner"]
+            depositor = depositors.get(owner)
+            if not isinstance(depositor, dict):
+                continue
+            matched_depositors += 1
+            withdrawals = depositor.get("withdrawals")
+            if not isinstance(withdrawals, list):
+                withdrawals = []
+                depositor["withdrawals"] = withdrawals
+            withdrawals.append(
+                {
+                    "block_number": event["block_number"],
+                    "tx_hash": event["tx_hash"],
+                    "log_index": event["log_index"],
+                    "assets": str(event["assets"]),
+                    "shares": str(event["shares"]),
+                }
+            )
+            depositor["total_withdrawals"] = str(int(depositor.get("total_withdrawals", 0)) + int(event["assets"]))
+
+        for depositor in depositors.values():
+            if not isinstance(depositor, dict):
+                continue
+            base_assets = int(depositor.get("attributed_silo_assets", 0))
+            total_withdrawals = int(depositor.get("total_withdrawals", 0))
+            depositor["pending_assets"] = str(max(0, base_assets - total_withdrawals))
+
+        print(f"[info]   [{vault_label}] matched {matched_depositors} depositor withdrawal(s)")
+
+
 def expand_vault(
     vault: str,
     vault_shares: int,
@@ -727,7 +1055,11 @@ def expand_vault(
     return entry
 
 
-def build_snapshot(rpc_url: str) -> dict[str, Any]:
+def build_snapshot(
+    rpc_url: str,
+    withdrawals_to_block: int | None = None,
+    withdrawals_block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
+) -> dict[str, Any]:
     rpc = RpcClient(rpc_url, BLOCK)
     mc = Multicall(rpc, MULTICALL3, MULTICALL_BATCH)
 
@@ -776,6 +1108,21 @@ def build_snapshot(rpc_url: str) -> dict[str, Any]:
         "direct_lenders": direct_lenders,
         "vaults": vaults,
     }
+    latest = rpc.eth_block_number()
+    scan_to = latest if withdrawals_to_block is None else min(withdrawals_to_block, latest)
+    scan_from = BLOCK + 1
+    target_label = "latest" if withdrawals_to_block is None else str(withdrawals_to_block)
+    print(
+        f"[info] withdrawals target for silo {SILO_ADDRESS}: requested={target_label}, "
+        f"resolved_to={scan_to}, chunk={withdrawals_block_chunk}"
+    )
+    if scan_to >= scan_from:
+        print(f"[info] fetching Withdraw events from blocks {scan_from}..{scan_to} ...")
+        enrich_snapshot_with_withdrawals(silo_entry, rpc, scan_from, scan_to, withdrawals_block_chunk)
+    else:
+        print(f"[info] skipping Withdraw scan: target block {scan_to} is before {scan_from}")
+        enrich_snapshot_with_withdrawals(silo_entry, rpc, scan_from, scan_from - 1, withdrawals_block_chunk)
+    silo_entry["withdrawals_scanned_to_block"] = scan_to
     return silo_entry
 
 
@@ -809,8 +1156,14 @@ def write_output(silo_entry: dict[str, Any], chain: str, chain_id: int, silo_add
 
 
 def main() -> int:
+    import time
+
     load_secrets()
+    total_silos = sum(len(target.get("silos") or []) for target in TARGETS)
+    print(f"[info] configured targets: {total_silos} silo(s) across {len(TARGETS)} chain(s)")
     completed = 0
+    silo_index = 0
+    started_at = time.monotonic()
     for target in TARGETS:
         silos = target.get("silos") or []
         if not silos:
@@ -818,15 +1171,34 @@ def main() -> int:
             continue
         rpc_url = resolve_rpc_url(str(target["chain"]))
         for silo in silos:
+            silo_index += 1
             configure_context(target, silo)
-            silo_entry = build_snapshot(rpc_url)
+            print(
+                f"[info] ===== silo {silo_index}/{total_silos}: chain={CHAIN} "
+                f"silo={SILO_ADDRESS} block={BLOCK} ====="
+            )
+            silo_started_at = time.monotonic()
+            withdrawals_to_block = resolve_withdrawals_to_block(silo)
+            withdrawals_block_chunk = resolve_withdrawals_block_chunk(silo)
+            silo_entry = build_snapshot(
+                rpc_url,
+                withdrawals_to_block=withdrawals_to_block,
+                withdrawals_block_chunk=withdrawals_block_chunk,
+            )
             write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS)
             direct = len(silo_entry["direct_lenders"])
             vaults = len(silo_entry["vaults"])
-            print(f"[done] chain={CHAIN} silo={SILO_ADDRESS} direct_lenders={direct} vaults={vaults}")
+            elapsed = time.monotonic() - silo_started_at
+            print(
+                f"[done] silo {silo_index}/{total_silos} chain={CHAIN} silo={SILO_ADDRESS} "
+                f"direct_lenders={direct} vaults={vaults} elapsed={elapsed:.1f}s"
+            )
             completed += 1
     if completed == 0:
         print("[done] no silos configured")
+    else:
+        total_elapsed = time.monotonic() - started_at
+        print(f"[done] all {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
     return 0
 
 

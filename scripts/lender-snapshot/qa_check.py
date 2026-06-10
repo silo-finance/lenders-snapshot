@@ -9,6 +9,10 @@ share-sum invariants against the stored total supplies, with ZERO tolerance
   - sum(direct_lenders[].collateral_shares) == collateral_total_supply
   - for each indexed vault with in_withdraw_queue == true:
         sum(depositors[].vault_shares) == vault_total_supply
+  - for each lender/depositor:
+    pending_assets == max(0, base_assets - total_withdrawals)
+  - for each lender/depositor:
+    sum(withdrawals[].assets) == total_withdrawals
 
 Any non-zero difference is an error and yields a non-zero exit code, with an
 expected/actual/diff report per contract.
@@ -97,14 +101,42 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
     for lender_addr, entry in direct.items():
         if not isinstance(entry, dict):
             continue
-        if entry.get("address_type") != "silo_vault":
+        if entry.get("address_type") == "silo_vault":
+            # Direct vault rows are not distribution recipients in the UI.
+            # They still should map to a vault object under silo.vaults.
+            vaults_obj = silo.get("vaults", {})
+            if not isinstance(vaults_obj, dict):
+                vaults_obj = {}
+            vault_keys = {str(addr).lower() for addr in vaults_obj}
+            if lender_addr.lower() not in vault_keys:
+                report.warn(f"{prefix} silo_vault {lender_addr} missing matching vaults entry")
             continue
-        vaults_obj = silo.get("vaults", {})
-        if not isinstance(vaults_obj, dict):
-            vaults_obj = {}
-        vault_keys = {str(addr).lower() for addr in vaults_obj}
-        if lender_addr.lower() not in vault_keys:
-            report.warn(f"{prefix} silo_vault {lender_addr} missing matching vaults entry")
+        base_assets = to_int(entry.get("assets_collateral", entry.get("total_assets", 0)))
+        total_withdrawals = to_int(entry.get("total_withdrawals", 0))
+        pending_assets = to_int(entry.get("pending_assets", base_assets))
+        expected_pending = base_assets - total_withdrawals
+        if expected_pending < 0:
+            report.warn(f"{prefix} lender {lender_addr}: total_withdrawals exceeds base assets")
+            expected_pending = 0
+        report.check_equal(
+            f"{prefix} lender {lender_addr} pending_assets consistency",
+            expected_pending,
+            pending_assets,
+        )
+        withdrawals = entry.get("withdrawals", [])
+        if isinstance(withdrawals, list):
+            summed = 0
+            for item in withdrawals:
+                if not isinstance(item, dict):
+                    continue
+                summed += to_int(item.get("assets", 0))
+            report.check_equal(
+                f"{prefix} lender {lender_addr} withdrawals_sum vs total_withdrawals",
+                total_withdrawals,
+                summed,
+            )
+        else:
+            report.warn(f"{prefix} lender {lender_addr}: withdrawals must be an array")
 
     vaults = silo.get("vaults", {})
     if not isinstance(vaults, dict):
@@ -134,6 +166,35 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
             to_int(vault.get("vault_total_supply", 0)),
             shares_sum,
         )
+        for depositor_addr, depositor in depositors.items():
+            if not isinstance(depositor, dict):
+                continue
+            base_assets = to_int(depositor.get("attributed_silo_assets", 0))
+            total_withdrawals = to_int(depositor.get("total_withdrawals", 0))
+            pending_assets = to_int(depositor.get("pending_assets", base_assets))
+            expected_pending = base_assets - total_withdrawals
+            if expected_pending < 0:
+                report.warn(f"{vlabel} depositor {depositor_addr}: total_withdrawals exceeds base assets")
+                expected_pending = 0
+            report.check_equal(
+                f"{vlabel} depositor {depositor_addr} pending_assets consistency",
+                expected_pending,
+                pending_assets,
+            )
+            withdrawals = depositor.get("withdrawals", [])
+            if isinstance(withdrawals, list):
+                summed = 0
+                for item in withdrawals:
+                    if not isinstance(item, dict):
+                        continue
+                    summed += to_int(item.get("assets", 0))
+                report.check_equal(
+                    f"{vlabel} depositor {depositor_addr} withdrawals_sum vs total_withdrawals",
+                    total_withdrawals,
+                    summed,
+                )
+            else:
+                report.warn(f"{vlabel} depositor {depositor_addr}: withdrawals must be an array")
 
 
 def verify_onchain(root: dict[str, Any], chain_filter: set[str], report: Report) -> None:

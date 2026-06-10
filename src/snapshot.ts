@@ -13,6 +13,9 @@ type RawDirectLender = {
   collateral_shares?: RawAmount;
   assets_collateral?: RawAmount;
   total_assets?: RawAmount;
+  total_withdrawals?: RawAmount;
+  pending_assets?: RawAmount;
+  withdrawals?: RawWithdrawalEntry[];
 };
 
 type RawDepositor = {
@@ -20,6 +23,17 @@ type RawDepositor = {
   vault_shares?: RawAmount;
   fraction?: string;
   attributed_silo_assets?: RawAmount;
+  total_withdrawals?: RawAmount;
+  pending_assets?: RawAmount;
+  withdrawals?: RawWithdrawalEntry[];
+};
+
+type RawWithdrawalEntry = {
+  block_number?: number | string;
+  tx_hash?: string;
+  log_index?: number | string;
+  assets?: RawAmount;
+  shares?: RawAmount;
 };
 
 type RawVault = {
@@ -62,6 +76,9 @@ export type DirectLender = {
   totalShares: bigint;
   assetsCollateral: bigint;
   totalAssets: bigint;
+  totalWithdrawals: bigint;
+  pendingAssets: bigint;
+  withdrawals: WithdrawalEntry[];
   isVault: boolean;
 };
 
@@ -71,6 +88,17 @@ export type VaultDepositor = {
   vaultShares: bigint;
   fraction: string;
   attributedSiloAssets: bigint;
+  totalWithdrawals: bigint;
+  pendingAssets: bigint;
+  withdrawals: WithdrawalEntry[];
+};
+
+export type WithdrawalEntry = {
+  blockNumber: number;
+  txHash: string;
+  logIndex: number;
+  assets: bigint;
+  shares: bigint;
 };
 
 export type VaultSnapshot = {
@@ -152,10 +180,34 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       "Asset",
   };
 
+  const parseWithdrawals = (entries: RawWithdrawalEntry[] | undefined): WithdrawalEntry[] => {
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+    return entries
+      .map((entry) => {
+        const assets = toBigInt(entry.assets);
+        const shares = toBigInt(entry.shares);
+        return {
+          blockNumber: toNumber(entry.block_number, 0),
+          txHash: (entry.tx_hash ?? "").toLowerCase(),
+          logIndex: toNumber(entry.log_index, 0),
+          assets,
+          shares,
+        };
+      })
+      .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex || a.txHash.localeCompare(b.txHash));
+  };
+
   const directLenders = Object.entries(raw.direct_lenders ?? {}).map(([lenderAddress, entry]) => {
     const collateralShares = toBigInt(entry.collateral_shares);
     const assetsCollateral = toBigInt(entry.assets_collateral);
     const totalAssets = toBigInt(entry.total_assets) || assetsCollateral;
+    const totalWithdrawals = toBigInt(entry.total_withdrawals);
+    const pendingAssets =
+      entry.pending_assets === undefined || entry.pending_assets === null || entry.pending_assets === ""
+        ? totalAssets
+        : toBigInt(entry.pending_assets);
     return {
       address: lenderAddress,
       addressType: displayAddressType(entry.address_type),
@@ -163,6 +215,9 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       totalShares: collateralShares,
       assetsCollateral,
       totalAssets,
+      totalWithdrawals,
+      pendingAssets,
+      withdrawals: parseWithdrawals(entry.withdrawals),
       isVault: entry.address_type === "silo_vault",
     };
   });
@@ -178,13 +233,22 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       entry.vault_total_supply === null || entry.vault_total_supply === undefined
         ? null
         : toBigInt(entry.vault_total_supply),
-    depositors: Object.entries(entry.depositors ?? {}).map(([depositorAddress, depositor]) => ({
-      address: depositorAddress,
-      addressType: displayAddressType(depositor.address_type),
-      vaultShares: toBigInt(depositor.vault_shares),
-      fraction: depositor.fraction ?? "0",
-      attributedSiloAssets: toBigInt(depositor.attributed_silo_assets),
-    })),
+    depositors: Object.entries(entry.depositors ?? {}).map(([depositorAddress, depositor]) => {
+      const attributedSiloAssets = toBigInt(depositor.attributed_silo_assets);
+      return {
+        address: depositorAddress,
+        addressType: displayAddressType(depositor.address_type),
+        vaultShares: toBigInt(depositor.vault_shares),
+        fraction: depositor.fraction ?? "0",
+        attributedSiloAssets,
+        totalWithdrawals: toBigInt(depositor.total_withdrawals),
+        pendingAssets:
+          depositor.pending_assets === undefined || depositor.pending_assets === null || depositor.pending_assets === ""
+            ? attributedSiloAssets
+            : toBigInt(depositor.pending_assets),
+        withdrawals: parseWithdrawals(depositor.withdrawals),
+      };
+    }),
   }));
 
   const totalAssets = toBigInt(raw.total_assets) || directLenders.reduce((sum, lender) => sum + lender.totalAssets, ZERO);
@@ -264,6 +328,15 @@ export function compareBigIntAsc(a: bigint, b: bigint): number {
 export function explorerAddressUrl(chain: string, address: string): string {
   const explorer = KNOWN_CHAINS[chain]?.explorer;
   return explorer ? `${explorer}${address}` : "#";
+}
+
+export function explorerTxUrl(chain: string, txHash: string): string {
+  const explorer = KNOWN_CHAINS[chain]?.explorer;
+  if (!explorer) {
+    return "#";
+  }
+  const txBase = explorer.includes("/address/") ? explorer.replace("/address/", "/tx/") : explorer;
+  return `${txBase}${txHash}`;
 }
 
 export function shortAddress(address: string): string {
