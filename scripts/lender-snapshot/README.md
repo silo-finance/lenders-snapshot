@@ -96,18 +96,10 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
             "collateral_shares": "…",
             "assets_collateral": "…",
             "total_assets": "…",
+            // present for non-vault direct lenders:
             "total_withdrawals": "…",
             "pending_assets": "…",
-            "withdrawals": [
-              {
-                "block_number": 54150000,
-                "tx_hash": "0x…",
-                "log_index": 3,
-                "assets": "…",
-                "shares": "…",
-                "deducted_assets": "…"
-              }
-            ]
+            "withdrawals": [ { "...": "..." } ]
           }
         },
         "vaults": {
