@@ -47,6 +47,10 @@ TARGETS: list[dict[str, Any]] = [
         "subgraph_url": DEFAULT_SUBGRAPH_URL,
         "silos": [
             {
+                "address": "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de",
+                "block": 54144258,
+            },
+            {
                 "address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64",
                 "block": 54144258,
             }
