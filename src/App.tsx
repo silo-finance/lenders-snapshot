@@ -548,6 +548,10 @@ function HolderTable({
 }) {
   const isExpanded = forceExpanded || expanded;
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
+  const [showOnlyPlusMinus, setShowOnlyPlusMinus] = useState(false);
+  const tableRows = showOnlyPlusMinus
+    ? rows.filter((row) => !row.isVault && row.totalWithdrawals > ZERO)
+    : rows;
 
   function toggleBreakdown(address: string) {
     setExpandedBreakdowns((current) => ({ ...current, [address]: !current[address] }));
@@ -584,8 +588,14 @@ function HolderTable({
         <div className="px-5 py-4 text-sm text-slate-400">
           Direct lenders table is collapsed. Use Expand or Expand all to show it.
         </div>
-      ) : rows.length === 0 ? (
-        <EmptyState message="No direct lenders match the current address filter." />
+      ) : tableRows.length === 0 ? (
+        <EmptyState
+          message={
+            showOnlyPlusMinus
+              ? "No direct lenders with plus/minus match the current filters."
+              : "No direct lenders match the current address filter."
+          }
+        />
       ) : (
         <div className="max-h-[38rem] overflow-auto">
           <table className="min-w-full divide-y divide-white/10 text-sm">
@@ -621,11 +631,23 @@ function HolderTable({
                   />
                   <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
                 </th>
+                <th className="w-24 px-2 py-3 text-center font-medium">
+                  <div className="flex flex-col items-center gap-1">
+                    <span>Plus minus</span>
+                    <input
+                      aria-label="Show only rows with plus minus details"
+                      checked={showOnlyPlusMinus}
+                      className="h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
+                      type="checkbox"
+                      onChange={(event) => setShowOnlyPlusMinus(event.target.checked)}
+                    />
+                  </div>
+                </th>
                 {showRewardColumn ? <th className="px-5 py-3 text-right font-medium">Reward</th> : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 text-slate-200">
-              {rows.map((row) => {
+              {tableRows.map((row) => {
                 const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
                 const hasWithdrawals = !row.isVault && row.totalWithdrawals > ZERO;
                 return (
@@ -671,9 +693,11 @@ function HolderTable({
                             {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                           </span>
                         )}
+                      </td>
+                      <td className="px-2 py-4 text-center font-mono tabular-nums">
                         {hasWithdrawals ? (
                           <button
-                            className="ml-2 font-sans text-xs font-semibold text-emerald-200 transition hover:text-emerald-100"
+                            className="font-sans text-xs font-semibold text-emerald-200 transition hover:text-emerald-100"
                             title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
                             type="button"
                             onClick={() => toggleBreakdown(row.address)}
@@ -704,7 +728,7 @@ function HolderTable({
                     </tr>
                     {breakdownOpen && hasWithdrawals && !row.isVault ? (
                       <tr className="bg-slate-950/40">
-                        <td className="px-5 pb-4" colSpan={showRewardColumn ? 6 : 5}>
+                        <td className="px-5 pb-4" colSpan={showRewardColumn ? 7 : 6}>
                           <PendingAssetsBreakdown
                             baseAssets={row.totalAssets}
                             decimals={silo.inputToken.decimals}
@@ -773,20 +797,32 @@ function DepositorTable({
   hideTypeFilter?: boolean;
 }) {
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
+  const [showOnlyPlusMinus, setShowOnlyPlusMinus] = useState(false);
   const needle = addressFilter.trim().toLowerCase();
   const visibleRows = rows.filter((row) => {
     const addressMatches = needle ? row.address.toLowerCase().includes(needle) : true;
     const typeMatches = hideTypeFilter || addressTypeFilter === "all" || row.addressType === addressTypeFilter;
     return addressMatches && typeMatches;
   });
-  const filteredRows = sortDepositors(visibleRows, sortState);
+  const filteredRows = sortDepositors(
+    showOnlyPlusMinus ? visibleRows.filter((row) => row.totalWithdrawals > ZERO) : visibleRows,
+    sortState,
+  );
 
   function toggleBreakdown(address: string) {
     setExpandedBreakdowns((current) => ({ ...current, [address]: !current[address] }));
   }
 
   if (filteredRows.length === 0) {
-    return <EmptyState message="No vault depositors match the current address filter." />;
+    return (
+      <EmptyState
+        message={
+          showOnlyPlusMinus
+            ? "No vault depositors with plus/minus match the current filters."
+            : "No vault depositors match the current address filter."
+        }
+      />
+    );
   }
 
   return (
@@ -825,6 +861,18 @@ function DepositorTable({
                 />
                 <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
               </th>
+              <th className="w-24 px-2 py-3 text-center font-medium">
+                <div className="flex flex-col items-center gap-1">
+                  <span>Plus minus</span>
+                  <input
+                    aria-label="Show only rows with plus minus details"
+                    checked={showOnlyPlusMinus}
+                    className="h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
+                    type="checkbox"
+                    onChange={(event) => setShowOnlyPlusMinus(event.target.checked)}
+                  />
+                </div>
+              </th>
               {showRewardColumn ? <th className="px-5 py-3 text-right font-medium">Reward</th> : null}
             </tr>
           </thead>
@@ -851,9 +899,11 @@ function DepositorTable({
                       <span>
                         {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                       </span>
+                    </td>
+                    <td className="px-2 py-4 text-center font-mono tabular-nums">
                       {hasWithdrawals ? (
                         <button
-                          className="ml-2 font-sans text-xs font-semibold text-emerald-200 transition hover:text-emerald-100"
+                          className="font-sans text-xs font-semibold text-emerald-200 transition hover:text-emerald-100"
                           title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
                           type="button"
                           onClick={() => toggleBreakdown(row.address)}
@@ -878,7 +928,7 @@ function DepositorTable({
                   </tr>
                   {breakdownOpen && hasWithdrawals ? (
                     <tr className="bg-slate-950/40">
-                      <td className="px-5 pb-4" colSpan={showRewardColumn ? 6 : 5}>
+                      <td className="px-5 pb-4" colSpan={showRewardColumn ? 7 : 6}>
                         <PendingAssetsBreakdown
                           baseAssets={row.attributedSiloAssets}
                           decimals={silo.inputToken.decimals}
