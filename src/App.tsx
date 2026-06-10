@@ -12,6 +12,7 @@ import {
   compareBigIntAsc,
   compareBigIntDesc,
   explorerAddressUrl,
+  explorerTxUrl,
   findSiloByAddress,
   formatUnits,
   formatUnitsFixed,
@@ -450,6 +451,7 @@ function shortHash(hash: string): string {
 }
 
 function PendingAssetsBreakdown({
+  chain,
   baseAssets,
   totalWithdrawals,
   pendingAssets,
@@ -457,6 +459,7 @@ function PendingAssetsBreakdown({
   decimals,
   symbol,
 }: {
+  chain: string;
   baseAssets: bigint;
   totalWithdrawals: bigint;
   pendingAssets: bigint;
@@ -482,11 +485,25 @@ function PendingAssetsBreakdown({
         <div className="mt-2 space-y-2">
           {withdrawals.map((event, index) => {
             const next = running > event.deductedAssets ? running - event.deductedAssets : ZERO;
+            const txUrl = explorerTxUrl(chain, event.txHash);
             const row = (
               <div key={`${event.txHash}-${event.logIndex}-${index}`} className="space-y-1">
                 <div className="flex justify-between gap-3">
                   <span className="text-slate-400">
-                    - withdrawal #{index + 1} (block {event.blockNumber}, tx {shortHash(event.txHash)})
+                    - withdrawal #{index + 1} (block {event.blockNumber}, tx{" "}
+                    {txUrl === "#" ? (
+                      shortHash(event.txHash)
+                    ) : (
+                      <a
+                        className="text-emerald-200 transition hover:text-emerald-100"
+                        href={txUrl}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {shortHash(event.txHash)}
+                      </a>
+                    )}
+                    )
                   </span>
                   <span>-{formatUnitsFixed(event.deductedAssets, decimals)}</span>
                 </div>
@@ -731,6 +748,7 @@ function HolderTable({
                         <tr className="bg-slate-950/40">
                           <td className="px-5 pb-4" colSpan={showRewardColumn ? 7 : 6}>
                             <PendingAssetsBreakdown
+                            chain={chain}
                               baseAssets={row.totalAssets}
                               decimals={silo.inputToken.decimals}
                               pendingAssets={row.pendingAssets}
@@ -929,6 +947,7 @@ function DepositorTable({
                       <tr className="bg-slate-950/40">
                         <td className="px-5 pb-4" colSpan={showRewardColumn ? 7 : 6}>
                           <PendingAssetsBreakdown
+                          chain={chain}
                             baseAssets={row.attributedSiloAssets}
                             decimals={silo.inputToken.decimals}
                             pendingAssets={row.pendingAssets}
