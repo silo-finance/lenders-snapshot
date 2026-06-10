@@ -53,7 +53,35 @@ TARGETS: list[dict[str, Any]] = [
             {
                 "address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64",
                 "block": 54144258,
-            }
+            },
+            {
+                "address": "0x4935fadb17df859667cc4f7bfe6a8cb24f86f8d0",
+                "block": 54144258,
+            },
+            {
+                "address": "0x4f55e28d36b30a638c3aa1d5cbf9c4ccb3831506",
+                "block": 54144258,
+            },
+            {
+                "address": "0xc3a18f1efa66234e7d233c8ad00d597f6e585f2b",
+                "block": 54144258,
+            },
+            {
+                "address": "0x24c74b30d1a4261608e84bf5a618693032681dac",
+                "block": 54144258,
+            },
+            {
+                "address": "0x219656f33c58488d09d518badf50aa8cdcaca2aa",
+                "block": 54144258,
+            },
+            {
+                "address": "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2",
+                "block": 54144258,
+            },
+            {
+                "address": "0x08c320a84a59c6f533e0dca655cf497594bca1f9",
+                "block": 54144258,
+            },
         ],
     },
     {
