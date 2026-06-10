@@ -26,7 +26,13 @@ The withdrawals are merged into the same `distribution_snapshot.json` consumed b
 Non-secret parameters are hardcoded near the top of `snapshot_lenders.py` in `TARGETS`:
 
 - `chain`, `chain_id`, `subgraph_url`
-- `silos[]` entries with `address` and `block`
+- `silos[]` entries with:
+  - `address`
+  - `block`
+  - optional `withdrawals_to_block`:
+    - integer block number, or
+    - `"latest"` (resolved right before the withdraw scan starts for that silo)
+  - optional `withdrawals_block_chunk` (number of blocks per `eth_getLogs` call for this silo)
 - `OUTPUT_JSON`
 - `MULTICALL3` address and `MULTICALL_BATCH`
 
@@ -39,6 +45,8 @@ Secrets are read **only** from the environment (or a local, gitignored `.env`):
 - `ETHEREUM_RPC_URL` – future archive RPC endpoint for Ethereum once Ethereum silos are configured.
 - `RPC_URL` – optional fallback used if a chain-specific URL is not set.
 - `THE_GRAPH_API_KEY` – The Graph gateway Bearer token.
+- `WITHDRAWALS_TO_BLOCK` – optional global override for scan end block (`latest` or integer).
+- `WITHDRAWALS_BLOCK_CHUNK` – optional global override for `eth_getLogs` chunk size.
 
 ```bash
 cp scripts/lender-snapshot/.env.example scripts/lender-snapshot/.env
