@@ -34,6 +34,10 @@ type RawWithdrawalEntry = {
   log_index?: number | string;
   assets?: RawAmount;
   shares?: RawAmount;
+  // Vault depositors only: raw vault underlying withdrawn on-chain (full redemption
+  // across all silos). `assets` is the snapshot-rate slice attributed to this silo
+  // and is what actually reduces `pending_assets`.
+  vault_assets?: RawAmount;
 };
 
 type RawVault = {
@@ -99,6 +103,10 @@ export type WithdrawalEntry = {
   logIndex: number;
   assets: bigint;
   shares: bigint;
+  // Raw on-chain withdrawn amount. Equals `assets` for direct lenders; for vault
+  // depositors it is the full vault redemption (across all silos), while `assets`
+  // is the slice attributed to this silo.
+  eventAssets: bigint;
 };
 
 export type VaultSnapshot = {
@@ -188,12 +196,18 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       .map((entry) => {
         const assets = toBigInt(entry.assets);
         const shares = toBigInt(entry.shares);
+        const rawEventAssets = entry.vault_assets;
+        const eventAssets =
+          rawEventAssets === undefined || rawEventAssets === null || rawEventAssets === ""
+            ? assets
+            : toBigInt(rawEventAssets);
         return {
           blockNumber: toNumber(entry.block_number, 0),
           txHash: (entry.tx_hash ?? "").toLowerCase(),
           logIndex: toNumber(entry.log_index, 0),
           assets,
           shares,
+          eventAssets,
         };
       })
       .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex || a.txHash.localeCompare(b.txHash));

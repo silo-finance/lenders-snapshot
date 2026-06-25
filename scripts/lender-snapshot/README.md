@@ -14,6 +14,13 @@ After the snapshot is assembled, the script also scans post-snapshot `Withdraw(a
 
 The withdrawals are merged into the same `distribution_snapshot.json` consumed by the UI (`total_withdrawals`, `pending_assets`, and per-event `withdrawals[]` breakdown).
 
+Withdrawal attribution differs by lender type:
+
+- **direct lenders:** the raw on-chain `Withdraw` event `assets` (a silo-level withdrawal in the silo asset) is subtracted directly from `assets_collateral`.
+- **vault depositors:** a SiloVault can lend into several silos, and one vault `Withdraw` burns vault shares for the vault's *total* underlying across all of them. Subtracting the raw event assets from every silo entry would both double-count across silos and credit withdrawals to silos where the vault held nothing at the snapshot block. Instead, the burned vault shares are valued at the snapshot per-share rate and translated into the assets attributable to **this** silo: `assets = vault_silo_assets * shares_burned / vault_total_supply`. This scales each silo by its own position (no cross-silo double counting) and yields `0` for silos where the vault held nothing/dust at the snapshot block, so a depositor can never show withdrawals exceeding a zero snapshot position.
+
+For vault depositors, each `withdrawals[]` entry also keeps the raw on-chain amount for reference (`vault_assets`); only `assets` reduces `pending_assets`.
+
 ## Layout
 
 - `snapshot_lenders.py` – main script that produces `distribution_snapshot.json`.
@@ -123,8 +130,9 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
                     "block_number": 54150000,
                     "tx_hash": "0x…",
                     "log_index": 7,
-                    "assets": "…",
-                    "shares": "…"
+                    "assets": "…",         // snapshot-rate, attributed to this silo (reduces pending)
+                    "shares": "…",         // vault shares burned
+                    "vault_assets": "…"    // raw vault underlying from the on-chain Withdraw event
                   }
                 ]
               }
