@@ -316,6 +316,12 @@ export const SILO_CATEGORY_LABELS: Record<SiloCategory, string> = {
   eth: "ETH",
 };
 
+// Default airdrop amounts pre-filled when distribution is enabled, per category.
+export const SILO_CATEGORY_DEFAULT_AIRDROP: Record<SiloCategory, string> = {
+  usdc: "46019",
+  eth: "42.53239",
+};
+
 /**
  * Bucket a silo by its input token. Any USD-denominated token (USDC, scUSD, ...)
  * is treated as the "USDC" group; everything else (WETH, scETH, ...) is "IF" (ETH).

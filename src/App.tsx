@@ -15,6 +15,7 @@ import {
   type VaultDepositor,
   type VaultSnapshot,
   type WithdrawalEntry,
+  SILO_CATEGORY_DEFAULT_AIRDROP,
   SILO_CATEGORY_LABELS,
   SILO_CATEGORY_ORDER,
   chains,
@@ -1415,6 +1416,7 @@ function SiloDetailPanel({
   airdropInputInvalid,
   showAirdropColumn,
   categoryLabel,
+  defaultAirdropAmount = "",
   showAirdrops = true,
   showTypeFilter = true,
   showExpandControls = true,
@@ -1444,6 +1446,7 @@ function SiloDetailPanel({
   airdropInputInvalid: boolean;
   showAirdropColumn: boolean;
   categoryLabel?: string;
+  defaultAirdropAmount?: string;
   showAirdrops?: boolean;
   showTypeFilter?: boolean;
   showExpandControls?: boolean;
@@ -1527,7 +1530,15 @@ function SiloDetailPanel({
                   onChange={(event) => {
                     const enabled = event.target.checked;
                     setDistributeAirdropsEnabled(enabled);
-                    if (!enabled) {
+                    if (enabled) {
+                      // Pre-fill the per-category default so the airdrop is computed
+                      // immediately on enable.
+                      if (defaultAirdropAmount && !airdropInput.trim()) {
+                        setAirdropInput(defaultAirdropAmount);
+                        setDirectExpanded(true);
+                        setExpandedVaults(Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])));
+                      }
+                    } else {
                       setAirdropInput("");
                       setIncludeOtherContracts(false);
                     }
@@ -2007,6 +2018,7 @@ function ExplorerView() {
               addressTypes={addressTypes}
               categoryLabel={SILO_CATEGORY_LABELS[activeCategory]}
               chain={selectedChain}
+              defaultAirdropAmount={SILO_CATEGORY_DEFAULT_AIRDROP[activeCategory]}
               directExpanded={directExpanded}
               directSort={directSort}
               distributeAirdropsEnabled={distributeAirdropsEnabled}
