@@ -1,6 +1,12 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import packageJson from "../package.json";
-import { buildSiloPath, explorerHomePath, parseSiloPathFromUrl } from "./routing";
+import {
+  buildExplorerSelectionUrl,
+  buildSiloPath,
+  explorerHomePath,
+  parseExplorerSelectionFromUrl,
+  parseSiloPathFromUrl,
+} from "./routing";
 import {
   type ChainSnapshot,
   type DirectLender,
@@ -1308,6 +1314,23 @@ function getInitialChain(): ChainSnapshot {
   return chains.find((chain) => chain.silos.length > 0) ?? chains[0];
 }
 
+function getInitialExplorerSelection(): { chainName: string; siloAddress: string } {
+  const fallbackChain = getInitialChain();
+  const fallback = {
+    chainName: fallbackChain.chain,
+    siloAddress: fallbackChain.silos[0]?.address ?? "",
+  };
+  const selection = parseExplorerSelectionFromUrl();
+  if (!selection.address) {
+    return fallback;
+  }
+  const match = findSiloByAddress(selection.address, selection.chain);
+  if (!match) {
+    return fallback;
+  }
+  return { chainName: match.chain.chain, siloAddress: match.silo.address };
+}
+
 function resetRewardsState(
   setDistributeRewardsEnabled: (value: boolean) => void,
   setRewardInput: (value: string) => void,
@@ -1691,8 +1714,8 @@ function SiloDetailPanel({
 
 function ExplorerView() {
   const initialChain = getInitialChain();
-  const [selectedChainName, setSelectedChainName] = useState(initialChain.chain);
-  const [selectedSiloAddress, setSelectedSiloAddress] = useState(initialChain.silos[0]?.address ?? "");
+  const [selectedChainName, setSelectedChainName] = useState(() => getInitialExplorerSelection().chainName);
+  const [selectedSiloAddress, setSelectedSiloAddress] = useState(() => getInitialExplorerSelection().siloAddress);
   const [addressFilter, setAddressFilter] = useState("");
   const [addressTypeFilter, setAddressTypeFilter] = useState("all");
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
@@ -1721,13 +1744,49 @@ function ExplorerView() {
       : null;
   const showRewardColumn = distributeRewardsEnabled && rewardRaw !== null && rewardRaw > ZERO;
 
+  function syncSelectionUrl(chainName: string, siloAddress: string, replace = false) {
+    if (!siloAddress) {
+      return;
+    }
+    const url = buildExplorerSelectionUrl(chainName, siloAddress);
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current === url) {
+      return;
+    }
+    if (replace) {
+      window.history.replaceState(null, "", url);
+    } else {
+      window.history.pushState(null, "", url);
+    }
+  }
+
+  // Reflect the current selection in the address bar on first load so the URL is
+  // always shareable, without adding a spurious history entry.
+  useEffect(() => {
+    syncSelectionUrl(selectedChainName, selectedSiloAddress, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep selection in sync with browser back/forward navigation.
+  useEffect(() => {
+    function handlePopState() {
+      const selection = getInitialExplorerSelection();
+      setSelectedChainName(selection.chainName);
+      setSelectedSiloAddress(selection.siloAddress);
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   function selectChain(chain: ChainSnapshot) {
+    const nextSilo = chain.silos[0]?.address ?? "";
     setSelectedChainName(chain.chain);
-    setSelectedSiloAddress(chain.silos[0]?.address ?? "");
+    setSelectedSiloAddress(nextSilo);
     setAddressTypeFilter("all");
     setDirectExpanded(true);
     setExpandedVaults({});
     resetRewardsState(setDistributeRewardsEnabled, setRewardInput, setIncludeOtherContracts);
+    syncSelectionUrl(chain.chain, nextSilo);
   }
 
   function selectSilo(siloAddress: string) {
@@ -1736,6 +1795,7 @@ function ExplorerView() {
     setDirectExpanded(true);
     setExpandedVaults({});
     resetRewardsState(setDistributeRewardsEnabled, setRewardInput, setIncludeOtherContracts);
+    syncSelectionUrl(selectedChainName, siloAddress);
   }
 
   return (
