@@ -10,10 +10,13 @@ import {
 import {
   type ChainSnapshot,
   type DirectLender,
+  type SiloCategory,
   type SiloSnapshot,
   type VaultDepositor,
   type VaultSnapshot,
   type WithdrawalEntry,
+  SILO_CATEGORY_LABELS,
+  SILO_CATEGORY_ORDER,
   chains,
   compareBigIntAsc,
   compareBigIntDesc,
@@ -26,6 +29,7 @@ import {
   formatUnitsRounded,
   parseUnits,
   shortAddress,
+  siloCategory,
 } from "./snapshot";
 import { useWallet } from "./useWallet";
 
@@ -71,6 +75,22 @@ function directLeafKey(siloAddress: string, address: string): string {
 
 function vaultLeafKey(siloAddress: string, vaultAddress: string, depositorAddress: string): string {
   return `vault:${siloAddress}:${vaultAddress}:${depositorAddress}`;
+}
+
+function siloDistributedTotal(silo: SiloSnapshot, rewardPlan: RewardPlan): bigint {
+  let total = ZERO;
+  for (const lender of silo.directLenders) {
+    if (lender.isVault) {
+      continue;
+    }
+    total += rewardPlan.byLeafKey.get(directLeafKey(silo.address, lender.address)) ?? ZERO;
+  }
+  for (const vault of silo.vaults) {
+    for (const depositor of vault.depositors) {
+      total += rewardPlan.byLeafKey.get(vaultLeafKey(silo.address, vault.address, depositor.address)) ?? ZERO;
+    }
+  }
+  return total;
 }
 
 function csvEscape(value: string): string {
@@ -555,6 +575,7 @@ function HolderTable({
   expanded,
   rewardPlan,
   showRewardColumn,
+  rewardSymbol,
   sortState,
   tableTotals,
   onSort,
@@ -570,6 +591,7 @@ function HolderTable({
   expanded: boolean;
   rewardPlan: RewardPlan | null;
   showRewardColumn: boolean;
+  rewardSymbol: string;
   sortState: TableSortState;
   tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
@@ -755,7 +777,7 @@ function HolderTable({
                                   rewardPlan,
                                   directLeafKey(silo.address, row.address),
                                   silo.inputToken.decimals,
-                                  silo.inputToken.symbol,
+                                  rewardSymbol,
                                 )}
                           </td>
                         ) : null}
@@ -815,6 +837,7 @@ function DepositorTable({
   addressTypeFilter,
   rewardPlan,
   showRewardColumn,
+  rewardSymbol,
   tableTotals,
   onSort,
   hideTypeFilter = false,
@@ -828,6 +851,7 @@ function DepositorTable({
   addressTypeFilter: string;
   rewardPlan: RewardPlan | null;
   showRewardColumn: boolean;
+  rewardSymbol: string;
   tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
   hideTypeFilter?: boolean;
@@ -953,7 +977,7 @@ function DepositorTable({
                                 rewardPlan,
                                 vaultLeafKey(silo.address, vaultAddress, row.address),
                                 silo.inputToken.decimals,
-                                silo.inputToken.symbol,
+                                rewardSymbol,
                               )
                             : "--"}
                         </td>
@@ -1147,6 +1171,7 @@ function VaultCard({
   addressTypeFilter,
   rewardPlan,
   showRewardColumn,
+  rewardSymbol,
   forceExpanded = false,
   hideTypeFilter = false,
   navPrevId,
@@ -1161,6 +1186,7 @@ function VaultCard({
   addressTypeFilter: string;
   rewardPlan: RewardPlan | null;
   showRewardColumn: boolean;
+  rewardSymbol: string;
   forceExpanded?: boolean;
   hideTypeFilter?: boolean;
   navPrevId?: string;
@@ -1232,7 +1258,7 @@ function VaultCard({
           {unavailableReward > ZERO ? (
             <p className="font-semibold text-amber-100">
               Undistributed from this vault: {formatUnits(unavailableReward, silo.inputToken.decimals)}{" "}
-              {silo.inputToken.symbol}
+              {rewardSymbol}
             </p>
           ) : null}
         </div>
@@ -1244,6 +1270,7 @@ function VaultCard({
             chain={chain}
             hideTypeFilter={hideTypeFilter}
             rewardPlan={rewardPlan}
+            rewardSymbol={rewardSymbol}
             rows={vault.depositors}
             showRewardColumn={showRewardColumn}
             silo={silo}
@@ -1331,6 +1358,17 @@ function getInitialExplorerSelection(): { chainName: string; siloAddress: string
   return { chainName: match.chain.chain, siloAddress: match.silo.address };
 }
 
+function getInitialCategory(): SiloCategory {
+  const selection = getInitialExplorerSelection();
+  const match = findSiloByAddress(selection.siloAddress, selection.chainName);
+  return match ? siloCategory(match.silo) : "usdc";
+}
+
+function availableCategories(silos: SiloSnapshot[]): SiloCategory[] {
+  const present = new Set(silos.map(siloCategory));
+  return SILO_CATEGORY_ORDER.filter((category) => present.has(category));
+}
+
 function resetRewardsState(
   setDistributeRewardsEnabled: (value: boolean) => void,
   setRewardInput: (value: string) => void,
@@ -1364,6 +1402,7 @@ function SiloDetailPanel({
   rewardPlan,
   rewardInputInvalid,
   showRewardColumn,
+  categoryLabel,
   showRewards = true,
   showTypeFilter = true,
   showExpandControls = true,
@@ -1392,6 +1431,7 @@ function SiloDetailPanel({
   rewardPlan: RewardPlan | null;
   rewardInputInvalid: boolean;
   showRewardColumn: boolean;
+  categoryLabel?: string;
   showRewards?: boolean;
   showTypeFilter?: boolean;
   showExpandControls?: boolean;
@@ -1402,6 +1442,9 @@ function SiloDetailPanel({
     showConnectWallet ? setAddressFilter : undefined,
   );
 
+  // Rewards are paid in the category token, so reward amounts are labeled with the
+  // category (USDC / ETH) rather than the individual silo's token symbol.
+  const rewardSymbol = categoryLabel ?? silo.inputToken.symbol;
   const lenderNeedle = addressFilter.trim().toLowerCase();
   const typeMatches = (addressType: string) =>
     !showTypeFilter || addressTypeFilter === "all" || addressType === addressTypeFilter;
@@ -1478,15 +1521,17 @@ function SiloDetailPanel({
                     }
                   }}
                 />
-                <span>Distribute rewards</span>
+                <span>Distribute rewards{categoryLabel ? ` (${categoryLabel})` : ""}</span>
               </label>
               {distributeRewardsEnabled ? (
                 <>
-                  <p className="mt-4 text-xs uppercase tracking-[0.22em] text-slate-500">Global reward amount</p>
+                  <p className="mt-4 text-xs uppercase tracking-[0.22em] text-slate-500">
+                    {categoryLabel ? `${categoryLabel} reward amount` : "Reward amount"}
+                  </p>
                   <div className="mt-3 flex gap-3">
                     <input
                       className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-slate-300 outline-none placeholder:text-slate-600"
-                      placeholder={`0.00 ${silo.inputToken.symbol}`}
+                      placeholder={`0.00 ${rewardSymbol}`}
                       value={rewardInput}
                       onChange={(event) => {
                         const nextValue = event.target.value;
@@ -1515,7 +1560,8 @@ function SiloDetailPanel({
                             reward === null ? "" : formatUnitsFixed(reward, silo.inputToken.decimals),
                           ]);
                         }
-                        downloadCsv(`global-snapshot-rewards.csv`, rows);
+                        const csvLabel = (categoryLabel ?? silo.inputToken.symbol).toLowerCase();
+                        downloadCsv(`${csvLabel}-snapshot-rewards.csv`, rows);
                       }}
                     >
                       Download CSV
@@ -1540,13 +1586,13 @@ function SiloDetailPanel({
                   ) : rewardPlan && rewardPlan.rewardRaw > ZERO ? (
                     <div className="mt-3 space-y-1 text-xs text-slate-400">
                       <p>
-                        Global distributed: {formatUnits(rewardPlan.distributed, silo.inputToken.decimals)}{" "}
-                        {silo.inputToken.symbol}
+                        {categoryLabel ? `${categoryLabel} distributed` : "Distributed"}:{" "}
+                        {formatUnits(rewardPlan.distributed, silo.inputToken.decimals)} {rewardSymbol}
                       </p>
                       {rewardPlan.undistributed > ZERO ? (
                         <p className="text-amber-200">
                           Undistributed: {formatUnits(rewardPlan.undistributed, silo.inputToken.decimals)}{" "}
-                          {silo.inputToken.symbol}
+                          {rewardSymbol}
                           {rewardPlan.nonAttributableAssets > ZERO
                             ? " because some vault assets have no enumerable depositors."
                             : " due to integer rounding."}
@@ -1641,6 +1687,7 @@ function SiloDetailPanel({
           navNextId={tableSectionIds.length > 1 ? tableSectionIds[1] : undefined}
           rows={visibleLenders}
           showRewardColumn={showRewardColumn}
+          rewardSymbol={rewardSymbol}
           silo={silo}
           rewardPlan={rewardPlan}
           sortState={directSort}
@@ -1690,6 +1737,7 @@ function SiloDetailPanel({
                 navNextId={index + 2 < tableSectionIds.length ? tableSectionIds[index + 2] : undefined}
                 navPrevId={tableSectionIds[index]}
                 rewardPlan={rewardPlan}
+                rewardSymbol={rewardSymbol}
                 showRewardColumn={showRewardColumn}
                 silo={silo}
                 vault={vault}
@@ -1716,6 +1764,7 @@ function ExplorerView() {
   const initialChain = getInitialChain();
   const [selectedChainName, setSelectedChainName] = useState(() => getInitialExplorerSelection().chainName);
   const [selectedSiloAddress, setSelectedSiloAddress] = useState(() => getInitialExplorerSelection().siloAddress);
+  const [selectedCategory, setSelectedCategory] = useState<SiloCategory>(getInitialCategory);
   const [addressFilter, setAddressFilter] = useState("");
   const [addressTypeFilter, setAddressTypeFilter] = useState("all");
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
@@ -1726,8 +1775,12 @@ function ExplorerView() {
   const [includeOtherContracts, setIncludeOtherContracts] = useState(false);
 
   const selectedChain = chains.find((chain) => chain.chain === selectedChainName) ?? initialChain;
-  const selectedSilo = selectedChain.silos.find((silo) => silo.address === selectedSiloAddress) ?? selectedChain.silos[0];
-  const allSilos = chains.flatMap((chain) => chain.silos);
+  const chainCategories = availableCategories(selectedChain.silos);
+  const activeCategory = chainCategories.includes(selectedCategory) ? selectedCategory : (chainCategories[0] ?? "usdc");
+  const categorySilos = selectedChain.silos.filter((silo) => siloCategory(silo) === activeCategory);
+  const selectedSilo = categorySilos.find((silo) => silo.address === selectedSiloAddress) ?? categorySilos[0];
+  // Rewards are distributed only across silos in the active category (the "selected" silos).
+  const rewardSilos = chains.flatMap((chain) => chain.silos).filter((silo) => siloCategory(silo) === activeCategory);
   const addressTypes = selectedSilo
     ? Array.from(
         new Set([
@@ -1740,7 +1793,7 @@ function ExplorerView() {
   const rewardInputInvalid = rewardInput.trim() !== "" && rewardRaw === null;
   const rewardPlan =
     selectedSilo && rewardRaw !== null
-      ? buildRewardPlan(allSilos, rewardRaw, selectedSilo.inputToken.decimals, includeOtherContracts)
+      ? buildRewardPlan(rewardSilos, rewardRaw, selectedSilo.inputToken.decimals, includeOtherContracts)
       : null;
   const showRewardColumn = distributeRewardsEnabled && rewardRaw !== null && rewardRaw > ZERO;
 
@@ -1779,22 +1832,40 @@ function ExplorerView() {
   }, []);
 
   function selectChain(chain: ChainSnapshot) {
-    const nextSilo = chain.silos[0]?.address ?? "";
+    const nextSilo = chain.silos[0];
+    const nextSiloAddress = nextSilo?.address ?? "";
     setSelectedChainName(chain.chain);
-    setSelectedSiloAddress(nextSilo);
+    setSelectedCategory(nextSilo ? siloCategory(nextSilo) : "usdc");
+    setSelectedSiloAddress(nextSiloAddress);
     setAddressTypeFilter("all");
     setDirectExpanded(true);
     setExpandedVaults({});
     resetRewardsState(setDistributeRewardsEnabled, setRewardInput, setIncludeOtherContracts);
-    syncSelectionUrl(chain.chain, nextSilo);
+    syncSelectionUrl(chain.chain, nextSiloAddress);
+  }
+
+  function selectCategory(category: SiloCategory) {
+    if (category === activeCategory) {
+      return;
+    }
+    const nextSilo = selectedChain.silos.find((silo) => siloCategory(silo) === category);
+    const nextSiloAddress = nextSilo?.address ?? "";
+    setSelectedCategory(category);
+    setSelectedSiloAddress(nextSiloAddress);
+    setAddressTypeFilter("all");
+    setDirectExpanded(true);
+    setExpandedVaults({});
+    resetRewardsState(setDistributeRewardsEnabled, setRewardInput, setIncludeOtherContracts);
+    syncSelectionUrl(selectedChainName, nextSiloAddress);
   }
 
   function selectSilo(siloAddress: string) {
+    // Switching silos within the same token keeps the active distribution so the
+    // rewards panel and reward column stay visible.
     setSelectedSiloAddress(siloAddress);
     setAddressTypeFilter("all");
     setDirectExpanded(true);
     setExpandedVaults({});
-    resetRewardsState(setDistributeRewardsEnabled, setRewardInput, setIncludeOtherContracts);
     syncSelectionUrl(selectedChainName, siloAddress);
   }
 
@@ -1834,18 +1905,39 @@ function ExplorerView() {
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Silos</p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Silos</p>
+                    {chainCategories.length > 0 ? (
+                      <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] p-0.5">
+                        {chainCategories.map((category) => (
+                          <button
+                            key={category}
+                            aria-pressed={activeCategory === category}
+                            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                              activeCategory === category
+                                ? "bg-emerald-300 text-slate-950 shadow-sm shadow-emerald-500/20"
+                                : "text-slate-300 hover:text-emerald-200"
+                            }`}
+                            type="button"
+                            onClick={() => selectCategory(category)}
+                          >
+                            {SILO_CATEGORY_LABELS[category]}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">
-                    {selectedChain.silos.length} silo{selectedChain.silos.length === 1 ? "" : "s"}
+                    {categorySilos.length} silo{categorySilos.length === 1 ? "" : "s"}
                   </span>
                 </div>
                 <div className="mt-3 flex min-w-0 flex-wrap gap-3">
-                  {selectedChain.silos.length === 0 ? (
+                  {categorySilos.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
                       No silos are currently bundled for this chain.
                     </div>
                   ) : (
-                    selectedChain.silos.map((silo) => (
+                    categorySilos.map((silo) => (
                       <div
                         key={silo.address}
                         className={`min-w-0 rounded-2xl border px-4 py-3 text-left transition ${
@@ -1876,6 +1968,18 @@ function ExplorerView() {
                         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
                           <AddressLink address={silo.address} chain={selectedChain.chain} showSiloPageLink />
                         </div>
+                        {showRewardColumn && rewardPlan ? (
+                          <div className="mt-1 text-xs text-emerald-200">
+                            Reward:{" "}
+                            <span className="font-mono">
+                              {formatUnits(
+                                siloDistributedTotal(silo, rewardPlan),
+                                selectedSilo?.inputToken.decimals ?? silo.inputToken.decimals,
+                              )}{" "}
+                              {SILO_CATEGORY_LABELS[activeCategory]}
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
                     ))
                   )}
@@ -1889,6 +1993,7 @@ function ExplorerView() {
               addressFilter={addressFilter}
               addressTypeFilter={addressTypeFilter}
               addressTypes={addressTypes}
+              categoryLabel={SILO_CATEGORY_LABELS[activeCategory]}
               chain={selectedChain}
               directExpanded={directExpanded}
               directSort={directSort}
