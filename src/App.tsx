@@ -513,6 +513,12 @@ function PendingAssetsBreakdown({
                   </span>
                   <span>-{formatUnitsFixed(event.assets, decimals)}</span>
                 </div>
+                {event.eventAssets !== event.assets ? (
+                  <div className="flex justify-between gap-3 text-[11px] text-slate-500">
+                    <span>on-chain withdrawn</span>
+                    <span>-{formatUnitsFixed(event.eventAssets, decimals)}</span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between gap-3 text-[11px] text-slate-500">
                   <span>running</span>
                   <span>{formatUnitsFixed(next, decimals)}</span>

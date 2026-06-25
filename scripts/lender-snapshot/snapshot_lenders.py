@@ -106,7 +106,7 @@ MULTICALL_BATCH = 300
 
 GETCODE_BATCH = 200
 SUBGRAPH_PAGE = 1000
-WITHDRAW_LOG_BLOCK_CHUNK = 100_000
+WITHDRAW_LOG_BLOCK_CHUNK = 500_000
 
 # CollateralType enum (ISilo.sol): Collateral = 1
 COLLATERAL_TYPE_COLLATERAL = 1
@@ -954,6 +954,18 @@ def enrich_snapshot_with_withdrawals(
             label=vault_label,
             block_chunk=block_chunk,
         )
+        # A SiloVault can lend into multiple silos, and a vault Withdraw burns vault shares
+        # for the vault's *total* underlying across all of them. Attributing the raw event
+        # assets to every silo entry would both double-count across silos and credit
+        # withdrawals to silos where the vault held nothing at the snapshot block. Instead,
+        # translate the burned vault shares into the assets attributable to THIS silo at the
+        # snapshot rate:
+        #   attributed = vault_silo_assets * shares_burned / vault_total_supply
+        # This keeps the same valuation basis as attributed_silo_assets, scales each silo by
+        # its own position (no cross-silo double counting), and yields 0 for silos where the
+        # vault's position was empty/dust at the snapshot block.
+        vault_silo_assets = int(vault.get("vault_silo_assets", 0) or 0)
+        vault_total_supply = int(vault.get("vault_total_supply", 0) or 0)
         matched_depositors = 0
         for event in vault_events:
             owner = event["owner"]
@@ -961,6 +973,8 @@ def enrich_snapshot_with_withdrawals(
             if not isinstance(depositor, dict):
                 continue
             matched_depositors += 1
+            shares_burned = int(event["shares"])
+            attributed = (vault_silo_assets * shares_burned) // vault_total_supply if vault_total_supply else 0
             withdrawals = depositor.get("withdrawals")
             if not isinstance(withdrawals, list):
                 withdrawals = []
@@ -970,11 +984,12 @@ def enrich_snapshot_with_withdrawals(
                     "block_number": event["block_number"],
                     "tx_hash": event["tx_hash"],
                     "log_index": event["log_index"],
-                    "assets": str(event["assets"]),
-                    "shares": str(event["shares"]),
+                    "assets": str(attributed),
+                    "shares": str(shares_burned),
+                    "vault_assets": str(event["assets"]),
                 }
             )
-            depositor["total_withdrawals"] = str(int(depositor.get("total_withdrawals", 0)) + int(event["assets"]))
+            depositor["total_withdrawals"] = str(int(depositor.get("total_withdrawals", 0)) + attributed)
 
         for depositor in depositors.values():
             if not isinstance(depositor, dict):
