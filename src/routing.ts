@@ -48,3 +48,25 @@ export function explorerHomePath(): string {
   const base = getAppBasePath();
   return base ? `${base}/` : "/";
 }
+
+export type ExplorerSelection = {
+  chain?: string;
+  address?: string;
+};
+
+export function parseExplorerSelectionFromUrl(): ExplorerSelection {
+  const params = new URLSearchParams(window.location.search);
+  const chain = params.get("chain") ?? undefined;
+  const address = params.get("silo") ?? undefined;
+  return {
+    chain: chain && CHAIN_NAME_PATTERN.test(chain) ? chain.toLowerCase() : undefined,
+    address: address && SILO_ADDRESS_PATTERN.test(address) ? address : undefined,
+  };
+}
+
+export function buildExplorerSelectionUrl(chain: string, address: string): string {
+  const params = new URLSearchParams();
+  params.set("chain", chain.toLowerCase());
+  params.set("silo", address);
+  return `${explorerHomePath()}?${params.toString()}`;
+}
