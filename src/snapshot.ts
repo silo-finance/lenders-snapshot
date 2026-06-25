@@ -307,6 +307,24 @@ function parseSnapshot(root: RawRoot): ChainSnapshot[] {
 
 export const chains = parseSnapshot(snapshotJson as RawRoot);
 
+export type SiloCategory = "usdc" | "eth";
+
+export const SILO_CATEGORY_ORDER: SiloCategory[] = ["usdc", "eth"];
+
+export const SILO_CATEGORY_LABELS: Record<SiloCategory, string> = {
+  usdc: "USDC",
+  eth: "ETH",
+};
+
+/**
+ * Bucket a silo by its input token. Any USD-denominated token (USDC, scUSD, ...)
+ * is treated as the "USDC" group; everything else (WETH, scETH, ...) is "IF" (ETH).
+ * Centralized here so the heuristic is easy to adjust.
+ */
+export function siloCategory(silo: SiloSnapshot): SiloCategory {
+  return silo.inputToken.symbol.toUpperCase().includes("USD") ? "usdc" : "eth";
+}
+
 export function findSiloByAddress(
   address: string,
   chainName?: string,
