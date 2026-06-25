@@ -1,6 +1,6 @@
 # Lenders Snapshot UI
 
-Static Vite + React + TypeScript UI for browsing Silo lender snapshots and preparing pro-rata reward distributions from the bundled `scripts/lender-snapshot/distribution_snapshot.json` file.
+Static Vite + React + TypeScript UI for browsing Silo lender snapshots and preparing pro-rata airdrop distributions from the bundled `scripts/lender-snapshot/distribution_snapshot.json` file.
 
 The app performs no runtime RPC, subgraph, or API calls. Snapshot data is imported into the Vite bundle at build time.
 
@@ -10,7 +10,7 @@ The app performs no runtime RPC, subgraph, or API calls. Snapshot data is import
 - Direct lender and vault depositor tables with address filtering and sortable shares/assets.
 - Explorer links for supported chains.
 - Vault warning cards when depositors cannot be enumerated.
-- Pro-rata reward calculation by raw asset balances using `BigInt`.
+- Pro-rata airdrop calculation by raw asset balances using `BigInt`.
 - CSV export for leaf recipients, excluding vault contracts and including vault depositors.
 
 ## Development
