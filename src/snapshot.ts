@@ -52,6 +52,7 @@ type RawVault = {
 
 type RawSilo = {
   snapshot_block?: number | string;
+  silo_type?: string | null;
   silo_id?: string | number | null;
   input_token?: RawInputToken;
   total_assets?: RawAmount;
@@ -120,9 +121,12 @@ export type VaultSnapshot = {
   depositors: VaultDepositor[];
 };
 
+export type SiloKind = "silo" | "silo_vault";
+
 export type SiloSnapshot = {
   address: string;
   snapshotBlock: number;
+  siloType: SiloKind;
   siloId: string | null;
   inputToken: InputToken;
   collateralTotalSupply: bigint;
@@ -271,6 +275,7 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
   return {
     address,
     snapshotBlock: toNumber(raw.snapshot_block, 0),
+    siloType: raw.silo_type === "silo_vault" ? "silo_vault" : "silo",
     siloId: raw.silo_id === null || raw.silo_id === undefined ? null : String(raw.silo_id),
     inputToken,
     collateralTotalSupply,

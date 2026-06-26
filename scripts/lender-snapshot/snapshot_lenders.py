@@ -40,6 +40,10 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # --------------------------------------------------------------------------------------
 DEFAULT_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/8wcbzcdNirQvk1ETh25wpVzb5GWs8DvugpbwrYnTCcxj"
 
+# Each entry in a chain's `silos` list supports:
+#   "address" (required), "block" (required),
+#   "type"    (optional): "silo" (default) enumerates collateral lenders via the subgraph
+#             `positions`; "silo_vault" enumerates ERC4626 depositors via `vaultPositions`.
 TARGETS: list[dict[str, Any]] = [
     {
         "chain": "sonic",
@@ -82,6 +86,26 @@ TARGETS: list[dict[str, Any]] = [
                 "address": "0x08c320a84a59c6f533e0dca655cf497594bca1f9",
                 "block": 54144258,
             },
+            # --- SiloVaults added manually ---------------------------------------------
+            # These addresses are SiloVaults that were NOT auto-discovered as silo_vault
+            # lenders of the silos above (e.g. they do not lend into any tracked silo, or
+            # were not indexed). A SiloVault exposes the same read interface as a Silo, but
+            # its holders are indexed as vault depositors, so they are tagged
+            # type="silo_vault" to enumerate positions via the subgraph `vaultPositions`.
+            {"address": "0x94e84f3a18a9f318a2915058d4f49c3565bc935e", "block": 54144258, "type": "silo_vault"},
+            {"address": "0x3710b212b39477df2deaadcf16ef56c384a3d142", "block": 54144258, "type": "silo_vault"},
+            {"address": "0x17271da949bbd4713c7c599759e2bf30604fc8da", "block": 54144258, "type": "silo_vault"},
+            {"address": "0x5b63bd1574d40d98c6967047f0323cc5d4895775", "block": 54144258, "type": "silo_vault"},
+            {"address": "0xb47cb414aab743c977dfd1fdb758f971907e810e", "block": 54144258, "type": "silo_vault"},
+            {"address": "0x1320382143d98a80a0b247148a42dd2aa33d9c2d", "block": 54144258, "type": "silo_vault"},
+            {"address": "0xffa4f67d4facff62e53e6ac4f76a1e049673876b", "block": 54144258, "type": "silo_vault"},
+            {"address": "0x3e11288c2e1ec2a5200e407d1eebd416dbe43656", "block": 54144258, "type": "silo_vault"},
+            {"address": "0x271a367898fbf1f70045ad413f2a072ff0b907d5", "block": 54144258, "type": "silo_vault"},
+            {"address": "0x92ebf5a1fb4061b45222a6d76accf4698bde4b95", "block": 54144258, "type": "silo_vault"},
+            {"address": "0x61e175f91f017987c421e0731d6baa0594eca6eb", "block": 54144258, "type": "silo_vault"},
+            {"address": "0x391b3f70e254d582588b27e97e48d1cfcdf0be7e", "block": 54144258, "type": "silo_vault"},
+            {"address": "0x592d1e187729c76efacc6dffb9355bd7bf47b2a7", "block": 54144258, "type": "silo_vault"},
+            {"address": "0xb6a23cb29e512df41876b28d7a848bd831f9c5ba", "block": 54144258, "type": "silo_vault"},
         ],
     },
     {
@@ -95,9 +119,17 @@ TARGETS: list[dict[str, Any]] = [
 
 BLOCK = 0
 SILO_ADDRESS = ""
+# Either "silo" (collateral lenders via subgraph `positions`) or "silo_vault"
+# (ERC4626 depositors via subgraph `vaultPositions`). A SiloVault shares the Silo read
+# interface, but its holders are indexed as vault depositors, not silo positions.
+SILO_TYPE = "silo"
 CHAIN = ""
 CHAIN_ID = 0
 SUBGRAPH_URL = DEFAULT_SUBGRAPH_URL
+
+SILO_TYPE_SILO = "silo"
+SILO_TYPE_VAULT = "silo_vault"
+VALID_SILO_TYPES = (SILO_TYPE_SILO, SILO_TYPE_VAULT)
 
 OUTPUT_JSON = str(SCRIPT_DIR / "distribution_snapshot.json")
 
@@ -190,12 +222,18 @@ def resolve_rpc_url(chain: str) -> str:
 
 
 def configure_context(target: dict[str, Any], silo: dict[str, Any]) -> None:
-    global BLOCK, SILO_ADDRESS, CHAIN, CHAIN_ID, SUBGRAPH_URL
+    global BLOCK, SILO_ADDRESS, SILO_TYPE, CHAIN, CHAIN_ID, SUBGRAPH_URL
     CHAIN = str(target["chain"]).lower()
     CHAIN_ID = int(target["chain_id"])
     SUBGRAPH_URL = str(target.get("subgraph_url") or DEFAULT_SUBGRAPH_URL)
     SILO_ADDRESS = norm(str(silo["address"]))
     BLOCK = int(silo["block"])
+    silo_type = str(silo.get("type", SILO_TYPE_SILO)).strip().lower()
+    if silo_type not in VALID_SILO_TYPES:
+        raise SystemExit(
+            f"Invalid silo type {silo_type!r} for {SILO_ADDRESS}; expected one of {VALID_SILO_TYPES}."
+        )
+    SILO_TYPE = silo_type
 
 
 # --------------------------------------------------------------------------------------
@@ -719,6 +757,40 @@ def fetch_silo_metadata(rpc: RpcClient, mc: Multicall) -> dict[str, Any]:
     }
 
 
+def fetch_vault_metadata(rpc: RpcClient, mc: Multicall) -> dict[str, Any]:
+    """Metadata for a standalone SiloVault target (ERC4626): asset, supply, total assets."""
+    res = mc.aggregate(
+        [
+            (SILO_ADDRESS, call_asset()),
+            (SILO_ADDRESS, call_total_supply()),
+            (SILO_ADDRESS, call_total_assets()),
+        ]
+    )
+    asset_addr = dec_address(res[0][1]) if res[0][0] else None
+    total_supply = dec_uint(res[1][1]) if res[1][0] else 0
+    total_assets = dec_uint(res[2][1]) if res[2][0] else None
+
+    decimals = None
+    symbol = None
+    if asset_addr:
+        d = mc.aggregate([(asset_addr, call_decimals()), (asset_addr, call_symbol())])
+        if d[0][0]:
+            decimals = dec_uint(d[0][1])
+        if d[1][0]:
+            try:
+                symbol = dec_string(d[1][1])
+            except Exception:
+                symbol = None
+
+    return {
+        # Vaults do not expose SILO_ID(); they are identified by address only.
+        "silo_id": None,
+        "input_token": {"address": asset_addr, "decimals": decimals, "symbol": symbol},
+        "total_assets": total_assets,
+        "collateral_total_supply": total_supply,
+    }
+
+
 def fetch_direct_lender_shares(addresses: list[str], mc: Multicall) -> dict[str, int]:
     """Return {addr: collateral_shares} via multicall balanceOf."""
     calls = [(SILO_ADDRESS, call_balance_of(addr)) for addr in addresses]
@@ -733,6 +805,16 @@ def fetch_direct_lender_shares(addresses: list[str], mc: Multicall) -> dict[str,
 def preview_redeem_collateral(shares: list[int], mc: Multicall) -> list[int]:
     """Compute collateral assets via Silo.previewRedeem at BLOCK."""
     calls = [(SILO_ADDRESS, call_preview_redeem_silo(amount, COLLATERAL_TYPE_COLLATERAL)) for amount in shares]
+    res = mc.aggregate(calls)
+    out: list[int] = []
+    for ok, data in res:
+        out.append(dec_uint(data) if ok else 0)
+    return out
+
+
+def preview_redeem_vault_shares(shares: list[int], mc: Multicall) -> list[int]:
+    """Compute underlying assets via ERC4626 previewRedeem(uint256) at BLOCK."""
+    calls = [(SILO_ADDRESS, call_preview_redeem_erc4626(amount)) for amount in shares]
     res = mc.aggregate(calls)
     out: list[int] = []
     for ok, data in res:
@@ -1078,12 +1160,20 @@ def build_snapshot(
     rpc = RpcClient(rpc_url, BLOCK)
     mc = Multicall(rpc, MULTICALL3, MULTICALL_BATCH)
 
-    print(f"[info] fetching lenders for silo {SILO_ADDRESS} at block {BLOCK} ...")
-    accounts = fetch_lenders(SILO_ADDRESS)
-    print(f"[info] {len(accounts)} unique collateral lender accounts")
+    is_vault_target = SILO_TYPE == SILO_TYPE_VAULT
 
-    print("[info] fetching silo metadata + total supplies ...")
-    meta = fetch_silo_metadata(rpc, mc)
+    if is_vault_target:
+        print(f"[info] fetching vault depositors for silo_vault {SILO_ADDRESS} at block {BLOCK} ...")
+        accounts = fetch_vault_depositors(SILO_ADDRESS)
+        print(f"[info] {len(accounts)} unique vault depositor accounts")
+        print("[info] fetching vault metadata + total supplies ...")
+        meta = fetch_vault_metadata(rpc, mc)
+    else:
+        print(f"[info] fetching lenders for silo {SILO_ADDRESS} at block {BLOCK} ...")
+        accounts = fetch_lenders(SILO_ADDRESS)
+        print(f"[info] {len(accounts)} unique collateral lender accounts")
+        print("[info] fetching silo metadata + total supplies ...")
+        meta = fetch_silo_metadata(rpc, mc)
 
     print("[info] classifying lender addresses ...")
     types, _incentives = classify_addresses(accounts, rpc, mc)
@@ -1091,10 +1181,14 @@ def build_snapshot(
     print("[info] reading direct lender share balances ...")
     shares_by_addr = fetch_direct_lender_shares(accounts, mc)
 
-    print("[info] computing previewRedeem assets for direct lenders ...")
     ordered = accounts
     shares = [shares_by_addr[a] for a in ordered]
-    assets = preview_redeem_collateral(shares, mc)
+    if is_vault_target:
+        print("[info] computing ERC4626 previewRedeem assets for vault depositors ...")
+        assets = preview_redeem_vault_shares(shares, mc)
+    else:
+        print("[info] computing previewRedeem assets for direct lenders ...")
+        assets = preview_redeem_collateral(shares, mc)
 
     direct_lenders: dict[str, Any] = {}
     for addr, collateral_shares, assets_collateral in zip(ordered, shares, assets):
@@ -1105,17 +1199,23 @@ def build_snapshot(
             "total_assets": str(assets_collateral),
         }
 
-    vault_addrs = [a for a in accounts if types.get(a) == "silo_vault"]
-    print(f"[info] expanding {len(vault_addrs)} SiloVault(s) ...")
     vaults: dict[str, Any] = {}
-    for vault in vault_addrs:
-        vault_shares = shares_by_addr[vault]
-        vault_assets = next(a for x, a in zip(ordered, assets) if x == vault)
-        print(f"[info]   vault {vault} ...")
-        vaults[vault] = expand_vault(vault, vault_shares, vault_assets, rpc, mc)
+    if is_vault_target:
+        # Depositors of a standalone vault are treated as the leaf lenders directly; we do
+        # not recurse into vault-of-vault positions here.
+        print("[info] vault target: skipping nested SiloVault expansion")
+    else:
+        vault_addrs = [a for a in accounts if types.get(a) == "silo_vault"]
+        print(f"[info] expanding {len(vault_addrs)} SiloVault(s) ...")
+        for vault in vault_addrs:
+            vault_shares = shares_by_addr[vault]
+            vault_assets = next(a for x, a in zip(ordered, assets) if x == vault)
+            print(f"[info]   vault {vault} ...")
+            vaults[vault] = expand_vault(vault, vault_shares, vault_assets, rpc, mc)
 
     silo_entry: dict[str, Any] = {
         "snapshot_block": BLOCK,
+        "silo_type": SILO_TYPE,
         "silo_id": meta["silo_id"],
         "input_token": meta["input_token"],
         "total_assets": str(meta["total_assets"]) if meta["total_assets"] is not None else None,
