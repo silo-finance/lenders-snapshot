@@ -1023,6 +1023,20 @@ function vaultElementId(address: string): string {
   return `vault-${address.toLowerCase()}`;
 }
 
+// Renders the kind suffix of a silo title: "Silo #id" for silos, or
+// "Vault (detached)" for manually-tracked SiloVault targets, where "(detached)" is
+// shown in a smaller, dimmer font.
+function SiloKindLabel({ silo }: { silo: SiloSnapshot }) {
+  if (silo.siloType === "silo_vault") {
+    return (
+      <>
+        Vault <span className="text-[0.7em] font-normal text-slate-500">(detached)</span>
+      </>
+    );
+  }
+  return <>Silo {silo.siloId ? `#${silo.siloId}` : "#--"}</>;
+}
+
 function addCsvAirdrop(csvAirdrops: Map<string, bigint | null>, address: string, amount: bigint | null) {
   const current = csvAirdrops.get(address);
   if (amount === null) {
@@ -1510,7 +1524,7 @@ function SiloDetailPanel({
           <div className={showAirdrops ? "xl:col-span-1" : ""}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-emerald-200">
               <span>
-                {silo.inputToken.symbol} / Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
+                {silo.inputToken.symbol} / <SiloKindLabel silo={silo} />
               </span>
               <AddressLink address={silo.address} chain={chain.chain} />
             </div>
@@ -1980,7 +1994,7 @@ function ExplorerView() {
                       >
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="truncate font-semibold">
-                            {silo.inputToken.symbol} Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
+                            {silo.inputToken.symbol} <SiloKindLabel silo={silo} />
                           </span>
                           {selectedSilo?.address === silo.address ? (
                             <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">
@@ -2060,7 +2074,11 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
       <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
-        <AppHeader subtitle={`Silo-only snapshot view for ${silo.inputToken.symbol} #${silo.siloId ?? "--"}.`} />
+        <AppHeader
+          subtitle={`Silo-only snapshot view for ${silo.inputToken.symbol} ${
+            silo.siloType === "silo_vault" ? "Vault (detached)" : `#${silo.siloId ?? "--"}`
+          }.`}
+        />
 
         <div className="min-w-0 space-y-6 py-8">
           <SiloDetailPanel
