@@ -66,3 +66,47 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # Legacy "Deploy from a branch" publishes the RAW repo root (white page) and
+      # silently overwrites this workflow's deployment. GITHUB_TOKEN cannot change
+      # that setting, so we can only detect it and fail loudly with instructions.
+      - name: Fail if Pages source is not "GitHub Actions"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { data } = await github.request("GET /repos/{owner}/{repo}/pages", { owner, repo });
+            const buildType = data.build_type ?? "unknown";
+            core.info(`Pages build_type: ${buildType}`);
+            if (buildType !== "workflow") {
+              core.setFailed(
+                `Pages source is '${buildType}' (legacy branch deploy). The built site WAS deployed, ` +
+                  `but GitHub's legacy 'pages-build-deployment' will overwrite it with raw sources on the next push. ` +
+                  `FIX (admin, one time): Settings > Pages > Build and deployment > Source > 'GitHub Actions'.`
+              );
+            }
+
+      - name: Verify production serves the built bundle
+        run: |
+          set -euo pipefail
+          url="${{ steps.deployment.outputs.page_url }}"
+          ok=0
+          for i in $(seq 1 12); do
+            html="$(curl -fsSL "$url" || true)"
+            if printf '%s' "$html" | grep -q 'src/main.tsx'; then
+              echo "Attempt $i: raw source is live, retrying in 10s"
+              sleep 10
+              continue
+            fi
+            if printf '%s' "$html" | grep -q 'assets/index-'; then
+              ok=1
+              break
+            fi
+            echo "Attempt $i: unexpected content, retrying in 10s"
+            sleep 10
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::Production at $url serves raw sources (src/main.tsx) instead of the built bundle. A legacy branch deployment overwrote this deploy. Switch Settings > Pages > Source to 'GitHub Actions'."
+            exit 1
+          fi
+          echo "OK: built bundle is live at $url"

@@ -14,8 +14,10 @@ type RawDirectLender = {
   assets_collateral?: RawAmount;
   total_assets?: RawAmount;
   total_withdrawals?: RawAmount;
+  total_deposits?: RawAmount;
   pending_assets?: RawAmount;
   withdrawals?: RawWithdrawalEntry[];
+  deposits?: RawWithdrawalEntry[];
 };
 
 type RawDepositor = {
@@ -24,8 +26,10 @@ type RawDepositor = {
   fraction?: string;
   attributed_silo_assets?: RawAmount;
   total_withdrawals?: RawAmount;
+  total_deposits?: RawAmount;
   pending_assets?: RawAmount;
   withdrawals?: RawWithdrawalEntry[];
+  deposits?: RawWithdrawalEntry[];
 };
 
 type RawWithdrawalEntry = {
@@ -34,6 +38,10 @@ type RawWithdrawalEntry = {
   log_index?: number | string;
   assets?: RawAmount;
   shares?: RawAmount;
+  // Vault depositors only: raw vault underlying withdrawn on-chain (full redemption
+  // across all silos). `assets` is the snapshot-rate slice attributed to this silo
+  // and is what actually reduces `pending_assets`.
+  vault_assets?: RawAmount;
 };
 
 type RawVault = {
@@ -48,6 +56,7 @@ type RawVault = {
 
 type RawSilo = {
   snapshot_block?: number | string;
+  silo_type?: string | null;
   silo_id?: string | number | null;
   input_token?: RawInputToken;
   total_assets?: RawAmount;
@@ -77,8 +86,10 @@ export type DirectLender = {
   assetsCollateral: bigint;
   totalAssets: bigint;
   totalWithdrawals: bigint;
+  totalDeposits: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
+  deposits: WithdrawalEntry[];
   isVault: boolean;
 };
 
@@ -89,8 +100,10 @@ export type VaultDepositor = {
   fraction: string;
   attributedSiloAssets: bigint;
   totalWithdrawals: bigint;
+  totalDeposits: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
+  deposits: WithdrawalEntry[];
 };
 
 export type WithdrawalEntry = {
@@ -99,6 +112,10 @@ export type WithdrawalEntry = {
   logIndex: number;
   assets: bigint;
   shares: bigint;
+  // Raw on-chain withdrawn amount. Equals `assets` for direct lenders; for vault
+  // depositors it is the full vault redemption (across all silos), while `assets`
+  // is the slice attributed to this silo.
+  eventAssets: bigint;
 };
 
 export type VaultSnapshot = {
@@ -112,9 +129,12 @@ export type VaultSnapshot = {
   depositors: VaultDepositor[];
 };
 
+export type SiloKind = "silo" | "silo_vault";
+
 export type SiloSnapshot = {
   address: string;
   snapshotBlock: number;
+  siloType: SiloKind;
   siloId: string | null;
   inputToken: InputToken;
   collateralTotalSupply: bigint;
@@ -180,7 +200,7 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       "Asset",
   };
 
-  const parseWithdrawals = (entries: RawWithdrawalEntry[] | undefined): WithdrawalEntry[] => {
+  const parseFlows = (entries: RawWithdrawalEntry[] | undefined): WithdrawalEntry[] => {
     if (!Array.isArray(entries)) {
       return [];
     }
@@ -188,12 +208,18 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       .map((entry) => {
         const assets = toBigInt(entry.assets);
         const shares = toBigInt(entry.shares);
+        const rawEventAssets = entry.vault_assets;
+        const eventAssets =
+          rawEventAssets === undefined || rawEventAssets === null || rawEventAssets === ""
+            ? assets
+            : toBigInt(rawEventAssets);
         return {
           blockNumber: toNumber(entry.block_number, 0),
           txHash: (entry.tx_hash ?? "").toLowerCase(),
           logIndex: toNumber(entry.log_index, 0),
           assets,
           shares,
+          eventAssets,
         };
       })
       .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex || a.txHash.localeCompare(b.txHash));
@@ -204,6 +230,7 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
     const assetsCollateral = toBigInt(entry.assets_collateral);
     const totalAssets = toBigInt(entry.total_assets) || assetsCollateral;
     const totalWithdrawals = toBigInt(entry.total_withdrawals);
+    const totalDeposits = toBigInt(entry.total_deposits);
     const pendingAssets =
       entry.pending_assets === undefined || entry.pending_assets === null || entry.pending_assets === ""
         ? totalAssets
@@ -216,8 +243,10 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       assetsCollateral,
       totalAssets,
       totalWithdrawals,
+      totalDeposits,
       pendingAssets,
-      withdrawals: parseWithdrawals(entry.withdrawals),
+      withdrawals: parseFlows(entry.withdrawals),
+      deposits: parseFlows(entry.deposits),
       isVault: entry.address_type === "silo_vault",
     };
   });
@@ -242,11 +271,13 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
         fraction: depositor.fraction ?? "0",
         attributedSiloAssets,
         totalWithdrawals: toBigInt(depositor.total_withdrawals),
+        totalDeposits: toBigInt(depositor.total_deposits),
         pendingAssets:
           depositor.pending_assets === undefined || depositor.pending_assets === null || depositor.pending_assets === ""
             ? attributedSiloAssets
             : toBigInt(depositor.pending_assets),
-        withdrawals: parseWithdrawals(depositor.withdrawals),
+        withdrawals: parseFlows(depositor.withdrawals),
+        deposits: parseFlows(depositor.deposits),
       };
     }),
   }));
@@ -257,6 +288,7 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
   return {
     address,
     snapshotBlock: toNumber(raw.snapshot_block, 0),
+    siloType: raw.silo_type === "silo_vault" ? "silo_vault" : "silo",
     siloId: raw.silo_id === null || raw.silo_id === undefined ? null : String(raw.silo_id),
     inputToken,
     collateralTotalSupply,
@@ -292,6 +324,30 @@ function parseSnapshot(root: RawRoot): ChainSnapshot[] {
 }
 
 export const chains = parseSnapshot(snapshotJson as RawRoot);
+
+export type SiloCategory = "usdc" | "eth";
+
+export const SILO_CATEGORY_ORDER: SiloCategory[] = ["usdc", "eth"];
+
+export const SILO_CATEGORY_LABELS: Record<SiloCategory, string> = {
+  usdc: "USDC",
+  eth: "ETH",
+};
+
+// Default airdrop amounts pre-filled when distribution is enabled, per category.
+export const SILO_CATEGORY_DEFAULT_AIRDROP: Record<SiloCategory, string> = {
+  usdc: "46019",
+  eth: "42.53239",
+};
+
+/**
+ * Bucket a silo by its input token. Any USD-denominated token (USDC, scUSD, ...)
+ * is treated as the "USDC" group; everything else (WETH, scETH, ...) is "IF" (ETH).
+ * Centralized here so the heuristic is easy to adjust.
+ */
+export function siloCategory(silo: SiloSnapshot): SiloCategory {
+  return silo.inputToken.symbol.toUpperCase().includes("USD") ? "usdc" : "eth";
+}
 
 export function findSiloByAddress(
   address: string,

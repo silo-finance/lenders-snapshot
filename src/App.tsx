@@ -1,13 +1,23 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import packageJson from "../package.json";
-import { buildSiloPath, explorerHomePath, parseSiloPathFromUrl } from "./routing";
+import {
+  buildExplorerSelectionUrl,
+  buildSiloPath,
+  explorerHomePath,
+  parseExplorerSelectionFromUrl,
+  parseSiloPathFromUrl,
+} from "./routing";
 import {
   type ChainSnapshot,
   type DirectLender,
+  type SiloCategory,
   type SiloSnapshot,
   type VaultDepositor,
   type VaultSnapshot,
   type WithdrawalEntry,
+  SILO_CATEGORY_DEFAULT_AIRDROP,
+  SILO_CATEGORY_LABELS,
+  SILO_CATEGORY_ORDER,
   chains,
   compareBigIntAsc,
   compareBigIntDesc,
@@ -20,6 +30,7 @@ import {
   formatUnitsRounded,
   parseUnits,
   shortAddress,
+  siloCategory,
 } from "./snapshot";
 import { useWallet } from "./useWallet";
 
@@ -40,10 +51,10 @@ type AggregateTotals = {
 const DEFAULT_EXPANDED_LIMIT = 2;
 const APP_VERSION = packageJson.version;
 
-type RewardPlan = {
-  rewardRaw: bigint;
+type AirdropPlan = {
+  airdropRaw: bigint;
   byLeafKey: Map<string, bigint>;
-  csvRewards: Map<string, bigint | null>;
+  csvAirdrops: Map<string, bigint | null>;
   excludedLeafKeys: Set<string>;
   totalPendingAssets: bigint;
   distributed: bigint;
@@ -54,17 +65,28 @@ type RewardPlan = {
 const ZERO = 0n;
 const OTHER_CONTRACT_TYPE = "contract_other";
 
-function floorToWholeUnits(value: bigint, decimals: number): bigint {
-  const scale = 10n ** BigInt(decimals);
-  return (value / scale) * scale;
-}
-
 function directLeafKey(siloAddress: string, address: string): string {
   return `direct:${siloAddress}:${address}`;
 }
 
 function vaultLeafKey(siloAddress: string, vaultAddress: string, depositorAddress: string): string {
   return `vault:${siloAddress}:${vaultAddress}:${depositorAddress}`;
+}
+
+function siloDistributedTotal(silo: SiloSnapshot, airdropPlan: AirdropPlan): bigint {
+  let total = ZERO;
+  for (const lender of silo.directLenders) {
+    if (lender.isVault) {
+      continue;
+    }
+    total += airdropPlan.byLeafKey.get(directLeafKey(silo.address, lender.address)) ?? ZERO;
+  }
+  for (const vault of silo.vaults) {
+    for (const depositor of vault.depositors) {
+      total += airdropPlan.byLeafKey.get(vaultLeafKey(silo.address, vault.address, depositor.address)) ?? ZERO;
+    }
+  }
+  return total;
 }
 
 function csvEscape(value: string): string {
@@ -454,25 +476,40 @@ function PendingAssetsBreakdown({
   chain,
   baseAssets,
   totalWithdrawals,
+  totalDeposits,
   pendingAssets,
   withdrawals,
+  deposits,
   decimals,
   symbol,
 }: {
   chain: string;
   baseAssets: bigint;
   totalWithdrawals: bigint;
+  totalDeposits: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
+  deposits: WithdrawalEntry[];
   decimals: number;
   symbol: string;
 }) {
-  const withdrawalRows = withdrawals.reduce<
-    Array<{ event: WithdrawalEntry; next: bigint }>
-  >((acc, event) => {
+  type FlowKind = "deposit" | "withdrawal";
+  const flows: Array<{ event: WithdrawalEntry; kind: FlowKind }> = [
+    ...deposits.map((event) => ({ event, kind: "deposit" as FlowKind })),
+    ...withdrawals.map((event) => ({ event, kind: "withdrawal" as FlowKind })),
+  ].sort(
+    (a, b) =>
+      a.event.blockNumber - b.event.blockNumber ||
+      a.event.logIndex - b.event.logIndex ||
+      a.event.txHash.localeCompare(b.event.txHash),
+  );
+
+  // Running balance is unclamped so the final value matches base + deposits - withdrawals;
+  // pending assets applies the max(0, ...) floor (mirrors the snapshot script).
+  const flowRows = flows.reduce<Array<{ event: WithdrawalEntry; kind: FlowKind; next: bigint }>>((acc, row) => {
     const previous = acc.length > 0 ? acc[acc.length - 1].next : baseAssets;
-    const next = previous > event.assets ? previous - event.assets : ZERO;
-    acc.push({ event, next });
+    const next = row.kind === "deposit" ? previous + row.event.assets : previous - row.event.assets;
+    acc.push({ ...row, next });
     return acc;
   }, []);
 
@@ -482,21 +519,23 @@ function PendingAssetsBreakdown({
         <span className="text-slate-400">snapshot assets</span>
         <span>{formatUnitsFixed(baseAssets, decimals)}</span>
       </div>
-      {withdrawals.length === 0 ? (
+      {flows.length === 0 ? (
         <div className="mt-2 text-slate-500">
-          {totalWithdrawals > ZERO
-            ? "Itemized withdrawal events are unavailable in this snapshot payload."
-            : "No withdrawals after snapshot block."}
+          {totalWithdrawals > ZERO || totalDeposits > ZERO
+            ? "Itemized flow events are unavailable in this snapshot payload."
+            : "No deposits or withdrawals after snapshot block."}
         </div>
       ) : (
         <div className="mt-2 space-y-2">
-          {withdrawalRows.map(({ event, next }, index) => {
+          {flowRows.map(({ event, kind, next }, index) => {
             const txUrl = explorerTxUrl(chain, event.txHash);
+            const isDeposit = kind === "deposit";
+            const sign = isDeposit ? "+" : "-";
             return (
-              <div key={`${event.txHash}-${event.logIndex}-${index}`} className="space-y-1">
+              <div key={`${kind}-${event.txHash}-${event.logIndex}-${index}`} className="space-y-1">
                 <div className="flex justify-between gap-3">
-                  <span className="text-slate-400">
-                    - withdrawal #{index + 1} (block {event.blockNumber}, tx{" "}
+                  <span className={isDeposit ? "text-emerald-300/80" : "text-rose-300/80"}>
+                    {sign} {kind} (block {event.blockNumber}, tx{" "}
                     {txUrl === "#" ? (
                       shortHash(event.txHash)
                     ) : (
@@ -511,8 +550,20 @@ function PendingAssetsBreakdown({
                     )}
                     )
                   </span>
-                  <span>-{formatUnitsFixed(event.assets, decimals)}</span>
+                  <span className={isDeposit ? "text-emerald-300" : undefined}>
+                    {sign}
+                    {formatUnitsFixed(event.assets, decimals)}
+                  </span>
                 </div>
+                {event.eventAssets !== event.assets ? (
+                  <div className="flex justify-between gap-3 text-[11px] text-slate-500">
+                    <span>on-chain {isDeposit ? "deposited" : "withdrawn"}</span>
+                    <span>
+                      {sign}
+                      {formatUnitsFixed(event.eventAssets, decimals)}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between gap-3 text-[11px] text-slate-500">
                   <span>running</span>
                   <span>{formatUnitsFixed(next, decimals)}</span>
@@ -524,6 +575,10 @@ function PendingAssetsBreakdown({
       )}
       <div className="mt-3 border-t border-dashed border-white/10 pt-3">
         <div className="flex justify-between gap-3">
+          <span className="text-slate-400">total deposits</span>
+          <span className="text-emerald-300">+{formatUnitsFixed(totalDeposits, decimals)}</span>
+        </div>
+        <div className="mt-1 flex justify-between gap-3">
           <span className="text-slate-400">total withdrawals</span>
           <span>-{formatUnitsFixed(totalWithdrawals, decimals)}</span>
         </div>
@@ -541,8 +596,9 @@ function HolderTable({
   rows,
   silo,
   expanded,
-  rewardPlan,
-  showRewardColumn,
+  airdropPlan,
+  showAirdropColumn,
+  airdropSymbol,
   sortState,
   tableTotals,
   onSort,
@@ -556,8 +612,9 @@ function HolderTable({
   rows: DirectLender[];
   silo: SiloSnapshot;
   expanded: boolean;
-  rewardPlan: RewardPlan | null;
-  showRewardColumn: boolean;
+  airdropPlan: AirdropPlan | null;
+  showAirdropColumn: boolean;
+  airdropSymbol: string;
   sortState: TableSortState;
   tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
@@ -571,7 +628,7 @@ function HolderTable({
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
   const [showOnlyPlusMinus, setShowOnlyPlusMinus] = useState(false);
   const tableRows = showOnlyPlusMinus
-    ? rows.filter((row) => !row.isVault && row.totalWithdrawals > ZERO)
+    ? rows.filter((row) => !row.isVault && (row.totalWithdrawals > ZERO || row.totalDeposits > ZERO))
     : rows;
 
   function toggleBreakdown(address: string) {
@@ -656,13 +713,13 @@ function HolderTable({
                     />
                   </div>
                 </th>
-                {showRewardColumn ? <th className="px-5 py-3 text-right font-medium">Reward</th> : null}
+                {showAirdropColumn ? <th className="px-5 py-3 text-right font-medium">Airdrop</th> : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 text-slate-200">
               {tableRows.length === 0 ? (
                 <tr>
-                  <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={showRewardColumn ? 7 : 6}>
+                  <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={showAirdropColumn ? 7 : 6}>
                     {showOnlyPlusMinus
                       ? "No direct lenders with plus/minus match the current filters."
                       : "No direct lenders match the current address filter."}
@@ -671,7 +728,7 @@ function HolderTable({
               ) : (
                 tableRows.map((row) => {
                   const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-                  const hasWithdrawals = !row.isVault && row.totalWithdrawals > ZERO;
+                  const hasFlows = !row.isVault && (row.totalWithdrawals > ZERO || row.totalDeposits > ZERO);
                   return (
                     <Fragment key={row.address}>
                       <tr className="hover:bg-white/[0.03]">
@@ -717,10 +774,10 @@ function HolderTable({
                           )}
                         </td>
                         <td className="px-2 py-4 text-center font-mono tabular-nums">
-                          {hasWithdrawals ? (
+                          {hasFlows ? (
                             <button
                               className="font-sans text-lg font-semibold leading-none text-emerald-200 transition hover:text-emerald-100"
-                              title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
+                              title={breakdownOpen ? "Hide flow details" : "Show flow details"}
                               type="button"
                               onClick={() => toggleBreakdown(row.address)}
                             >
@@ -729,7 +786,7 @@ function HolderTable({
                             </button>
                           ) : null}
                         </td>
-                        {showRewardColumn ? (
+                        {showAirdropColumn ? (
                           <td
                             className={
                               row.isVault
@@ -739,24 +796,26 @@ function HolderTable({
                           >
                             {row.isVault
                               ? "N/A"
-                              : formatRewardCell(
-                                  rewardPlan,
+                              : formatAirdropCell(
+                                  airdropPlan,
                                   directLeafKey(silo.address, row.address),
                                   silo.inputToken.decimals,
-                                  silo.inputToken.symbol,
+                                  airdropSymbol,
                                 )}
                           </td>
                         ) : null}
                       </tr>
-                      {breakdownOpen && hasWithdrawals && !row.isVault ? (
+                      {breakdownOpen && hasFlows && !row.isVault ? (
                         <tr className="bg-slate-950/40">
-                          <td className="px-5 pb-4" colSpan={showRewardColumn ? 7 : 6}>
+                          <td className="px-5 pb-4" colSpan={showAirdropColumn ? 7 : 6}>
                             <PendingAssetsBreakdown
-                            chain={chain}
+                              chain={chain}
                               baseAssets={row.totalAssets}
                               decimals={silo.inputToken.decimals}
+                              deposits={row.deposits}
                               pendingAssets={row.pendingAssets}
                               symbol={silo.inputToken.symbol}
+                              totalDeposits={row.totalDeposits}
                               totalWithdrawals={row.totalWithdrawals}
                               withdrawals={row.withdrawals}
                             />
@@ -801,8 +860,9 @@ function DepositorTable({
   sortState,
   addressFilter,
   addressTypeFilter,
-  rewardPlan,
-  showRewardColumn,
+  airdropPlan,
+  showAirdropColumn,
+  airdropSymbol,
   tableTotals,
   onSort,
   hideTypeFilter = false,
@@ -814,8 +874,9 @@ function DepositorTable({
   sortState: TableSortState;
   addressFilter: string;
   addressTypeFilter: string;
-  rewardPlan: RewardPlan | null;
-  showRewardColumn: boolean;
+  airdropPlan: AirdropPlan | null;
+  showAirdropColumn: boolean;
+  airdropSymbol: string;
   tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
   hideTypeFilter?: boolean;
@@ -829,7 +890,9 @@ function DepositorTable({
     return addressMatches && typeMatches;
   });
   const filteredRows = sortDepositors(
-    showOnlyPlusMinus ? visibleRows.filter((row) => row.totalWithdrawals > ZERO) : visibleRows,
+    showOnlyPlusMinus
+      ? visibleRows.filter((row) => row.totalWithdrawals > ZERO || row.totalDeposits > ZERO)
+      : visibleRows,
     sortState,
   );
 
@@ -885,13 +948,13 @@ function DepositorTable({
                   />
                 </div>
               </th>
-              {showRewardColumn ? <th className="px-5 py-3 text-right font-medium">Reward</th> : null}
+              {showAirdropColumn ? <th className="px-5 py-3 text-right font-medium">Airdrop</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10 text-slate-200">
             {filteredRows.length === 0 ? (
               <tr>
-                <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={showRewardColumn ? 7 : 6}>
+                <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={showAirdropColumn ? 7 : 6}>
                   {showOnlyPlusMinus
                     ? "No vault depositors with plus/minus match the current filters."
                     : "No vault depositors match the current address filter."}
@@ -900,7 +963,7 @@ function DepositorTable({
             ) : (
               filteredRows.map((row) => {
                 const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-                const hasWithdrawals = row.totalWithdrawals > ZERO;
+                const hasFlows = row.totalWithdrawals > ZERO || row.totalDeposits > ZERO;
                 return (
                   <Fragment key={row.address}>
                     <tr className="hover:bg-white/[0.03]">
@@ -922,10 +985,10 @@ function DepositorTable({
                         </span>
                       </td>
                       <td className="px-2 py-4 text-center font-mono tabular-nums">
-                        {hasWithdrawals ? (
+                        {hasFlows ? (
                           <button
                             className="font-sans text-lg font-semibold leading-none text-emerald-200 transition hover:text-emerald-100"
-                            title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
+                            title={breakdownOpen ? "Hide flow details" : "Show flow details"}
                             type="button"
                             onClick={() => toggleBreakdown(row.address)}
                           >
@@ -934,28 +997,30 @@ function DepositorTable({
                           </button>
                         ) : null}
                       </td>
-                      {showRewardColumn ? (
+                      {showAirdropColumn ? (
                         <td className="px-5 py-4 text-right font-mono tabular-nums">
-                          {rewardPlan
-                            ? formatRewardCell(
-                                rewardPlan,
+                          {airdropPlan
+                            ? formatAirdropCell(
+                                airdropPlan,
                                 vaultLeafKey(silo.address, vaultAddress, row.address),
                                 silo.inputToken.decimals,
-                                silo.inputToken.symbol,
+                                airdropSymbol,
                               )
                             : "--"}
                         </td>
                       ) : null}
                     </tr>
-                    {breakdownOpen && hasWithdrawals ? (
+                    {breakdownOpen && hasFlows ? (
                       <tr className="bg-slate-950/40">
-                        <td className="px-5 pb-4" colSpan={showRewardColumn ? 7 : 6}>
+                        <td className="px-5 pb-4" colSpan={showAirdropColumn ? 7 : 6}>
                           <PendingAssetsBreakdown
-                          chain={chain}
+                            chain={chain}
                             baseAssets={row.attributedSiloAssets}
                             decimals={silo.inputToken.decimals}
+                            deposits={row.deposits}
                             pendingAssets={row.pendingAssets}
                             symbol={silo.inputToken.symbol}
+                            totalDeposits={row.totalDeposits}
                             totalWithdrawals={row.totalWithdrawals}
                             withdrawals={row.withdrawals}
                           />
@@ -991,44 +1056,62 @@ function vaultElementId(address: string): string {
   return `vault-${address.toLowerCase()}`;
 }
 
-function addCsvReward(csvRewards: Map<string, bigint | null>, address: string, amount: bigint | null) {
-  const current = csvRewards.get(address);
+// Renders the kind suffix of a silo title: "Silo #id" for silos, or
+// "Vault (detached)" for manually-tracked SiloVault targets, where "(detached)" is
+// shown in a smaller, dimmer font.
+function SiloKindLabel({ silo }: { silo: SiloSnapshot }) {
+  if (silo.siloType === "silo_vault") {
+    return (
+      <>
+        Vault <span className="text-[0.7em] font-normal text-slate-500">(detached)</span>
+      </>
+    );
+  }
+  return <>Silo {silo.siloId ? `#${silo.siloId}` : "#--"}</>;
+}
+
+function addCsvAirdrop(csvAirdrops: Map<string, bigint | null>, address: string, amount: bigint | null) {
+  const current = csvAirdrops.get(address);
   if (amount === null) {
     if (current === undefined) {
-      csvRewards.set(address, null);
+      csvAirdrops.set(address, null);
     }
     return;
   }
-  csvRewards.set(address, (current ?? ZERO) + amount);
+  csvAirdrops.set(address, (current ?? ZERO) + amount);
 }
 
-function isRewardEligible(addressType: string, includeOtherContracts: boolean): boolean {
+function isAirdropEligible(addressType: string, includeOtherContracts: boolean): boolean {
   return includeOtherContracts || addressType !== OTHER_CONTRACT_TYPE;
 }
 
-function formatRewardCell(rewardPlan: RewardPlan | null, leafKey: string, decimals: number, symbol: string): string {
-  if (!rewardPlan) {
+function formatAirdropCell(airdropPlan: AirdropPlan | null, leafKey: string, decimals: number, symbol: string): string {
+  if (!airdropPlan) {
     return "--";
   }
-  if (rewardPlan.excludedLeafKeys.has(leafKey)) {
+  if (airdropPlan.excludedLeafKeys.has(leafKey)) {
     return "Not available";
   }
-  return `${formatUnits(rewardPlan.byLeafKey.get(leafKey) ?? ZERO, decimals, 0)} ${symbol}`;
+  return `${formatUnits(airdropPlan.byLeafKey.get(leafKey) ?? ZERO, decimals, 6)} ${symbol}`;
 }
 
-function buildRewardPlan(
+type AirdropLeaf = { key: string; address: string; pending: bigint };
+
+function buildAirdropPlan(
   allSilos: SiloSnapshot[],
-  rewardRaw: bigint,
-  rewardDecimals: number,
+  airdropRaw: bigint,
   includeOtherContracts: boolean,
-): RewardPlan {
+): AirdropPlan {
   const byLeafKey = new Map<string, bigint>();
-  const csvRewards = new Map<string, bigint | null>();
+  const csvAirdrops = new Map<string, bigint | null>();
   const excludedLeafKeys = new Set<string>();
-  let distributed = ZERO;
-  let leafPending = ZERO;
-  let excludedPending = ZERO;
-  let totalPendingAssets = ZERO;
+
+  // Collect every recipient we will pay (eligible leaves) plus the assets we cannot
+  // attribute to anyone (warning-vault assets). Excluded `contract_other` pending is
+  // intentionally left out of every denominator so its share is redistributed to
+  // eligible recipients.
+  const eligibleLeaves: AirdropLeaf[] = [];
+  let eligiblePending = ZERO;
   let nonAttributableAssets = ZERO;
 
   for (const silo of allSilos) {
@@ -1036,10 +1119,14 @@ function buildRewardPlan(
       if (lender.isVault) {
         continue;
       }
-      totalPendingAssets += lender.pendingAssets;
-      if (!isRewardEligible(lender.addressType, includeOtherContracts)) {
-        excludedPending += lender.pendingAssets;
+      const leafKey = directLeafKey(silo.address, lender.address);
+      if (!isAirdropEligible(lender.addressType, includeOtherContracts)) {
+        excludedLeafKeys.add(leafKey);
+        addCsvAirdrop(csvAirdrops, lender.address, null);
+        continue;
       }
+      eligibleLeaves.push({ key: leafKey, address: lender.address, pending: lender.pendingAssets });
+      eligiblePending += lender.pendingAssets;
     }
 
     for (const vault of silo.vaults) {
@@ -1048,80 +1135,89 @@ function buildRewardPlan(
         continue;
       }
       for (const depositor of vault.depositors) {
-        totalPendingAssets += depositor.pendingAssets;
-        if (!isRewardEligible(depositor.addressType, includeOtherContracts)) {
-          excludedPending += depositor.pendingAssets;
+        const leafKey = vaultLeafKey(silo.address, vault.address, depositor.address);
+        if (!isAirdropEligible(depositor.addressType, includeOtherContracts)) {
+          excludedLeafKeys.add(leafKey);
+          addCsvAirdrop(csvAirdrops, depositor.address, null);
+          continue;
         }
+        eligibleLeaves.push({ key: leafKey, address: depositor.address, pending: depositor.pendingAssets });
+        eligiblePending += depositor.pendingAssets;
       }
     }
   }
 
-  const rewardDenominator = totalPendingAssets > excludedPending ? totalPendingAssets - excludedPending : ZERO;
+  // The airdrop rate is taken over eligible pending plus non-attributable assets, so the
+  // slice that "belongs" to warning vaults is held back rather than over-paid to others.
+  const rateBase = eligiblePending + nonAttributableAssets;
 
-  if (rewardRaw === ZERO || rewardDenominator === ZERO) {
+  if (airdropRaw === ZERO || rateBase === ZERO || eligiblePending === ZERO) {
+    for (const leaf of eligibleLeaves) {
+      byLeafKey.set(leaf.key, ZERO);
+      addCsvAirdrop(csvAirdrops, leaf.address, ZERO);
+    }
     return {
-      rewardRaw,
+      airdropRaw,
       byLeafKey,
-      csvRewards,
+      csvAirdrops,
       excludedLeafKeys,
-      totalPendingAssets: rewardDenominator,
-      distributed,
-      undistributed: rewardRaw,
+      totalPendingAssets: rateBase,
+      distributed: ZERO,
+      undistributed: airdropRaw,
       nonAttributableAssets,
     };
   }
 
-  for (const silo of allSilos) {
-    for (const lender of silo.directLenders) {
-      if (lender.isVault) {
-        continue;
-      }
-      const leafKey = directLeafKey(silo.address, lender.address);
-      if (!isRewardEligible(lender.addressType, includeOtherContracts)) {
-        excludedLeafKeys.add(leafKey);
-        addCsvReward(csvRewards, lender.address, null);
-        continue;
-      }
-      const reward = floorToWholeUnits((rewardRaw * lender.pendingAssets) / rewardDenominator, rewardDecimals);
-      byLeafKey.set(leafKey, reward);
-      addCsvReward(csvRewards, lender.address, reward);
-      distributed += reward;
-      leafPending += lender.pendingAssets;
-    }
+  // Amount actually payable to eligible recipients (full smallest-unit precision).
+  const distributable = (airdropRaw * eligiblePending) / rateBase;
 
-    for (const vault of silo.vaults) {
-      if (isVaultWarning(vault)) {
-        continue;
+  // Largest-remainder apportionment: floor each share, then hand the leftover smallest
+  // units to the recipients with the biggest fractional remainders. This distributes
+  // `distributable` exactly, with no precision loss beyond what is mathematically owed.
+  const allocations = eligibleLeaves.map((leaf) => {
+    const numerator = distributable * leaf.pending;
+    return {
+      leaf,
+      airdrop: numerator / eligiblePending,
+      remainder: numerator % eligiblePending,
+    };
+  });
+
+  const allocated = allocations.reduce((sum, item) => sum + item.airdrop, ZERO);
+  let leftover = distributable - allocated;
+
+  if (leftover > ZERO) {
+    const ranked = [...allocations].sort((a, b) => {
+      if (a.remainder !== b.remainder) {
+        return a.remainder > b.remainder ? -1 : 1;
       }
-      for (const depositor of vault.depositors) {
-        const leafKey = vaultLeafKey(silo.address, vault.address, depositor.address);
-        if (!isRewardEligible(depositor.addressType, includeOtherContracts)) {
-          excludedLeafKeys.add(leafKey);
-          addCsvReward(csvRewards, depositor.address, null);
-          continue;
-        }
-        const reward = floorToWholeUnits(
-          (rewardRaw * depositor.pendingAssets) / rewardDenominator,
-          rewardDecimals,
-        );
-        byLeafKey.set(leafKey, reward);
-        addCsvReward(csvRewards, depositor.address, reward);
-        distributed += reward;
-        leafPending += depositor.pendingAssets;
+      if (a.leaf.pending !== b.leaf.pending) {
+        return a.leaf.pending > b.leaf.pending ? -1 : 1;
       }
+      return a.leaf.key < b.leaf.key ? -1 : 1;
+    });
+    for (let index = 0; index < ranked.length && leftover > ZERO; index += 1) {
+      ranked[index].airdrop += 1n;
+      leftover -= 1n;
     }
   }
 
+  let distributed = ZERO;
+  for (const { leaf, airdrop } of allocations) {
+    byLeafKey.set(leaf.key, airdrop);
+    addCsvAirdrop(csvAirdrops, leaf.address, airdrop);
+    distributed += airdrop;
+  }
+
   return {
-    rewardRaw,
+    airdropRaw,
     byLeafKey,
-    csvRewards,
+    csvAirdrops,
     excludedLeafKeys,
-    totalPendingAssets: rewardDenominator,
+    totalPendingAssets: rateBase,
     distributed,
-    undistributed: rewardRaw > distributed ? rewardRaw - distributed : ZERO,
-    nonAttributableAssets:
-      nonAttributableAssets + (rewardDenominator > leafPending ? rewardDenominator - leafPending : ZERO),
+    undistributed: airdropRaw > distributed ? airdropRaw - distributed : ZERO,
+    nonAttributableAssets,
   };
 }
 
@@ -1133,8 +1229,9 @@ function VaultCard({
   onToggle,
   addressFilter,
   addressTypeFilter,
-  rewardPlan,
-  showRewardColumn,
+  airdropPlan,
+  showAirdropColumn,
+  airdropSymbol,
   forceExpanded = false,
   hideTypeFilter = false,
   navPrevId,
@@ -1147,8 +1244,9 @@ function VaultCard({
   onToggle: () => void;
   addressFilter: string;
   addressTypeFilter: string;
-  rewardPlan: RewardPlan | null;
-  showRewardColumn: boolean;
+  airdropPlan: AirdropPlan | null;
+  showAirdropColumn: boolean;
+  airdropSymbol: string;
   forceExpanded?: boolean;
   hideTypeFilter?: boolean;
   navPrevId?: string;
@@ -1160,9 +1258,9 @@ function VaultCard({
   const depositorTotals = sumDepositorTotals(vault.depositors);
   const vaultSharesValid =
     vault.vaultTotalSupply !== null && depositorTotals.shares === vault.vaultTotalSupply && vault.status === "ok";
-  const unavailableReward =
-    hasWarning && rewardPlan && rewardPlan.totalPendingAssets > ZERO
-      ? (rewardPlan.rewardRaw * vault.vaultSiloAssets) / rewardPlan.totalPendingAssets
+  const unavailableAirdrop =
+    hasWarning && airdropPlan && airdropPlan.totalPendingAssets > ZERO
+      ? (airdropPlan.airdropRaw * vault.vaultSiloAssets) / airdropPlan.totalPendingAssets
       : ZERO;
 
   return (
@@ -1214,13 +1312,13 @@ function VaultCard({
       {hasWarning ? (
         <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
           <p>
-            Depositors cannot be enumerated for this vault. Its assets are shown here so reward calculations can surface
+            Depositors cannot be enumerated for this vault. Its assets are shown here so airdrop calculations can surface
             the non-attributable amount.
           </p>
-          {unavailableReward > ZERO ? (
+          {unavailableAirdrop > ZERO ? (
             <p className="font-semibold text-amber-100">
-              Undistributed from this vault: {formatUnits(unavailableReward, silo.inputToken.decimals)}{" "}
-              {silo.inputToken.symbol}
+              Undistributed from this vault: {formatUnits(unavailableAirdrop, silo.inputToken.decimals)}{" "}
+              {airdropSymbol}
             </p>
           ) : null}
         </div>
@@ -1231,9 +1329,10 @@ function VaultCard({
             addressTypeFilter={addressTypeFilter}
             chain={chain}
             hideTypeFilter={hideTypeFilter}
-            rewardPlan={rewardPlan}
+            airdropPlan={airdropPlan}
+            airdropSymbol={airdropSymbol}
             rows={vault.depositors}
-            showRewardColumn={showRewardColumn}
+            showAirdropColumn={showAirdropColumn}
             silo={silo}
             sortState={depositorSort}
             tableTotals={depositorTotals}
@@ -1302,13 +1401,41 @@ function getInitialChain(): ChainSnapshot {
   return chains.find((chain) => chain.silos.length > 0) ?? chains[0];
 }
 
-function resetRewardsState(
-  setDistributeRewardsEnabled: (value: boolean) => void,
-  setRewardInput: (value: string) => void,
+function getInitialExplorerSelection(): { chainName: string; siloAddress: string } {
+  const fallbackChain = getInitialChain();
+  const fallback = {
+    chainName: fallbackChain.chain,
+    siloAddress: fallbackChain.silos[0]?.address ?? "",
+  };
+  const selection = parseExplorerSelectionFromUrl();
+  if (!selection.address) {
+    return fallback;
+  }
+  const match = findSiloByAddress(selection.address, selection.chain);
+  if (!match) {
+    return fallback;
+  }
+  return { chainName: match.chain.chain, siloAddress: match.silo.address };
+}
+
+function getInitialCategory(): SiloCategory {
+  const selection = getInitialExplorerSelection();
+  const match = findSiloByAddress(selection.siloAddress, selection.chainName);
+  return match ? siloCategory(match.silo) : "usdc";
+}
+
+function availableCategories(silos: SiloSnapshot[]): SiloCategory[] {
+  const present = new Set(silos.map(siloCategory));
+  return SILO_CATEGORY_ORDER.filter((category) => present.has(category));
+}
+
+function resetAirdropsState(
+  setDistributeAirdropsEnabled: (value: boolean) => void,
+  setAirdropInput: (value: string) => void,
   setIncludeOtherContracts: (value: boolean) => void,
 ) {
-  setDistributeRewardsEnabled(false);
-  setRewardInput("");
+  setDistributeAirdropsEnabled(false);
+  setAirdropInput("");
   setIncludeOtherContracts(false);
 }
 
@@ -1326,16 +1453,18 @@ function SiloDetailPanel({
   setDirectExpanded,
   expandedVaults,
   setExpandedVaults,
-  distributeRewardsEnabled,
-  setDistributeRewardsEnabled,
-  rewardInput,
-  setRewardInput,
+  distributeAirdropsEnabled,
+  setDistributeAirdropsEnabled,
+  airdropInput,
+  setAirdropInput,
   includeOtherContracts,
   setIncludeOtherContracts,
-  rewardPlan,
-  rewardInputInvalid,
-  showRewardColumn,
-  showRewards = true,
+  airdropPlan,
+  airdropInputInvalid,
+  showAirdropColumn,
+  categoryLabel,
+  defaultAirdropAmount = "",
+  showAirdrops = true,
   showTypeFilter = true,
   showExpandControls = true,
   forceExpanded = false,
@@ -1354,16 +1483,18 @@ function SiloDetailPanel({
   setDirectExpanded: (value: boolean | ((current: boolean) => boolean)) => void;
   expandedVaults: Record<string, boolean>;
   setExpandedVaults: (value: Record<string, boolean> | ((current: Record<string, boolean>) => Record<string, boolean>)) => void;
-  distributeRewardsEnabled: boolean;
-  setDistributeRewardsEnabled: (value: boolean) => void;
-  rewardInput: string;
-  setRewardInput: (value: string) => void;
+  distributeAirdropsEnabled: boolean;
+  setDistributeAirdropsEnabled: (value: boolean) => void;
+  airdropInput: string;
+  setAirdropInput: (value: string) => void;
   includeOtherContracts: boolean;
   setIncludeOtherContracts: (value: boolean) => void;
-  rewardPlan: RewardPlan | null;
-  rewardInputInvalid: boolean;
-  showRewardColumn: boolean;
-  showRewards?: boolean;
+  airdropPlan: AirdropPlan | null;
+  airdropInputInvalid: boolean;
+  showAirdropColumn: boolean;
+  categoryLabel?: string;
+  defaultAirdropAmount?: string;
+  showAirdrops?: boolean;
   showTypeFilter?: boolean;
   showExpandControls?: boolean;
   forceExpanded?: boolean;
@@ -1373,6 +1504,9 @@ function SiloDetailPanel({
     showConnectWallet ? setAddressFilter : undefined,
   );
 
+  // Airdrops are paid in the category token, so airdrop amounts are labeled with the
+  // category (USDC / ETH) rather than the individual silo's token symbol.
+  const airdropSymbol = categoryLabel ?? silo.inputToken.symbol;
   const lenderNeedle = addressFilter.trim().toLowerCase();
   const typeMatches = (addressType: string) =>
     !showTypeFilter || addressTypeFilter === "all" || addressType === addressTypeFilter;
@@ -1419,11 +1553,11 @@ function SiloDetailPanel({
   return (
     <section className="min-w-0 space-y-6">
       <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-slate-950/40">
-        <div className={`grid gap-6 xl:items-start ${showRewards ? "xl:grid-cols-3" : ""}`}>
-          <div className={showRewards ? "xl:col-span-1" : ""}>
+        <div className={`grid gap-6 xl:items-start ${showAirdrops ? "xl:grid-cols-3" : ""}`}>
+          <div className={showAirdrops ? "xl:col-span-1" : ""}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-emerald-200">
               <span>
-                {silo.inputToken.symbol} / Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
+                {silo.inputToken.symbol} / <SiloKindLabel silo={silo} />
               </span>
               <AddressLink address={silo.address} chain={chain.chain} />
             </div>
@@ -1433,35 +1567,45 @@ function SiloDetailPanel({
               <span className="font-mono text-slate-200">{silo.snapshotBlock.toString()}</span>
             </p>
           </div>
-          {showRewards ? (
+          {showAirdrops ? (
             <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 xl:col-span-2">
               <label className="flex items-start gap-3 text-sm text-slate-300">
                 <input
                   className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
                   type="checkbox"
-                  checked={distributeRewardsEnabled}
+                  checked={distributeAirdropsEnabled}
                   onChange={(event) => {
                     const enabled = event.target.checked;
-                    setDistributeRewardsEnabled(enabled);
-                    if (!enabled) {
-                      setRewardInput("");
+                    setDistributeAirdropsEnabled(enabled);
+                    if (enabled) {
+                      // Pre-fill the per-category default so the airdrop is computed
+                      // immediately on enable.
+                      if (defaultAirdropAmount && !airdropInput.trim()) {
+                        setAirdropInput(defaultAirdropAmount);
+                        setDirectExpanded(true);
+                        setExpandedVaults(Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])));
+                      }
+                    } else {
+                      setAirdropInput("");
                       setIncludeOtherContracts(false);
                     }
                   }}
                 />
-                <span>Distribute rewards</span>
+                <span>Distribute airdrops{categoryLabel ? ` (${categoryLabel})` : ""}</span>
               </label>
-              {distributeRewardsEnabled ? (
+              {distributeAirdropsEnabled ? (
                 <>
-                  <p className="mt-4 text-xs uppercase tracking-[0.22em] text-slate-500">Global reward amount</p>
+                  <p className="mt-4 text-xs uppercase tracking-[0.22em] text-slate-500">
+                    {categoryLabel ? `${categoryLabel} airdrop amount` : "Airdrop amount"}
+                  </p>
                   <div className="mt-3 flex gap-3">
                     <input
                       className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-slate-300 outline-none placeholder:text-slate-600"
-                      placeholder={`0.00 ${silo.inputToken.symbol}`}
-                      value={rewardInput}
+                      placeholder={`0.00 ${airdropSymbol}`}
+                      value={airdropInput}
                       onChange={(event) => {
                         const nextValue = event.target.value;
-                        setRewardInput(nextValue);
+                        setAirdropInput(nextValue);
                         if (nextValue.trim()) {
                           setDirectExpanded(true);
                           setExpandedVaults(Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])));
@@ -1470,23 +1614,24 @@ function SiloDetailPanel({
                     />
                     <button
                       className="rounded-xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
-                      disabled={!rewardPlan || rewardPlan.rewardRaw === ZERO || rewardInputInvalid}
+                      disabled={!airdropPlan || airdropPlan.airdropRaw === ZERO || airdropInputInvalid}
                       type="button"
                       onClick={() => {
-                        if (!rewardPlan) {
+                        if (!airdropPlan) {
                           return;
                         }
                         const rows = [["address", "raw_amount", "assets"]];
-                        for (const [address, reward] of [...rewardPlan.csvRewards.entries()].sort(([a], [b]) =>
+                        for (const [address, airdrop] of [...airdropPlan.csvAirdrops.entries()].sort(([a], [b]) =>
                           a.localeCompare(b),
                         )) {
                           rows.push([
                             address,
-                            reward === null ? "" : reward.toString(),
-                            reward === null ? "" : formatUnitsFixed(reward, silo.inputToken.decimals),
+                            airdrop === null ? "" : airdrop.toString(),
+                            airdrop === null ? "" : formatUnitsFixed(airdrop, silo.inputToken.decimals),
                           ]);
                         }
-                        downloadCsv(`global-snapshot-rewards.csv`, rows);
+                        const csvLabel = (categoryLabel ?? silo.inputToken.symbol).toLowerCase();
+                        downloadCsv(`${csvLabel}-snapshot-airdrops.csv`, rows);
                       }}
                     >
                       Download CSV
@@ -1501,24 +1646,24 @@ function SiloDetailPanel({
                     />
                     <span>
                       Distribute to unrecognized contracts (`contract_other`). When disabled, these addresses stay in the
-                      CSV with empty reward fields and their pending assets are redistributed to eligible recipients.
+                      CSV with empty airdrop fields and their pending assets are redistributed to eligible recipients.
                     </span>
                   </label>
-                  {rewardInputInvalid ? (
+                  {airdropInputInvalid ? (
                     <p className="mt-3 text-xs text-amber-200">
                       Enter a non-negative amount with at most {silo.inputToken.decimals} decimals.
                     </p>
-                  ) : rewardPlan && rewardPlan.rewardRaw > ZERO ? (
+                  ) : airdropPlan && airdropPlan.airdropRaw > ZERO ? (
                     <div className="mt-3 space-y-1 text-xs text-slate-400">
                       <p>
-                        Global distributed: {formatUnits(rewardPlan.distributed, silo.inputToken.decimals)}{" "}
-                        {silo.inputToken.symbol}
+                        {categoryLabel ? `${categoryLabel} distributed` : "Distributed"}:{" "}
+                        {formatUnits(airdropPlan.distributed, silo.inputToken.decimals)} {airdropSymbol}
                       </p>
-                      {rewardPlan.undistributed > ZERO ? (
+                      {airdropPlan.undistributed > ZERO ? (
                         <p className="text-amber-200">
-                          Undistributed: {formatUnits(rewardPlan.undistributed, silo.inputToken.decimals)}{" "}
-                          {silo.inputToken.symbol}
-                          {rewardPlan.nonAttributableAssets > ZERO
+                          Undistributed: {formatUnits(airdropPlan.undistributed, silo.inputToken.decimals)}{" "}
+                          {airdropSymbol}
+                          {airdropPlan.nonAttributableAssets > ZERO
                             ? " because some vault assets have no enumerable depositors."
                             : " due to integer rounding."}
                         </p>
@@ -1526,7 +1671,7 @@ function SiloDetailPanel({
                     </div>
                   ) : (
                     <p className="mt-3 text-xs text-slate-500">
-                      Enter an amount to compute pro-rata rewards across pending assets.
+                      Enter an amount to compute pro-rata airdrops across pending assets.
                     </p>
                   )}
                 </>
@@ -1611,9 +1756,10 @@ function SiloDetailPanel({
           forceExpanded={forceExpanded}
           navNextId={tableSectionIds.length > 1 ? tableSectionIds[1] : undefined}
           rows={visibleLenders}
-          showRewardColumn={showRewardColumn}
+          showAirdropColumn={showAirdropColumn}
+          airdropSymbol={airdropSymbol}
           silo={silo}
-          rewardPlan={rewardPlan}
+          airdropPlan={airdropPlan}
           sortState={directSort}
           tableTotals={directTableTotals}
           onJumpToVault={jumpToVault}
@@ -1660,8 +1806,9 @@ function SiloDetailPanel({
                 hideTypeFilter={!showTypeFilter}
                 navNextId={index + 2 < tableSectionIds.length ? tableSectionIds[index + 2] : undefined}
                 navPrevId={tableSectionIds[index]}
-                rewardPlan={rewardPlan}
-                showRewardColumn={showRewardColumn}
+                airdropPlan={airdropPlan}
+                airdropSymbol={airdropSymbol}
+                showAirdropColumn={showAirdropColumn}
                 silo={silo}
                 vault={vault}
                 onToggle={() =>
@@ -1685,20 +1832,25 @@ function SiloDetailPanel({
 
 function ExplorerView() {
   const initialChain = getInitialChain();
-  const [selectedChainName, setSelectedChainName] = useState(initialChain.chain);
-  const [selectedSiloAddress, setSelectedSiloAddress] = useState(initialChain.silos[0]?.address ?? "");
+  const [selectedChainName, setSelectedChainName] = useState(() => getInitialExplorerSelection().chainName);
+  const [selectedSiloAddress, setSelectedSiloAddress] = useState(() => getInitialExplorerSelection().siloAddress);
+  const [selectedCategory, setSelectedCategory] = useState<SiloCategory>(getInitialCategory);
   const [addressFilter, setAddressFilter] = useState("");
   const [addressTypeFilter, setAddressTypeFilter] = useState("all");
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>({});
-  const [distributeRewardsEnabled, setDistributeRewardsEnabled] = useState(false);
-  const [rewardInput, setRewardInput] = useState("");
+  const [distributeAirdropsEnabled, setDistributeAirdropsEnabled] = useState(false);
+  const [airdropInput, setAirdropInput] = useState("");
   const [includeOtherContracts, setIncludeOtherContracts] = useState(false);
 
   const selectedChain = chains.find((chain) => chain.chain === selectedChainName) ?? initialChain;
-  const selectedSilo = selectedChain.silos.find((silo) => silo.address === selectedSiloAddress) ?? selectedChain.silos[0];
-  const allSilos = chains.flatMap((chain) => chain.silos);
+  const chainCategories = availableCategories(selectedChain.silos);
+  const activeCategory = chainCategories.includes(selectedCategory) ? selectedCategory : (chainCategories[0] ?? "usdc");
+  const categorySilos = selectedChain.silos.filter((silo) => siloCategory(silo) === activeCategory);
+  const selectedSilo = categorySilos.find((silo) => silo.address === selectedSiloAddress) ?? categorySilos[0];
+  // Airdrops are distributed only across silos in the active category (the "selected" silos).
+  const airdropSilos = chains.flatMap((chain) => chain.silos).filter((silo) => siloCategory(silo) === activeCategory);
   const addressTypes = selectedSilo
     ? Array.from(
         new Set([
@@ -1707,29 +1859,84 @@ function ExplorerView() {
         ]),
       ).sort((a, b) => a.localeCompare(b))
     : [];
-  const rewardRaw = selectedSilo ? parseUnits(rewardInput, selectedSilo.inputToken.decimals) : null;
-  const rewardInputInvalid = rewardInput.trim() !== "" && rewardRaw === null;
-  const rewardPlan =
-    selectedSilo && rewardRaw !== null
-      ? buildRewardPlan(allSilos, rewardRaw, selectedSilo.inputToken.decimals, includeOtherContracts)
+  const airdropRaw = selectedSilo ? parseUnits(airdropInput, selectedSilo.inputToken.decimals) : null;
+  const airdropInputInvalid = airdropInput.trim() !== "" && airdropRaw === null;
+  const airdropPlan =
+    selectedSilo && airdropRaw !== null
+      ? buildAirdropPlan(airdropSilos, airdropRaw, includeOtherContracts)
       : null;
-  const showRewardColumn = distributeRewardsEnabled && rewardRaw !== null && rewardRaw > ZERO;
+  const showAirdropColumn = distributeAirdropsEnabled && airdropRaw !== null && airdropRaw > ZERO;
+
+  function syncSelectionUrl(chainName: string, siloAddress: string, replace = false) {
+    if (!siloAddress) {
+      return;
+    }
+    const url = buildExplorerSelectionUrl(chainName, siloAddress);
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current === url) {
+      return;
+    }
+    if (replace) {
+      window.history.replaceState(null, "", url);
+    } else {
+      window.history.pushState(null, "", url);
+    }
+  }
+
+  // Reflect the current selection in the address bar on first load so the URL is
+  // always shareable, without adding a spurious history entry.
+  useEffect(() => {
+    syncSelectionUrl(selectedChainName, selectedSiloAddress, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep selection in sync with browser back/forward navigation.
+  useEffect(() => {
+    function handlePopState() {
+      const selection = getInitialExplorerSelection();
+      setSelectedChainName(selection.chainName);
+      setSelectedSiloAddress(selection.siloAddress);
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   function selectChain(chain: ChainSnapshot) {
+    const nextSilo = chain.silos[0];
+    const nextSiloAddress = nextSilo?.address ?? "";
     setSelectedChainName(chain.chain);
-    setSelectedSiloAddress(chain.silos[0]?.address ?? "");
+    setSelectedCategory(nextSilo ? siloCategory(nextSilo) : "usdc");
+    setSelectedSiloAddress(nextSiloAddress);
     setAddressTypeFilter("all");
     setDirectExpanded(true);
     setExpandedVaults({});
-    resetRewardsState(setDistributeRewardsEnabled, setRewardInput, setIncludeOtherContracts);
+    resetAirdropsState(setDistributeAirdropsEnabled, setAirdropInput, setIncludeOtherContracts);
+    syncSelectionUrl(chain.chain, nextSiloAddress);
+  }
+
+  function selectCategory(category: SiloCategory) {
+    if (category === activeCategory) {
+      return;
+    }
+    const nextSilo = selectedChain.silos.find((silo) => siloCategory(silo) === category);
+    const nextSiloAddress = nextSilo?.address ?? "";
+    setSelectedCategory(category);
+    setSelectedSiloAddress(nextSiloAddress);
+    setAddressTypeFilter("all");
+    setDirectExpanded(true);
+    setExpandedVaults({});
+    resetAirdropsState(setDistributeAirdropsEnabled, setAirdropInput, setIncludeOtherContracts);
+    syncSelectionUrl(selectedChainName, nextSiloAddress);
   }
 
   function selectSilo(siloAddress: string) {
+    // Switching silos within the same token keeps the active distribution so the
+    // airdrops panel and airdrop column stay visible.
     setSelectedSiloAddress(siloAddress);
     setAddressTypeFilter("all");
     setDirectExpanded(true);
     setExpandedVaults({});
-    resetRewardsState(setDistributeRewardsEnabled, setRewardInput, setIncludeOtherContracts);
+    syncSelectionUrl(selectedChainName, siloAddress);
   }
 
   return (
@@ -1768,18 +1975,39 @@ function ExplorerView() {
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Silos</p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Silos</p>
+                    {chainCategories.length > 0 ? (
+                      <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] p-0.5">
+                        {chainCategories.map((category) => (
+                          <button
+                            key={category}
+                            aria-pressed={activeCategory === category}
+                            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                              activeCategory === category
+                                ? "bg-emerald-300 text-slate-950 shadow-sm shadow-emerald-500/20"
+                                : "text-slate-300 hover:text-emerald-200"
+                            }`}
+                            type="button"
+                            onClick={() => selectCategory(category)}
+                          >
+                            {SILO_CATEGORY_LABELS[category]}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">
-                    {selectedChain.silos.length} silo{selectedChain.silos.length === 1 ? "" : "s"}
+                    {categorySilos.length} silo{categorySilos.length === 1 ? "" : "s"}
                   </span>
                 </div>
                 <div className="mt-3 flex min-w-0 flex-wrap gap-3">
-                  {selectedChain.silos.length === 0 ? (
+                  {categorySilos.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
                       No silos are currently bundled for this chain.
                     </div>
                   ) : (
-                    selectedChain.silos.map((silo) => (
+                    categorySilos.map((silo) => (
                       <div
                         key={silo.address}
                         className={`min-w-0 rounded-2xl border px-4 py-3 text-left transition ${
@@ -1799,7 +2027,7 @@ function ExplorerView() {
                       >
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="truncate font-semibold">
-                            {silo.inputToken.symbol} Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
+                            {silo.inputToken.symbol} <SiloKindLabel silo={silo} />
                           </span>
                           {selectedSilo?.address === silo.address ? (
                             <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">
@@ -1810,6 +2038,18 @@ function ExplorerView() {
                         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
                           <AddressLink address={silo.address} chain={selectedChain.chain} showSiloPageLink />
                         </div>
+                        {showAirdropColumn && airdropPlan ? (
+                          <div className="mt-1 text-xs text-emerald-200">
+                            Airdrop:{" "}
+                            <span className="font-mono">
+                              {formatUnits(
+                                siloDistributedTotal(silo, airdropPlan),
+                                selectedSilo?.inputToken.decimals ?? silo.inputToken.decimals,
+                              )}{" "}
+                              {SILO_CATEGORY_LABELS[activeCategory]}
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
                     ))
                   )}
@@ -1823,24 +2063,26 @@ function ExplorerView() {
               addressFilter={addressFilter}
               addressTypeFilter={addressTypeFilter}
               addressTypes={addressTypes}
+              categoryLabel={SILO_CATEGORY_LABELS[activeCategory]}
               chain={selectedChain}
+              defaultAirdropAmount={SILO_CATEGORY_DEFAULT_AIRDROP[activeCategory]}
               directExpanded={directExpanded}
               directSort={directSort}
-              distributeRewardsEnabled={distributeRewardsEnabled}
+              distributeAirdropsEnabled={distributeAirdropsEnabled}
               expandedVaults={expandedVaults}
               includeOtherContracts={includeOtherContracts}
-              rewardInput={rewardInput}
-              rewardInputInvalid={rewardInputInvalid}
-              rewardPlan={rewardPlan}
+              airdropInput={airdropInput}
+              airdropInputInvalid={airdropInputInvalid}
+              airdropPlan={airdropPlan}
               setAddressFilter={setAddressFilter}
               setAddressTypeFilter={setAddressTypeFilter}
               setDirectExpanded={setDirectExpanded}
               setDirectSort={setDirectSort}
-              setDistributeRewardsEnabled={setDistributeRewardsEnabled}
+              setDistributeAirdropsEnabled={setDistributeAirdropsEnabled}
               setExpandedVaults={setExpandedVaults}
               setIncludeOtherContracts={setIncludeOtherContracts}
-              setRewardInput={setRewardInput}
-              showRewardColumn={showRewardColumn}
+              setAirdropInput={setAirdropInput}
+              showAirdropColumn={showAirdropColumn}
               silo={selectedSilo}
             />
           ) : (
@@ -1865,7 +2107,11 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
       <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
-        <AppHeader subtitle={`Silo-only snapshot view for ${silo.inputToken.symbol} #${silo.siloId ?? "--"}.`} />
+        <AppHeader
+          subtitle={`Silo-only snapshot view for ${silo.inputToken.symbol} ${
+            silo.siloType === "silo_vault" ? "Vault (detached)" : `#${silo.siloId ?? "--"}`
+          }.`}
+        />
 
         <div className="min-w-0 space-y-6 py-8">
           <SiloDetailPanel
@@ -1875,25 +2121,25 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
             chain={chain}
             directExpanded={directExpanded}
             directSort={directSort}
-            distributeRewardsEnabled={false}
+            distributeAirdropsEnabled={false}
             expandedVaults={expandedVaults}
             forceExpanded
             includeOtherContracts={false}
-            rewardInput=""
-            rewardInputInvalid={false}
-            rewardPlan={null}
+            airdropInput=""
+            airdropInputInvalid={false}
+            airdropPlan={null}
             setAddressFilter={setAddressFilter}
             setAddressTypeFilter={() => undefined}
             setDirectExpanded={setDirectExpanded}
             setDirectSort={setDirectSort}
-            setDistributeRewardsEnabled={() => undefined}
+            setDistributeAirdropsEnabled={() => undefined}
             setExpandedVaults={setExpandedVaults}
             setIncludeOtherContracts={() => undefined}
-            setRewardInput={() => undefined}
+            setAirdropInput={() => undefined}
             showConnectWallet
             showExpandControls={false}
-            showRewardColumn={false}
-            showRewards={false}
+            showAirdropColumn={false}
+            showAirdrops={false}
             showTypeFilter={false}
             silo={silo}
           />
