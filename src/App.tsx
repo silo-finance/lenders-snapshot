@@ -268,6 +268,25 @@ function SectionNavButtons({ prevId, nextId }: { prevId?: string; nextId?: strin
   );
 }
 
+// Reusable metadata bar (title + nav + actions) rendered at the top of a table
+// card and repeated at the bottom so long tables stay self-describing.
+function SectionMetaBar({
+  title,
+  actions,
+  className = "",
+}: {
+  title: ReactNode;
+  actions?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex items-center justify-between gap-3 px-5 py-3 ${className}`}>
+      <div className="flex min-w-0 items-center gap-2">{title}</div>
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+    </div>
+  );
+}
+
 function ColumnHeaderSum({ value }: { value: string }) {
   return (
     <div className="mb-1 text-[10px] font-normal normal-case tracking-normal text-slate-400">
@@ -703,33 +722,37 @@ function HolderTable({
     setExpandedBreakdowns((current) => ({ ...current, [address]: !current[address] }));
   }
 
+  const metaTitle = (
+    <>
+      <h3 className="font-semibold text-white">Direct lenders ({rows.length})</h3>
+      <SectionNavButtons nextId={navNextId} />
+    </>
+  );
+  const metaActions = (
+    <>
+      <button
+        className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-500 disabled:hover:bg-transparent"
+        disabled={rows.length === 0}
+        type="button"
+        onClick={onExport}
+      >
+        Export CSV
+      </button>
+      {forceExpanded ? null : (
+        <button
+          className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
+          type="button"
+          onClick={onToggle}
+        >
+          {isExpanded ? "Collapse" : "Expand"}
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div id="direct-lenders" className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <h3 className="font-semibold text-white">Direct lenders ({rows.length})</h3>
-          <SectionNavButtons nextId={navNextId} />
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <button
-            className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-500 disabled:hover:bg-transparent"
-            disabled={rows.length === 0}
-            type="button"
-            onClick={onExport}
-          >
-            Export CSV
-          </button>
-          {forceExpanded ? null : (
-            <button
-              className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
-              type="button"
-              onClick={onToggle}
-            >
-              {isExpanded ? "Collapse" : "Expand"}
-            </button>
-          )}
-        </div>
-      </div>
+      <SectionMetaBar actions={metaActions} className="border-b border-white/10" title={metaTitle} />
       {!isExpanded ? (
         <div className="px-5 py-4 text-sm text-slate-400">
           Direct lenders table is collapsed. Use Expand or Expand all to show it.
@@ -904,6 +927,7 @@ function HolderTable({
           </table>
         </div>
       )}
+      {isExpanded ? <SectionMetaBar actions={metaActions} className="border-t border-white/10" title={metaTitle} /> : null}
     </div>
   );
 }
@@ -1359,13 +1383,10 @@ function VaultCard({
       ? (airdropPlan.airdropRaw * vault.vaultSiloAssets) / airdropPlan.totalPendingAssets
       : ZERO;
 
-  return (
-    <div
-      id={vaultElementId(vault.address)}
-      className={`rounded-3xl border p-5 ${
-        hasWarning ? "border-amber-300/30 bg-amber-300/[0.08]" : "border-emerald-300/20 bg-emerald-300/[0.06]"
-      }`}
-    >
+  // Vault metadata (name + address + nav + assets/shares summary). Rendered at the
+  // top of the card and repeated at the bottom so long depositor tables stay labelled.
+  const metaSection = (
+    <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
           <h3 className={hasWarning ? "font-semibold text-amber-100" : "font-semibold text-emerald-100"}>
@@ -1409,6 +1430,17 @@ function VaultCard({
           </span>
         ) : null}
       </p>
+    </>
+  );
+
+  return (
+    <div
+      id={vaultElementId(vault.address)}
+      className={`rounded-3xl border p-5 ${
+        hasWarning ? "border-amber-300/30 bg-amber-300/[0.08]" : "border-emerald-300/20 bg-emerald-300/[0.06]"
+      }`}
+    >
+      {metaSection}
       {hasWarning ? (
         <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
           <p>
@@ -1439,6 +1471,13 @@ function VaultCard({
             vaultAddress={vault.address}
             onSort={(key) => setDepositorSort((current) => nextSortState(current, key))}
           />
+          <div
+            className={`mt-4 border-t pt-4 ${
+              hasWarning ? "border-amber-300/20" : "border-emerald-300/20"
+            }`}
+          >
+            {metaSection}
+          </div>
         </div>
       ) : null}
     </div>
