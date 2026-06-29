@@ -299,16 +299,22 @@ function copyAddress(address: string) {
   return Promise.resolve();
 }
 
-function CopyAddressButton({ address }: { address: string }) {
+function CopyAddressButton({ address, bare = false }: { address: string; bare?: boolean }) {
   const [copied, setCopied] = useState(false);
 
-  return (
-    <button
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs transition ${
+  const className = bare
+    ? `inline-flex items-center justify-center text-xs transition ${
+        copied ? "text-emerald-100" : "text-slate-400 hover:text-emerald-200"
+      }`
+    : `inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs transition ${
         copied
           ? "border-emerald-300/60 bg-emerald-300/20 text-emerald-100"
           : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-emerald-300/40 hover:text-emerald-200"
-      }`}
+      }`;
+
+  return (
+    <button
+      className={className}
       title={copied ? "Address copied" : "Copy address"}
       type="button"
       onClick={(event) => {
@@ -344,10 +350,12 @@ function AddressLink({
   chain,
   address,
   showSiloPageLink = false,
+  bareCopy = false,
 }: {
   chain: string;
   address: string;
   showSiloPageLink?: boolean;
+  bareCopy?: boolean;
 }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
@@ -361,7 +369,7 @@ function AddressLink({
       >
         {shortAddress(address)}
       </a>
-      <CopyAddressButton address={address} />
+      <CopyAddressButton address={address} bare={bareCopy} />
       {showSiloPageLink ? <SiloPageLinkButton address={address} chain={chain} /> : null}
     </span>
   );
@@ -588,7 +596,13 @@ function PendingAssetsBreakdown({
                         {shortHash(event.txHash)}
                       </a>
                     )}
-                    {counterparty ? `, ${kind === "transfer-in" ? "from" : "to"} ${shortAddress(counterparty)}` : ""})
+                    {counterparty ? (
+                      <>
+                        , {kind === "transfer-in" ? "from" : "to"}{" "}
+                        <AddressLink bareCopy address={counterparty} chain={chain} />
+                      </>
+                    ) : null}
+                    )
                   </span>
                   <span className={amountClass(kind)}>
                     {sign}
