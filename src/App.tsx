@@ -1098,6 +1098,20 @@ function isVaultWarning(vault: VaultSnapshot): boolean {
   return vault.status !== "ok" || !vault.indexedInSubgraph || !vault.inWithdrawQueue;
 }
 
+function siloMatchesAddress(silo: SiloSnapshot, needle: string): boolean {
+  if (!needle) {
+    return true;
+  }
+  if (silo.directLenders.some((lender) => lender.address.toLowerCase().includes(needle))) {
+    return true;
+  }
+  return silo.vaults.some(
+    (vault) =>
+      !isVaultWarning(vault) &&
+      vault.depositors.some((depositor) => depositor.address.toLowerCase().includes(needle)),
+  );
+}
+
 function warningLabel(vault: VaultSnapshot): string {
   if (!vault.inWithdrawQueue) {
     return "Vault is not in the withdraw queue";
@@ -1908,7 +1922,12 @@ function ExplorerView() {
   const chainCategories = availableCategories(selectedChain.silos);
   const activeCategory = chainCategories.includes(selectedCategory) ? selectedCategory : (chainCategories[0] ?? "usdc");
   const categorySilos = selectedChain.silos.filter((silo) => siloCategory(silo) === activeCategory);
-  const selectedSilo = categorySilos.find((silo) => silo.address === selectedSiloAddress) ?? categorySilos[0];
+  const addressNeedle = addressFilter.trim().toLowerCase();
+  const matchedSilos = addressNeedle
+    ? categorySilos.filter((silo) => siloMatchesAddress(silo, addressNeedle))
+    : categorySilos;
+  const selectedSilo =
+    matchedSilos.find((silo) => silo.address === selectedSiloAddress) ?? matchedSilos[0] ?? categorySilos[0];
   // Airdrops are distributed only across silos in the active category (the "selected" silos).
   const airdropSilos = chains.flatMap((chain) => chain.silos).filter((silo) => siloCategory(silo) === activeCategory);
   const addressTypes = selectedSilo
@@ -2058,7 +2077,7 @@ function ExplorerView() {
                     ) : null}
                   </div>
                   <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">
-                    {categorySilos.length} silo{categorySilos.length === 1 ? "" : "s"}
+                    {matchedSilos.length} silo{matchedSilos.length === 1 ? "" : "s"}
                   </span>
                 </div>
                 <div className="mt-3 flex min-w-0 flex-wrap gap-3">
@@ -2066,8 +2085,12 @@ function ExplorerView() {
                     <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
                       No silos are currently bundled for this chain.
                     </div>
+                  ) : matchedSilos.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
+                      No silos contain an address matching the current filter.
+                    </div>
                   ) : (
-                    categorySilos.map((silo) => (
+                    matchedSilos.map((silo) => (
                       <div
                         key={silo.address}
                         className={`min-w-0 rounded-2xl border px-4 py-3 text-left transition ${

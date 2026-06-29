@@ -52,7 +52,10 @@ DEFAULT_JSON = SCRIPT_DIR / "distribution_snapshot.json"
 # Negative-pending tolerance policy (see module docstring). Small negatives are interest
 # accrued before a full withdrawal; larger ones flag unreconciled flows.
 TOL_BPS = int(os.environ.get("QA_PENDING_TOL_BPS", "500"))  # 5% of inflow
-ABS_DUST = int(os.environ.get("QA_PENDING_ABS_DUST", "0"))  # absolute floor (smallest units)
+# Absolute floor (smallest units) so pure share->asset rounding dust counts as a warning, not
+# an error. Observed rounding artifacts were <= ~400 units; 10_000 leaves margin while staying
+# economically negligible (0.01 USDC at 6 decimals, dust at 18 decimals).
+ABS_DUST = int(os.environ.get("QA_PENDING_ABS_DUST", "10000"))
 
 
 def parse_args() -> argparse.Namespace:
