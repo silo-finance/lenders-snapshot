@@ -3,8 +3,10 @@ import packageJson from "../package.json";
 import {
   buildExplorerSelectionUrl,
   buildSiloPath,
+  buildSiloPathWithFilter,
   explorerHomePath,
   parseExplorerSelectionFromUrl,
+  parseFilterFromUrl,
   parseSiloPathFromUrl,
 } from "./routing";
 import {
@@ -266,6 +268,25 @@ function SectionNavButtons({ prevId, nextId }: { prevId?: string; nextId?: strin
   );
 }
 
+// Reusable metadata bar (title + nav + actions) rendered at the top of a table
+// card and repeated at the bottom so long tables stay self-describing.
+function SectionMetaBar({
+  title,
+  actions,
+  className = "",
+}: {
+  title: ReactNode;
+  actions?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex items-center justify-between gap-3 px-5 py-3 ${className}`}>
+      <div className="flex min-w-0 items-center gap-2">{title}</div>
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+    </div>
+  );
+}
+
 function ColumnHeaderSum({ value }: { value: string }) {
   return (
     <div className="mb-1 text-[10px] font-normal normal-case tracking-normal text-slate-400">
@@ -299,16 +320,22 @@ function copyAddress(address: string) {
   return Promise.resolve();
 }
 
-function CopyAddressButton({ address }: { address: string }) {
+function CopyAddressButton({ address, bare = false }: { address: string; bare?: boolean }) {
   const [copied, setCopied] = useState(false);
 
-  return (
-    <button
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs transition ${
+  const className = bare
+    ? `inline-flex items-center justify-center text-xs transition ${
+        copied ? "text-emerald-100" : "text-slate-400 hover:text-emerald-200"
+      }`
+    : `inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs transition ${
         copied
           ? "border-emerald-300/60 bg-emerald-300/20 text-emerald-100"
           : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-emerald-300/40 hover:text-emerald-200"
-      }`}
+      }`;
+
+  return (
+    <button
+      className={className}
       title={copied ? "Address copied" : "Copy address"}
       type="button"
       onClick={(event) => {
@@ -344,10 +371,12 @@ function AddressLink({
   chain,
   address,
   showSiloPageLink = false,
+  bareCopy = false,
 }: {
   chain: string;
   address: string;
   showSiloPageLink?: boolean;
+  bareCopy?: boolean;
 }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
@@ -361,7 +390,7 @@ function AddressLink({
       >
         {shortAddress(address)}
       </a>
-      <CopyAddressButton address={address} />
+      <CopyAddressButton address={address} bare={bareCopy} />
       {showSiloPageLink ? <SiloPageLinkButton address={address} chain={chain} /> : null}
     </span>
   );
@@ -459,7 +488,9 @@ function sortDirectLenders(rows: DirectLender[], sortState: TableSortState): Dir
     if (sortState.key === "pending") {
       return compareValues(left.pendingAssets, right.pendingAssets, sortState.direction);
     }
-    return compareValues(left.totalAssets, right.totalAssets, sortState.direction);
+    // Sort the Assets column by share balance: shares carry full precision, whereas
+    // displayed assets can collide once rounded.
+    return compareValues(left.collateralShares, right.collateralShares, sortState.direction);
   });
 }
 
@@ -588,7 +619,13 @@ function PendingAssetsBreakdown({
                         {shortHash(event.txHash)}
                       </a>
                     )}
-                    {counterparty ? `, ${kind === "transfer-in" ? "from" : "to"} ${shortAddress(counterparty)}` : ""})
+                    {counterparty ? (
+                      <>
+                        , {kind === "transfer-in" ? "from" : "to"}{" "}
+                        <AddressLink bareCopy address={counterparty} chain={chain} />
+                      </>
+                    ) : null}
+                    )
                   </span>
                   <span className={amountClass(kind)}>
                     {sign}
@@ -687,33 +724,37 @@ function HolderTable({
     setExpandedBreakdowns((current) => ({ ...current, [address]: !current[address] }));
   }
 
+  const metaTitle = (
+    <>
+      <h3 className="font-semibold text-white">Direct lenders ({rows.length})</h3>
+      <SectionNavButtons nextId={navNextId} />
+    </>
+  );
+  const metaActions = (
+    <>
+      <button
+        className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-500 disabled:hover:bg-transparent"
+        disabled={rows.length === 0}
+        type="button"
+        onClick={onExport}
+      >
+        Export CSV
+      </button>
+      {forceExpanded ? null : (
+        <button
+          className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
+          type="button"
+          onClick={onToggle}
+        >
+          {isExpanded ? "Collapse" : "Expand"}
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div id="direct-lenders" className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <h3 className="font-semibold text-white">Direct lenders</h3>
-          <SectionNavButtons nextId={navNextId} />
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <button
-            className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-500 disabled:hover:bg-transparent"
-            disabled={rows.length === 0}
-            type="button"
-            onClick={onExport}
-          >
-            Export CSV
-          </button>
-          {forceExpanded ? null : (
-            <button
-              className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
-              type="button"
-              onClick={onToggle}
-            >
-              {isExpanded ? "Collapse" : "Expand"}
-            </button>
-          )}
-        </div>
-      </div>
+      <SectionMetaBar actions={metaActions} className="border-b border-white/10" title={metaTitle} />
       {!isExpanded ? (
         <div className="px-5 py-4 text-sm text-slate-400">
           Direct lenders table is collapsed. Use Expand or Expand all to show it.
@@ -805,7 +846,10 @@ function HolderTable({
                           </div>
                         </td>
                         <td className="px-5 py-4 text-right font-mono tabular-nums">
-                          {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                          <div>
+                            {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                          </div>
+                          <div className="mt-0.5 text-xs text-slate-500">{row.collateralShares.toString()} shares</div>
                         </td>
                         <td className="px-5 py-4 text-right font-mono tabular-nums">
                           {row.isVault ? (
@@ -885,6 +929,7 @@ function HolderTable({
           </table>
         </div>
       )}
+      {isExpanded ? <SectionMetaBar actions={metaActions} className="border-t border-white/10" title={metaTitle} /> : null}
     </div>
   );
 }
@@ -903,7 +948,9 @@ function sortDepositors(rows: VaultDepositor[], sortState: TableSortState): Vaul
     if (sortState.key === "pending") {
       return compareValues(a.pendingAssets, b.pendingAssets, sortState.direction);
     }
-    return compareValues(a.attributedSiloAssets, b.attributedSiloAssets, sortState.direction);
+    // Sort the (Vault) assets column by vault shares: shares carry full precision,
+    // whereas displayed assets can collide once rounded.
+    return compareValues(a.vaultShares, b.vaultShares, sortState.direction);
   });
 }
 
@@ -1027,7 +1074,10 @@ function DepositorTable({
                         <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">{row.addressType}</span>
                       </td>
                       <td className="px-5 py-4 text-right font-mono tabular-nums">
-                        {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                        <div>
+                          {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                        </div>
+                        <div className="mt-0.5 text-xs text-slate-500">{row.vaultShares.toString()} shares</div>
                       </td>
                       <td className="px-5 py-4 text-right font-mono tabular-nums">
                         {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
@@ -1337,13 +1387,10 @@ function VaultCard({
       ? (airdropPlan.airdropRaw * vault.vaultSiloAssets) / airdropPlan.totalPendingAssets
       : ZERO;
 
-  return (
-    <div
-      id={vaultElementId(vault.address)}
-      className={`rounded-3xl border p-5 ${
-        hasWarning ? "border-amber-300/30 bg-amber-300/[0.08]" : "border-emerald-300/20 bg-emerald-300/[0.06]"
-      }`}
-    >
+  // Vault metadata (name + address + nav + assets/shares summary). Rendered at the
+  // top of the card and repeated at the bottom so long depositor tables stay labelled.
+  const metaSection = (
+    <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
           <h3 className={hasWarning ? "font-semibold text-amber-100" : "font-semibold text-emerald-100"}>
@@ -1379,10 +1426,25 @@ function VaultCard({
             <span>
               {vault.vaultTotalSupply.toString()} <span className="font-sans">shares</span>
             </span>
-            <ValidationBadge inline message="Vault shares equal sum of depositor shares" valid={vaultSharesValid} />
+            <ValidationBadge
+              inline
+              message={`Vault shares equal sum of ${vault.depositors.length} depositor shares`}
+              valid={vaultSharesValid}
+            />
           </span>
         ) : null}
       </p>
+    </>
+  );
+
+  return (
+    <div
+      id={vaultElementId(vault.address)}
+      className={`rounded-3xl border p-5 ${
+        hasWarning ? "border-amber-300/30 bg-amber-300/[0.08]" : "border-emerald-300/20 bg-emerald-300/[0.06]"
+      }`}
+    >
+      {metaSection}
       {hasWarning ? (
         <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
           <p>
@@ -1413,6 +1475,13 @@ function VaultCard({
             vaultAddress={vault.address}
             onSort={(key) => setDepositorSort((current) => nextSortState(current, key))}
           />
+          <div
+            className={`mt-4 border-t pt-4 ${
+              hasWarning ? "border-amber-300/20" : "border-emerald-300/20"
+            }`}
+          >
+            {metaSection}
+          </div>
         </div>
       ) : null}
     </div>
@@ -1537,6 +1606,7 @@ function SiloDetailPanel({
   airdropInputInvalid,
   showAirdropColumn,
   categoryLabel,
+  airdropSiloCount = 0,
   defaultAirdropAmount = "",
   showAirdrops = true,
   showTypeFilter = true,
@@ -1567,6 +1637,7 @@ function SiloDetailPanel({
   airdropInputInvalid: boolean;
   showAirdropColumn: boolean;
   categoryLabel?: string;
+  airdropSiloCount?: number;
   defaultAirdropAmount?: string;
   showAirdrops?: boolean;
   showTypeFilter?: boolean;
@@ -1665,7 +1736,15 @@ function SiloDetailPanel({
                     }
                   }}
                 />
-                <span>Distribute airdrops{categoryLabel ? ` (${categoryLabel})` : ""}</span>
+                <span>
+                  Distribute airdrops{categoryLabel ? ` (${categoryLabel})` : ""}
+                  {airdropSiloCount > 0 ? (
+                    <span className="text-slate-500">
+                      {" "}
+                      to {airdropSiloCount} {airdropSiloCount === 1 ? "silo" : "silos"}
+                    </span>
+                  ) : null}
+                </span>
               </label>
               {distributeAirdropsEnabled ? (
                 <>
@@ -1909,7 +1988,7 @@ function ExplorerView() {
   const [selectedChainName, setSelectedChainName] = useState(() => getInitialExplorerSelection().chainName);
   const [selectedSiloAddress, setSelectedSiloAddress] = useState(() => getInitialExplorerSelection().siloAddress);
   const [selectedCategory, setSelectedCategory] = useState<SiloCategory>(getInitialCategory);
-  const [addressFilter, setAddressFilter] = useState("");
+  const [addressFilter, setAddressFilter] = useState(() => parseFilterFromUrl());
   const [addressTypeFilter, setAddressTypeFilter] = useState("all");
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
@@ -1950,7 +2029,7 @@ function ExplorerView() {
     if (!siloAddress) {
       return;
     }
-    const url = buildExplorerSelectionUrl(chainName, siloAddress);
+    const url = buildExplorerSelectionUrl(chainName, siloAddress, addressFilter);
     const current = `${window.location.pathname}${window.location.search}`;
     if (current === url) {
       return;
@@ -1969,12 +2048,20 @@ function ExplorerView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Keep the address filter reflected in the URL (replace, so typing doesn't
+  // flood the history stack) so the exact filtered view is shareable.
+  useEffect(() => {
+    syncSelectionUrl(selectedChainName, selectedSiloAddress, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addressFilter]);
+
   // Keep selection in sync with browser back/forward navigation.
   useEffect(() => {
     function handlePopState() {
       const selection = getInitialExplorerSelection();
       setSelectedChainName(selection.chainName);
       setSelectedSiloAddress(selection.siloAddress);
+      setAddressFilter(parseFilterFromUrl());
     }
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -2146,6 +2233,7 @@ function ExplorerView() {
               addressFilter={addressFilter}
               addressTypeFilter={addressTypeFilter}
               addressTypes={addressTypes}
+              airdropSiloCount={airdropSilos.length}
               categoryLabel={SILO_CATEGORY_LABELS[activeCategory]}
               chain={selectedChain}
               defaultAirdropAmount={SILO_CATEGORY_DEFAULT_AIRDROP[activeCategory]}
@@ -2180,12 +2268,21 @@ function ExplorerView() {
 }
 
 function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapshot }) {
-  const [addressFilter, setAddressFilter] = useState("");
+  const [addressFilter, setAddressFilter] = useState(() => parseFilterFromUrl());
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>(
     Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])),
   );
+
+  // Reflect the address filter in the URL so the filtered silo view is shareable.
+  useEffect(() => {
+    const url = buildSiloPathWithFilter(chain.chain, silo.address, addressFilter);
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== url) {
+      window.history.replaceState(null, "", url);
+    }
+  }, [addressFilter, chain.chain, silo.address]);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
