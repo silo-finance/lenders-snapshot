@@ -805,7 +805,10 @@ function HolderTable({
                           </div>
                         </td>
                         <td className="px-5 py-4 text-right font-mono tabular-nums">
-                          {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                          <div>
+                            {formatUnitsRounded(row.totalAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                          </div>
+                          <div className="mt-0.5 text-xs text-slate-500">{row.collateralShares.toString()} shares</div>
                         </td>
                         <td className="px-5 py-4 text-right font-mono tabular-nums">
                           {row.isVault ? (
@@ -1027,7 +1030,10 @@ function DepositorTable({
                         <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-slate-300">{row.addressType}</span>
                       </td>
                       <td className="px-5 py-4 text-right font-mono tabular-nums">
-                        {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                        <div>
+                          {formatUnitsRounded(row.attributedSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+                        </div>
+                        <div className="mt-0.5 text-xs text-slate-500">{row.vaultShares.toString()} shares</div>
                       </td>
                       <td className="px-5 py-4 text-right font-mono tabular-nums">
                         {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
