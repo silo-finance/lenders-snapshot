@@ -476,25 +476,40 @@ function PendingAssetsBreakdown({
   chain,
   baseAssets,
   totalWithdrawals,
+  totalDeposits,
   pendingAssets,
   withdrawals,
+  deposits,
   decimals,
   symbol,
 }: {
   chain: string;
   baseAssets: bigint;
   totalWithdrawals: bigint;
+  totalDeposits: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
+  deposits: WithdrawalEntry[];
   decimals: number;
   symbol: string;
 }) {
-  const withdrawalRows = withdrawals.reduce<
-    Array<{ event: WithdrawalEntry; next: bigint }>
-  >((acc, event) => {
+  type FlowKind = "deposit" | "withdrawal";
+  const flows: Array<{ event: WithdrawalEntry; kind: FlowKind }> = [
+    ...deposits.map((event) => ({ event, kind: "deposit" as FlowKind })),
+    ...withdrawals.map((event) => ({ event, kind: "withdrawal" as FlowKind })),
+  ].sort(
+    (a, b) =>
+      a.event.blockNumber - b.event.blockNumber ||
+      a.event.logIndex - b.event.logIndex ||
+      a.event.txHash.localeCompare(b.event.txHash),
+  );
+
+  // Running balance is unclamped so the final value matches base + deposits - withdrawals;
+  // pending assets applies the max(0, ...) floor (mirrors the snapshot script).
+  const flowRows = flows.reduce<Array<{ event: WithdrawalEntry; kind: FlowKind; next: bigint }>>((acc, row) => {
     const previous = acc.length > 0 ? acc[acc.length - 1].next : baseAssets;
-    const next = previous > event.assets ? previous - event.assets : ZERO;
-    acc.push({ event, next });
+    const next = row.kind === "deposit" ? previous + row.event.assets : previous - row.event.assets;
+    acc.push({ ...row, next });
     return acc;
   }, []);
 
@@ -504,21 +519,23 @@ function PendingAssetsBreakdown({
         <span className="text-slate-400">snapshot assets</span>
         <span>{formatUnitsFixed(baseAssets, decimals)}</span>
       </div>
-      {withdrawals.length === 0 ? (
+      {flows.length === 0 ? (
         <div className="mt-2 text-slate-500">
-          {totalWithdrawals > ZERO
-            ? "Itemized withdrawal events are unavailable in this snapshot payload."
-            : "No withdrawals after snapshot block."}
+          {totalWithdrawals > ZERO || totalDeposits > ZERO
+            ? "Itemized flow events are unavailable in this snapshot payload."
+            : "No deposits or withdrawals after snapshot block."}
         </div>
       ) : (
         <div className="mt-2 space-y-2">
-          {withdrawalRows.map(({ event, next }, index) => {
+          {flowRows.map(({ event, kind, next }, index) => {
             const txUrl = explorerTxUrl(chain, event.txHash);
+            const isDeposit = kind === "deposit";
+            const sign = isDeposit ? "+" : "-";
             return (
-              <div key={`${event.txHash}-${event.logIndex}-${index}`} className="space-y-1">
+              <div key={`${kind}-${event.txHash}-${event.logIndex}-${index}`} className="space-y-1">
                 <div className="flex justify-between gap-3">
-                  <span className="text-slate-400">
-                    - withdrawal #{index + 1} (block {event.blockNumber}, tx{" "}
+                  <span className={isDeposit ? "text-emerald-300/80" : "text-rose-300/80"}>
+                    {sign} {kind} (block {event.blockNumber}, tx{" "}
                     {txUrl === "#" ? (
                       shortHash(event.txHash)
                     ) : (
@@ -533,12 +550,18 @@ function PendingAssetsBreakdown({
                     )}
                     )
                   </span>
-                  <span>-{formatUnitsFixed(event.assets, decimals)}</span>
+                  <span className={isDeposit ? "text-emerald-300" : undefined}>
+                    {sign}
+                    {formatUnitsFixed(event.assets, decimals)}
+                  </span>
                 </div>
                 {event.eventAssets !== event.assets ? (
                   <div className="flex justify-between gap-3 text-[11px] text-slate-500">
-                    <span>on-chain withdrawn</span>
-                    <span>-{formatUnitsFixed(event.eventAssets, decimals)}</span>
+                    <span>on-chain {isDeposit ? "deposited" : "withdrawn"}</span>
+                    <span>
+                      {sign}
+                      {formatUnitsFixed(event.eventAssets, decimals)}
+                    </span>
                   </div>
                 ) : null}
                 <div className="flex justify-between gap-3 text-[11px] text-slate-500">
@@ -552,6 +575,10 @@ function PendingAssetsBreakdown({
       )}
       <div className="mt-3 border-t border-dashed border-white/10 pt-3">
         <div className="flex justify-between gap-3">
+          <span className="text-slate-400">total deposits</span>
+          <span className="text-emerald-300">+{formatUnitsFixed(totalDeposits, decimals)}</span>
+        </div>
+        <div className="mt-1 flex justify-between gap-3">
           <span className="text-slate-400">total withdrawals</span>
           <span>-{formatUnitsFixed(totalWithdrawals, decimals)}</span>
         </div>
@@ -601,7 +628,7 @@ function HolderTable({
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
   const [showOnlyPlusMinus, setShowOnlyPlusMinus] = useState(false);
   const tableRows = showOnlyPlusMinus
-    ? rows.filter((row) => !row.isVault && row.totalWithdrawals > ZERO)
+    ? rows.filter((row) => !row.isVault && (row.totalWithdrawals > ZERO || row.totalDeposits > ZERO))
     : rows;
 
   function toggleBreakdown(address: string) {
@@ -701,7 +728,7 @@ function HolderTable({
               ) : (
                 tableRows.map((row) => {
                   const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-                  const hasWithdrawals = !row.isVault && row.totalWithdrawals > ZERO;
+                  const hasFlows = !row.isVault && (row.totalWithdrawals > ZERO || row.totalDeposits > ZERO);
                   return (
                     <Fragment key={row.address}>
                       <tr className="hover:bg-white/[0.03]">
@@ -747,10 +774,10 @@ function HolderTable({
                           )}
                         </td>
                         <td className="px-2 py-4 text-center font-mono tabular-nums">
-                          {hasWithdrawals ? (
+                          {hasFlows ? (
                             <button
                               className="font-sans text-lg font-semibold leading-none text-emerald-200 transition hover:text-emerald-100"
-                              title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
+                              title={breakdownOpen ? "Hide flow details" : "Show flow details"}
                               type="button"
                               onClick={() => toggleBreakdown(row.address)}
                             >
@@ -778,15 +805,17 @@ function HolderTable({
                           </td>
                         ) : null}
                       </tr>
-                      {breakdownOpen && hasWithdrawals && !row.isVault ? (
+                      {breakdownOpen && hasFlows && !row.isVault ? (
                         <tr className="bg-slate-950/40">
                           <td className="px-5 pb-4" colSpan={showAirdropColumn ? 7 : 6}>
                             <PendingAssetsBreakdown
-                            chain={chain}
+                              chain={chain}
                               baseAssets={row.totalAssets}
                               decimals={silo.inputToken.decimals}
+                              deposits={row.deposits}
                               pendingAssets={row.pendingAssets}
                               symbol={silo.inputToken.symbol}
+                              totalDeposits={row.totalDeposits}
                               totalWithdrawals={row.totalWithdrawals}
                               withdrawals={row.withdrawals}
                             />
@@ -861,7 +890,9 @@ function DepositorTable({
     return addressMatches && typeMatches;
   });
   const filteredRows = sortDepositors(
-    showOnlyPlusMinus ? visibleRows.filter((row) => row.totalWithdrawals > ZERO) : visibleRows,
+    showOnlyPlusMinus
+      ? visibleRows.filter((row) => row.totalWithdrawals > ZERO || row.totalDeposits > ZERO)
+      : visibleRows,
     sortState,
   );
 
@@ -932,7 +963,7 @@ function DepositorTable({
             ) : (
               filteredRows.map((row) => {
                 const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-                const hasWithdrawals = row.totalWithdrawals > ZERO;
+                const hasFlows = row.totalWithdrawals > ZERO || row.totalDeposits > ZERO;
                 return (
                   <Fragment key={row.address}>
                     <tr className="hover:bg-white/[0.03]">
@@ -954,10 +985,10 @@ function DepositorTable({
                         </span>
                       </td>
                       <td className="px-2 py-4 text-center font-mono tabular-nums">
-                        {hasWithdrawals ? (
+                        {hasFlows ? (
                           <button
                             className="font-sans text-lg font-semibold leading-none text-emerald-200 transition hover:text-emerald-100"
-                            title={breakdownOpen ? "Hide deduction details" : "Show deduction details"}
+                            title={breakdownOpen ? "Hide flow details" : "Show flow details"}
                             type="button"
                             onClick={() => toggleBreakdown(row.address)}
                           >
@@ -979,15 +1010,17 @@ function DepositorTable({
                         </td>
                       ) : null}
                     </tr>
-                    {breakdownOpen && hasWithdrawals ? (
+                    {breakdownOpen && hasFlows ? (
                       <tr className="bg-slate-950/40">
                         <td className="px-5 pb-4" colSpan={showAirdropColumn ? 7 : 6}>
                           <PendingAssetsBreakdown
-                          chain={chain}
+                            chain={chain}
                             baseAssets={row.attributedSiloAssets}
                             decimals={silo.inputToken.decimals}
+                            deposits={row.deposits}
                             pendingAssets={row.pendingAssets}
                             symbol={silo.inputToken.symbol}
+                            totalDeposits={row.totalDeposits}
                             totalWithdrawals={row.totalWithdrawals}
                             withdrawals={row.withdrawals}
                           />

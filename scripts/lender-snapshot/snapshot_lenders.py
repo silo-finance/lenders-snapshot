@@ -173,6 +173,10 @@ SEL_SAFE_OWNERS = _sel("getOwners()")
 SEL_SAFE_THRESHOLD = _sel("getThreshold()")
 SEL_SAFE_NONCE = _sel("nonce()")
 TOPIC_WITHDRAW = "0x" + keccak(text="Withdraw(address,address,address,uint256,uint256)").hex()
+# ERC4626 Deposit(sender, receiver, assets, shares): two indexed addresses, so the credited
+# account (receiver) is topics[2]. Only collateral deposits hit the Silo/Vault share token;
+# protected collateral lives in a separate token, so this naturally excludes protected.
+TOPIC_DEPOSIT = "0x" + keccak(text="Deposit(address,address,uint256,uint256)").hex()
 
 
 # --------------------------------------------------------------------------------------
@@ -501,9 +505,10 @@ def dec_event_topic_address(topic: str) -> str:
     return norm("0x" + topic[-40:])
 
 
-def dec_withdraw_data(data_hex: str) -> tuple[int, int]:
+def dec_flow_data(data_hex: str) -> tuple[int, int]:
+    """Decode the (assets, shares) data payload shared by ERC4626 Withdraw and Deposit."""
     if not isinstance(data_hex, str) or not data_hex.startswith("0x"):
-        raise ValueError(f"invalid withdraw data: {data_hex!r}")
+        raise ValueError(f"invalid flow event data: {data_hex!r}")
     payload = bytes.fromhex(data_hex[2:])
     assets, shares = abi_decode(["uint256", "uint256"], payload)
     return int(assets), int(shares)
@@ -822,14 +827,23 @@ def preview_redeem_vault_shares(shares: list[int], mc: Multicall) -> list[int]:
     return out
 
 
-def fetch_withdraw_events(
+def _fetch_flow_events(
     rpc: RpcClient,
     contract_address: str,
+    topic: str,
+    owner_topic_index: int,
+    min_topics: int,
+    kind: str,
     from_block: int,
     to_block: int,
     label: str = "",
     block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
 ) -> list[dict[str, Any]]:
+    """Scan ERC4626 Withdraw/Deposit logs for one contract.
+
+    `owner_topic_index` selects the account a flow is attributed to: Withdraw credits the
+    burning `owner` (topics[3]); Deposit credits the minted-to `receiver` (topics[2]).
+    """
     if to_block < from_block:
         return []
 
@@ -841,11 +855,11 @@ def fetch_withdraw_events(
     events: list[dict[str, Any]] = []
     start = from_block
     chunk = block_chunk
-    print(f"[info]   [{tag}] scanning Withdraw logs in blocks {from_block}..{to_block} ({total_blocks} blocks) ...")
+    print(f"[info]   [{tag}] scanning {kind} logs in blocks {from_block}..{to_block} ({total_blocks} blocks) ...")
     while start <= to_block:
         end = min(start + chunk - 1, to_block)
         try:
-            logs = rpc.eth_get_logs(contract_address, [TOPIC_WITHDRAW], start, end)
+            logs = rpc.eth_get_logs(contract_address, [topic], start, end)
         except RuntimeError as exc:
             if chunk <= 100:
                 raise
@@ -867,17 +881,15 @@ def fetch_withdraw_events(
 
         for log in logs:
             topics = log.get("topics")
-            if not isinstance(topics, list) or len(topics) < 4:
+            if not isinstance(topics, list) or len(topics) < min_topics:
                 continue
             try:
-                assets, shares = dec_withdraw_data(str(log.get("data", "0x")))
+                assets, shares = dec_flow_data(str(log.get("data", "0x")))
                 event = {
                     "block_number": int(str(log.get("blockNumber", "0x0")), 16),
                     "tx_hash": str(log.get("transactionHash", "")).lower(),
                     "log_index": int(str(log.get("logIndex", "0x0")), 16),
-                    "caller": dec_event_topic_address(topics[1]),
-                    "receiver": dec_event_topic_address(topics[2]),
-                    "owner": dec_event_topic_address(topics[3]),
+                    "owner": dec_event_topic_address(topics[owner_topic_index]),
                     "assets": assets,
                     "shares": shares,
                 }
@@ -888,8 +900,52 @@ def fetch_withdraw_events(
         start = end + 1
 
     events.sort(key=lambda item: (item["block_number"], item["log_index"], item["tx_hash"]))
-    print(f"[info]   [{tag}] done: {len(events)} Withdraw event(s) found")
+    print(f"[info]   [{tag}] done: {len(events)} {kind} event(s) found")
     return events
+
+
+def fetch_withdraw_events(
+    rpc: RpcClient,
+    contract_address: str,
+    from_block: int,
+    to_block: int,
+    label: str = "",
+    block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
+) -> list[dict[str, Any]]:
+    return _fetch_flow_events(
+        rpc,
+        contract_address,
+        TOPIC_WITHDRAW,
+        owner_topic_index=3,
+        min_topics=4,
+        kind="Withdraw",
+        from_block=from_block,
+        to_block=to_block,
+        label=label,
+        block_chunk=block_chunk,
+    )
+
+
+def fetch_deposit_events(
+    rpc: RpcClient,
+    contract_address: str,
+    from_block: int,
+    to_block: int,
+    label: str = "",
+    block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
+) -> list[dict[str, Any]]:
+    return _fetch_flow_events(
+        rpc,
+        contract_address,
+        TOPIC_DEPOSIT,
+        owner_topic_index=2,
+        min_topics=3,
+        kind="Deposit",
+        from_block=from_block,
+        to_block=to_block,
+        label=label,
+        block_chunk=block_chunk,
+    )
 
 
 def resolve_withdrawals_to_block(silo: dict[str, Any]) -> int | None:
@@ -918,9 +974,82 @@ def resolve_withdrawals_block_chunk(silo: dict[str, Any]) -> int:
     return value
 
 
-def enrich_snapshot_with_withdrawals(
-    silo_entry: dict[str, Any], rpc: RpcClient, from_block: int, to_block: int, block_chunk: int
+def _init_flow_fields(entry: dict[str, Any], base_assets: int) -> None:
+    entry["withdrawals"] = []
+    entry["total_withdrawals"] = "0"
+    entry["deposits"] = []
+    entry["total_deposits"] = "0"
+    entry["pending_assets"] = str(base_assets)
+
+
+def _append_flow(
+    entry: dict[str, Any],
+    list_key: str,
+    total_key: str,
+    event: dict[str, Any],
+    assets: int,
+    extra: dict[str, Any] | None = None,
 ) -> None:
+    rows = entry.get(list_key)
+    if not isinstance(rows, list):
+        rows = []
+        entry[list_key] = rows
+    row = {
+        "block_number": event["block_number"],
+        "tx_hash": event["tx_hash"],
+        "log_index": event["log_index"],
+        "assets": str(assets),
+        "shares": str(event["shares"]),
+    }
+    if extra:
+        row.update(extra)
+    rows.append(row)
+    entry[total_key] = str(int(entry.get(total_key, 0)) + assets)
+
+
+def _finalize_pending(entry: dict[str, Any], base_assets: int) -> None:
+    """pending = max(0, snapshot base + post-snapshot deposits - post-snapshot withdrawals)."""
+    total_deposits = int(entry.get("total_deposits", 0))
+    total_withdrawals = int(entry.get("total_withdrawals", 0))
+    entry["pending_assets"] = str(max(0, base_assets + total_deposits - total_withdrawals))
+
+
+def _new_direct_lender_entry(address_type: str) -> dict[str, Any]:
+    """A lender that first appears via a post-snapshot deposit (zero balance at snapshot)."""
+    entry: dict[str, Any] = {
+        "address_type": address_type,
+        "collateral_shares": "0",
+        "assets_collateral": "0",
+        "total_assets": "0",
+    }
+    _init_flow_fields(entry, 0)
+    return entry
+
+
+def _new_depositor_entry(address_type: str) -> dict[str, Any]:
+    """A vault depositor that first appears via a post-snapshot deposit."""
+    entry: dict[str, Any] = {
+        "address_type": address_type,
+        "vault_shares": "0",
+        "fraction": "0",
+        "attributed_silo_assets": "0",
+    }
+    _init_flow_fields(entry, 0)
+    return entry
+
+
+def enrich_snapshot_with_flows(
+    silo_entry: dict[str, Any],
+    rpc: RpcClient,
+    mc: Multicall,
+    from_block: int,
+    to_block: int,
+    block_chunk: int,
+) -> None:
+    """Apply post-snapshot collateral Deposit (+) and Withdraw (-) flows to each position.
+
+    Addresses that first appear via a post-snapshot deposit are added as new recipients.
+    """
     direct_lenders = silo_entry.get("direct_lenders")
     if not isinstance(direct_lenders, dict):
         direct_lenders = {}
@@ -933,14 +1062,10 @@ def enrich_snapshot_with_withdrawals(
             continue
         if entry.get("address_type") == "silo_vault":
             # We do not distribute directly to vault contracts.
-            entry.pop("withdrawals", None)
-            entry.pop("total_withdrawals", None)
-            entry.pop("pending_assets", None)
+            for key in ("withdrawals", "total_withdrawals", "deposits", "total_deposits", "pending_assets"):
+                entry.pop(key, None)
             continue
-        base_assets = int(entry.get("assets_collateral", 0))
-        entry["withdrawals"] = []
-        entry["total_withdrawals"] = "0"
-        entry["pending_assets"] = str(base_assets)
+        _init_flow_fields(entry, int(entry.get("assets_collateral", 0)))
 
     for vault in vaults.values():
         if not isinstance(vault, dict):
@@ -951,69 +1076,80 @@ def enrich_snapshot_with_withdrawals(
         for depositor in depositors.values():
             if not isinstance(depositor, dict):
                 continue
-            base_assets = int(depositor.get("attributed_silo_assets", 0))
-            depositor["withdrawals"] = []
-            depositor["total_withdrawals"] = "0"
-            depositor["pending_assets"] = str(base_assets)
+            _init_flow_fields(depositor, int(depositor.get("attributed_silo_assets", 0)))
 
     scannable_vaults = [
         vault_addr
         for vault_addr, vault in vaults.items()
         if isinstance(vault, dict) and vault.get("status") == "ok" and isinstance(vault.get("depositors"), dict)
     ]
-    print(f"[info] withdrawals scan plan: 1 silo contract + {len(scannable_vaults)} vault contract(s)")
+    print(f"[info] flow scan plan: 1 silo contract + {len(scannable_vaults)} vault contract(s)")
 
-    silo_events = fetch_withdraw_events(
-        rpc,
-        SILO_ADDRESS,
-        from_block,
-        to_block,
-        label=f"silo {SILO_ADDRESS}",
-        block_chunk=block_chunk,
+    silo_withdraws = fetch_withdraw_events(
+        rpc, SILO_ADDRESS, from_block, to_block, label=f"silo {SILO_ADDRESS}", block_chunk=block_chunk
     )
-    vault_addresses = {addr for addr, entry in direct_lenders.items() if entry.get("address_type") == "silo_vault"}
-    matched_direct = 0
-    skipped_rebalances = 0
-    for event in silo_events:
+    silo_deposits = fetch_deposit_events(
+        rpc, SILO_ADDRESS, from_block, to_block, label=f"silo {SILO_ADDRESS}", block_chunk=block_chunk
+    )
+
+    # Add lenders that first appear via a post-snapshot flow, classified at the snapshot block.
+    existing_addrs = set(direct_lenders.keys())
+    candidate_new: list[str] = []
+    seen_new: set[str] = set()
+    for event in (*silo_deposits, *silo_withdraws):
         owner = event["owner"]
-        entry = direct_lenders.get(owner)
-        if not isinstance(entry, dict):
+        if owner in existing_addrs or owner in seen_new:
             continue
+        seen_new.add(owner)
+        candidate_new.append(owner)
+    new_types: dict[str, str] = {}
+    if candidate_new:
+        print(f"[info]   [silo] classifying {len(candidate_new)} new post-snapshot address(es) ...")
+        new_types, _new_incentives = classify_addresses(candidate_new, rpc, mc)
+        for owner in candidate_new:
+            owner_type = new_types.get(owner, "unknown")
+            if owner_type == "silo_vault":
+                # New vault appearing post-snapshot: non-attributable rebalancer, not expanded.
+                continue
+            direct_lenders[owner] = _new_direct_lender_entry(owner_type)
+
+    vault_addresses = {addr for addr, entry in direct_lenders.items() if entry.get("address_type") == "silo_vault"}
+    vault_addresses |= {owner for owner in candidate_new if new_types.get(owner) == "silo_vault"}
+
+    matched_withdraws = 0
+    matched_deposits = 0
+    skipped_rebalances = 0
+    for event in silo_withdraws:
+        owner = event["owner"]
         if owner in vault_addresses:
-            # This is a vault rebalance at silo level, not end-user withdrawal.
+            # Vault rebalance at silo level, not an end-user flow.
             skipped_rebalances += 1
             continue
-        if entry.get("address_type") == "silo_vault":
+        entry = direct_lenders.get(owner)
+        if not isinstance(entry, dict) or entry.get("address_type") == "silo_vault":
             continue
-        matched_direct += 1
-        withdrawals = entry.get("withdrawals")
-        if not isinstance(withdrawals, list):
-            withdrawals = []
-            entry["withdrawals"] = withdrawals
-        deductions = event["assets"]
-        withdrawals.append(
-            {
-                "block_number": event["block_number"],
-                "tx_hash": event["tx_hash"],
-                "log_index": event["log_index"],
-                "assets": str(event["assets"]),
-                "shares": str(event["shares"]),
-            }
-        )
-        entry["total_withdrawals"] = str(int(entry.get("total_withdrawals", 0)) + deductions)
+        _append_flow(entry, "withdrawals", "total_withdrawals", event, event["assets"])
+        matched_withdraws += 1
+    for event in silo_deposits:
+        owner = event["owner"]
+        if owner in vault_addresses:
+            skipped_rebalances += 1
+            continue
+        entry = direct_lenders.get(owner)
+        if not isinstance(entry, dict) or entry.get("address_type") == "silo_vault":
+            continue
+        _append_flow(entry, "deposits", "total_deposits", event, event["assets"])
+        matched_deposits += 1
 
     for entry in direct_lenders.values():
-        if not isinstance(entry, dict):
+        if not isinstance(entry, dict) or entry.get("address_type") == "silo_vault":
             continue
-        if entry.get("address_type") == "silo_vault":
-            continue
-        base_assets = int(entry.get("assets_collateral", 0))
-        total_withdrawals = int(entry.get("total_withdrawals", 0))
-        entry["pending_assets"] = str(max(0, base_assets - total_withdrawals))
+        _finalize_pending(entry, int(entry.get("assets_collateral", 0)))
 
     print(
-        f"[info]   [silo] matched {matched_direct} direct-lender withdrawal(s), "
-        f"skipped {skipped_rebalances} vault rebalance event(s)"
+        f"[info]   [silo] matched {matched_deposits} deposit(s), {matched_withdraws} withdrawal(s), "
+        f"skipped {skipped_rebalances} vault rebalance event(s); "
+        f"added {len(direct_lenders) - len(existing_addrs)} new lender(s)"
     )
 
     vault_index = 0
@@ -1023,64 +1159,85 @@ def enrich_snapshot_with_withdrawals(
         if vault.get("status") != "ok":
             continue
         depositors = vault.get("depositors")
-        if not isinstance(depositors, dict) or not depositors:
+        if not isinstance(depositors, dict):
             continue
 
         vault_index += 1
         vault_label = f"vault {vault_index}/{len(scannable_vaults)} {vault_addr}"
-        vault_events = fetch_withdraw_events(
-            rpc,
-            vault_addr,
-            from_block,
-            to_block,
-            label=vault_label,
-            block_chunk=block_chunk,
+        vault_withdraws = fetch_withdraw_events(
+            rpc, vault_addr, from_block, to_block, label=vault_label, block_chunk=block_chunk
         )
-        # A SiloVault can lend into multiple silos, and a vault Withdraw burns vault shares
-        # for the vault's *total* underlying across all of them. Attributing the raw event
-        # assets to every silo entry would both double-count across silos and credit
-        # withdrawals to silos where the vault held nothing at the snapshot block. Instead,
-        # translate the burned vault shares into the assets attributable to THIS silo at the
+        vault_deposits = fetch_deposit_events(
+            rpc, vault_addr, from_block, to_block, label=vault_label, block_chunk=block_chunk
+        )
+        # A SiloVault can lend into multiple silos, and a vault Withdraw/Deposit moves vault
+        # shares for the vault's *total* underlying across all of them. Attributing the raw
+        # event assets to every silo entry would both double-count across silos and credit
+        # flows to silos where the vault held nothing at the snapshot block. Instead,
+        # translate the moved vault shares into the assets attributable to THIS silo at the
         # snapshot rate:
-        #   attributed = vault_silo_assets * shares_burned / vault_total_supply
+        #   attributed = vault_silo_assets * shares / vault_total_supply
         # This keeps the same valuation basis as attributed_silo_assets, scales each silo by
         # its own position (no cross-silo double counting), and yields 0 for silos where the
         # vault's position was empty/dust at the snapshot block.
         vault_silo_assets = int(vault.get("vault_silo_assets", 0) or 0)
         vault_total_supply = int(vault.get("vault_total_supply", 0) or 0)
-        matched_depositors = 0
-        for event in vault_events:
+
+        # Add depositors that first appear via a post-snapshot deposit.
+        existing_depositors = set(depositors.keys())
+        candidate_dep: list[str] = []
+        seen_dep: set[str] = set()
+        for event in vault_deposits:
             owner = event["owner"]
-            depositor = depositors.get(owner)
+            if owner in existing_depositors or owner in seen_dep:
+                continue
+            seen_dep.add(owner)
+            candidate_dep.append(owner)
+        if candidate_dep:
+            dep_types, _dep_incentives = classify_addresses(candidate_dep, rpc, mc)
+            for owner in candidate_dep:
+                depositors[owner] = _new_depositor_entry(dep_types.get(owner, "unknown"))
+
+        matched_dep_withdraws = 0
+        matched_dep_deposits = 0
+        for event in vault_withdraws:
+            depositor = depositors.get(event["owner"])
             if not isinstance(depositor, dict):
                 continue
-            matched_depositors += 1
-            shares_burned = int(event["shares"])
-            attributed = (vault_silo_assets * shares_burned) // vault_total_supply if vault_total_supply else 0
-            withdrawals = depositor.get("withdrawals")
-            if not isinstance(withdrawals, list):
-                withdrawals = []
-                depositor["withdrawals"] = withdrawals
-            withdrawals.append(
-                {
-                    "block_number": event["block_number"],
-                    "tx_hash": event["tx_hash"],
-                    "log_index": event["log_index"],
-                    "assets": str(attributed),
-                    "shares": str(shares_burned),
-                    "vault_assets": str(event["assets"]),
-                }
+            attributed = (vault_silo_assets * int(event["shares"])) // vault_total_supply if vault_total_supply else 0
+            _append_flow(
+                depositor,
+                "withdrawals",
+                "total_withdrawals",
+                event,
+                attributed,
+                extra={"vault_assets": str(event["assets"])},
             )
-            depositor["total_withdrawals"] = str(int(depositor.get("total_withdrawals", 0)) + attributed)
+            matched_dep_withdraws += 1
+        for event in vault_deposits:
+            depositor = depositors.get(event["owner"])
+            if not isinstance(depositor, dict):
+                continue
+            attributed = (vault_silo_assets * int(event["shares"])) // vault_total_supply if vault_total_supply else 0
+            _append_flow(
+                depositor,
+                "deposits",
+                "total_deposits",
+                event,
+                attributed,
+                extra={"vault_assets": str(event["assets"])},
+            )
+            matched_dep_deposits += 1
 
         for depositor in depositors.values():
             if not isinstance(depositor, dict):
                 continue
-            base_assets = int(depositor.get("attributed_silo_assets", 0))
-            total_withdrawals = int(depositor.get("total_withdrawals", 0))
-            depositor["pending_assets"] = str(max(0, base_assets - total_withdrawals))
+            _finalize_pending(depositor, int(depositor.get("attributed_silo_assets", 0)))
 
-        print(f"[info]   [{vault_label}] matched {matched_depositors} depositor withdrawal(s)")
+        print(
+            f"[info]   [{vault_label}] matched {matched_dep_deposits} deposit(s), "
+            f"{matched_dep_withdraws} withdrawal(s); added {len(depositors) - len(existing_depositors)} new depositor(s)"
+        )
 
 
 def expand_vault(
@@ -1232,11 +1389,11 @@ def build_snapshot(
         f"resolved_to={scan_to}, chunk={withdrawals_block_chunk}"
     )
     if scan_to >= scan_from:
-        print(f"[info] fetching Withdraw events from blocks {scan_from}..{scan_to} ...")
-        enrich_snapshot_with_withdrawals(silo_entry, rpc, scan_from, scan_to, withdrawals_block_chunk)
+        print(f"[info] fetching Deposit + Withdraw events from blocks {scan_from}..{scan_to} ...")
+        enrich_snapshot_with_flows(silo_entry, rpc, mc, scan_from, scan_to, withdrawals_block_chunk)
     else:
-        print(f"[info] skipping Withdraw scan: target block {scan_to} is before {scan_from}")
-        enrich_snapshot_with_withdrawals(silo_entry, rpc, scan_from, scan_from - 1, withdrawals_block_chunk)
+        print(f"[info] skipping flow scan: target block {scan_to} is before {scan_from}")
+        enrich_snapshot_with_flows(silo_entry, rpc, mc, scan_from, scan_from - 1, withdrawals_block_chunk)
     silo_entry["withdrawals_scanned_to_block"] = scan_to
     return silo_entry
 
