@@ -1606,6 +1606,7 @@ function SiloDetailPanel({
   airdropInputInvalid,
   showAirdropColumn,
   categoryLabel,
+  airdropSiloCount = 0,
   defaultAirdropAmount = "",
   showAirdrops = true,
   showTypeFilter = true,
@@ -1636,6 +1637,7 @@ function SiloDetailPanel({
   airdropInputInvalid: boolean;
   showAirdropColumn: boolean;
   categoryLabel?: string;
+  airdropSiloCount?: number;
   defaultAirdropAmount?: string;
   showAirdrops?: boolean;
   showTypeFilter?: boolean;
@@ -1734,7 +1736,15 @@ function SiloDetailPanel({
                     }
                   }}
                 />
-                <span>Distribute airdrops{categoryLabel ? ` (${categoryLabel})` : ""}</span>
+                <span>
+                  Distribute airdrops{categoryLabel ? ` (${categoryLabel})` : ""}
+                  {airdropSiloCount > 0 ? (
+                    <span className="text-slate-500">
+                      {" "}
+                      to {airdropSiloCount} {airdropSiloCount === 1 ? "silo" : "silos"}
+                    </span>
+                  ) : null}
+                </span>
               </label>
               {distributeAirdropsEnabled ? (
                 <>
@@ -2223,6 +2233,7 @@ function ExplorerView() {
               addressFilter={addressFilter}
               addressTypeFilter={addressTypeFilter}
               addressTypes={addressTypes}
+              airdropSiloCount={airdropSilos.length}
               categoryLabel={SILO_CATEGORY_LABELS[activeCategory]}
               chain={selectedChain}
               defaultAirdropAmount={SILO_CATEGORY_DEFAULT_AIRDROP[activeCategory]}
