@@ -52,21 +52,43 @@ export function explorerHomePath(): string {
 export type ExplorerSelection = {
   chain?: string;
   address?: string;
+  filter?: string;
 };
 
 export function parseExplorerSelectionFromUrl(): ExplorerSelection {
   const params = new URLSearchParams(window.location.search);
   const chain = params.get("chain") ?? undefined;
   const address = params.get("silo") ?? undefined;
+  const filter = params.get("filter")?.trim() || undefined;
   return {
     chain: chain && CHAIN_NAME_PATTERN.test(chain) ? chain.toLowerCase() : undefined,
     address: address && SILO_ADDRESS_PATTERN.test(address) ? address : undefined,
+    filter,
   };
 }
 
-export function buildExplorerSelectionUrl(chain: string, address: string): string {
+export function buildExplorerSelectionUrl(chain: string, address: string, filter?: string): string {
   const params = new URLSearchParams();
   params.set("chain", chain.toLowerCase());
   params.set("silo", address);
+  const trimmedFilter = filter?.trim();
+  if (trimmedFilter) {
+    params.set("filter", trimmedFilter);
+  }
   return `${explorerHomePath()}?${params.toString()}`;
+}
+
+export function parseFilterFromUrl(): string {
+  return new URLSearchParams(window.location.search).get("filter")?.trim() || "";
+}
+
+export function buildSiloPathWithFilter(chain: string, address: string, filter?: string): string {
+  const path = buildSiloPath(chain, address);
+  const trimmedFilter = filter?.trim();
+  if (!trimmedFilter) {
+    return path;
+  }
+  const params = new URLSearchParams();
+  params.set("filter", trimmedFilter);
+  return `${path}?${params.toString()}`;
 }

@@ -3,8 +3,10 @@ import packageJson from "../package.json";
 import {
   buildExplorerSelectionUrl,
   buildSiloPath,
+  buildSiloPathWithFilter,
   explorerHomePath,
   parseExplorerSelectionFromUrl,
+  parseFilterFromUrl,
   parseSiloPathFromUrl,
 } from "./routing";
 import {
@@ -1933,7 +1935,7 @@ function ExplorerView() {
   const [selectedChainName, setSelectedChainName] = useState(() => getInitialExplorerSelection().chainName);
   const [selectedSiloAddress, setSelectedSiloAddress] = useState(() => getInitialExplorerSelection().siloAddress);
   const [selectedCategory, setSelectedCategory] = useState<SiloCategory>(getInitialCategory);
-  const [addressFilter, setAddressFilter] = useState("");
+  const [addressFilter, setAddressFilter] = useState(() => parseFilterFromUrl());
   const [addressTypeFilter, setAddressTypeFilter] = useState("all");
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
@@ -1974,7 +1976,7 @@ function ExplorerView() {
     if (!siloAddress) {
       return;
     }
-    const url = buildExplorerSelectionUrl(chainName, siloAddress);
+    const url = buildExplorerSelectionUrl(chainName, siloAddress, addressFilter);
     const current = `${window.location.pathname}${window.location.search}`;
     if (current === url) {
       return;
@@ -1993,12 +1995,20 @@ function ExplorerView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Keep the address filter reflected in the URL (replace, so typing doesn't
+  // flood the history stack) so the exact filtered view is shareable.
+  useEffect(() => {
+    syncSelectionUrl(selectedChainName, selectedSiloAddress, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addressFilter]);
+
   // Keep selection in sync with browser back/forward navigation.
   useEffect(() => {
     function handlePopState() {
       const selection = getInitialExplorerSelection();
       setSelectedChainName(selection.chainName);
       setSelectedSiloAddress(selection.siloAddress);
+      setAddressFilter(parseFilterFromUrl());
     }
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -2204,12 +2214,21 @@ function ExplorerView() {
 }
 
 function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapshot }) {
-  const [addressFilter, setAddressFilter] = useState("");
+  const [addressFilter, setAddressFilter] = useState(() => parseFilterFromUrl());
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>(
     Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])),
   );
+
+  // Reflect the address filter in the URL so the filtered silo view is shareable.
+  useEffect(() => {
+    const url = buildSiloPathWithFilter(chain.chain, silo.address, addressFilter);
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== url) {
+      window.history.replaceState(null, "", url);
+    }
+  }, [addressFilter, chain.chain, silo.address]);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
