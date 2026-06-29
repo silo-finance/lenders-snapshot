@@ -488,7 +488,9 @@ function sortDirectLenders(rows: DirectLender[], sortState: TableSortState): Dir
     if (sortState.key === "pending") {
       return compareValues(left.pendingAssets, right.pendingAssets, sortState.direction);
     }
-    return compareValues(left.totalAssets, right.totalAssets, sortState.direction);
+    // Sort the Assets column by share balance: shares carry full precision, whereas
+    // displayed assets can collide once rounded.
+    return compareValues(left.collateralShares, right.collateralShares, sortState.direction);
   });
 }
 
@@ -946,7 +948,9 @@ function sortDepositors(rows: VaultDepositor[], sortState: TableSortState): Vaul
     if (sortState.key === "pending") {
       return compareValues(a.pendingAssets, b.pendingAssets, sortState.direction);
     }
-    return compareValues(a.attributedSiloAssets, b.attributedSiloAssets, sortState.direction);
+    // Sort the (Vault) assets column by vault shares: shares carry full precision,
+    // whereas displayed assets can collide once rounded.
+    return compareValues(a.vaultShares, b.vaultShares, sortState.direction);
   });
 }
 
