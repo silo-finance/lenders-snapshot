@@ -177,6 +177,12 @@ TOPIC_WITHDRAW = "0x" + keccak(text="Withdraw(address,address,address,uint256,ui
 # account (receiver) is topics[2]. Only collateral deposits hit the Silo/Vault share token;
 # protected collateral lives in a separate token, so this naturally excludes protected.
 TOPIC_DEPOSIT = "0x" + keccak(text="Deposit(address,address,uint256,uint256)").hex()
+# ERC20 Transfer(from, to, value): both addresses indexed. Share tokens (Silo collateral
+# token and vault shares) are transferable, so peer-to-peer transfers move a position
+# without a Deposit/Withdraw event. Mint (from==0x0) and burn (to==0x0) are skipped because
+# they are already accounted for by the Deposit/Withdraw scans.
+TOPIC_TRANSFER = "0x" + keccak(text="Transfer(address,address,uint256)").hex()
+ZERO_ADDRESS = "0x" + "0" * 40
 
 
 # --------------------------------------------------------------------------------------
@@ -948,6 +954,85 @@ def fetch_deposit_events(
     )
 
 
+def fetch_transfer_events(
+    rpc: RpcClient,
+    contract_address: str,
+    from_block: int,
+    to_block: int,
+    label: str = "",
+    block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
+) -> list[dict[str, Any]]:
+    """Scan peer-to-peer ERC20 Transfer logs for one share token.
+
+    Returns {block_number, tx_hash, log_index, from, to, value(shares)}. Mint (from==0x0)
+    and burn (to==0x0) transfers are skipped: they accompany Deposit/Withdraw and are already
+    counted by those scans, so including them here would double-count.
+    """
+    if to_block < from_block:
+        return []
+
+    tag = label or contract_address
+    total_blocks = to_block - from_block + 1
+    progress_step = max(block_chunk, total_blocks // 20)
+    next_progress_at = from_block + progress_step
+
+    events: list[dict[str, Any]] = []
+    start = from_block
+    chunk = block_chunk
+    print(f"[info]   [{tag}] scanning Transfer logs in blocks {from_block}..{to_block} ({total_blocks} blocks) ...")
+    while start <= to_block:
+        end = min(start + chunk - 1, to_block)
+        try:
+            logs = rpc.eth_get_logs(contract_address, [TOPIC_TRANSFER], start, end)
+        except RuntimeError as exc:
+            if chunk <= 100:
+                raise
+            chunk = max(100, chunk // 2)
+            print(
+                f"[warn] reducing eth_getLogs chunk for {contract_address} to {chunk} "
+                f"blocks after error: {exc}"
+            )
+            continue
+
+        if end >= next_progress_at or end == to_block:
+            done_blocks = end - from_block + 1
+            pct = (done_blocks * 100) // total_blocks
+            print(
+                f"[info]   [{tag}] progress: block {end} ({done_blocks}/{total_blocks} = {pct}%), "
+                f"events so far: {len(events) + len(logs)}"
+            )
+            next_progress_at = end + progress_step
+
+        for log in logs:
+            topics = log.get("topics")
+            if not isinstance(topics, list) or len(topics) < 3:
+                continue
+            try:
+                sender = dec_event_topic_address(topics[1])
+                receiver = dec_event_topic_address(topics[2])
+                if sender == ZERO_ADDRESS or receiver == ZERO_ADDRESS:
+                    # Mint / burn: already represented by Deposit / Withdraw scans.
+                    continue
+                value = int(str(log.get("data", "0x")), 16)
+                event = {
+                    "block_number": int(str(log.get("blockNumber", "0x0")), 16),
+                    "tx_hash": str(log.get("transactionHash", "")).lower(),
+                    "log_index": int(str(log.get("logIndex", "0x0")), 16),
+                    "from": sender,
+                    "to": receiver,
+                    "value": value,
+                }
+            except Exception:
+                continue
+            events.append(event)
+
+        start = end + 1
+
+    events.sort(key=lambda item: (item["block_number"], item["log_index"], item["tx_hash"]))
+    print(f"[info]   [{tag}] done: {len(events)} peer Transfer event(s) found")
+    return events
+
+
 def resolve_withdrawals_to_block(silo: dict[str, Any]) -> int | None:
     raw = silo.get("withdrawals_to_block")
     if raw in (None, ""):
@@ -974,11 +1059,26 @@ def resolve_withdrawals_block_chunk(silo: dict[str, Any]) -> int:
     return value
 
 
+FLOW_FIELD_KEYS = (
+    "withdrawals",
+    "total_withdrawals",
+    "deposits",
+    "total_deposits",
+    "transfers",
+    "total_transfers_in",
+    "total_transfers_out",
+    "pending_assets",
+)
+
+
 def _init_flow_fields(entry: dict[str, Any], base_assets: int) -> None:
     entry["withdrawals"] = []
     entry["total_withdrawals"] = "0"
     entry["deposits"] = []
     entry["total_deposits"] = "0"
+    entry["transfers"] = []
+    entry["total_transfers_in"] = "0"
+    entry["total_transfers_out"] = "0"
     entry["pending_assets"] = str(base_assets)
 
 
@@ -1007,11 +1107,46 @@ def _append_flow(
     entry[total_key] = str(int(entry.get(total_key, 0)) + assets)
 
 
+def _append_transfer(
+    entry: dict[str, Any],
+    event: dict[str, Any],
+    assets: int,
+    direction: str,
+    counterparty: str,
+) -> None:
+    """Record a peer-to-peer share transfer ('in' credits, 'out' debits the account)."""
+    rows = entry.get("transfers")
+    if not isinstance(rows, list):
+        rows = []
+        entry["transfers"] = rows
+    rows.append(
+        {
+            "block_number": event["block_number"],
+            "tx_hash": event["tx_hash"],
+            "log_index": event["log_index"],
+            "assets": str(assets),
+            "shares": str(event["value"]),
+            "direction": direction,
+            "counterparty": counterparty,
+        }
+    )
+    total_key = "total_transfers_in" if direction == "in" else "total_transfers_out"
+    entry[total_key] = str(int(entry.get(total_key, 0)) + assets)
+
+
 def _finalize_pending(entry: dict[str, Any], base_assets: int) -> None:
-    """pending = max(0, snapshot base + post-snapshot deposits - post-snapshot withdrawals)."""
+    """pending = base + deposits + transfers_in - withdrawals - transfers_out.
+
+    Signed on purpose (NOT clamped to zero): a negative result surfaces unreconciled flows
+    (e.g. interest accrued between snapshot and withdrawal) instead of silently hiding them.
+    """
     total_deposits = int(entry.get("total_deposits", 0))
     total_withdrawals = int(entry.get("total_withdrawals", 0))
-    entry["pending_assets"] = str(max(0, base_assets + total_deposits - total_withdrawals))
+    total_transfers_in = int(entry.get("total_transfers_in", 0))
+    total_transfers_out = int(entry.get("total_transfers_out", 0))
+    entry["pending_assets"] = str(
+        base_assets + total_deposits + total_transfers_in - total_withdrawals - total_transfers_out
+    )
 
 
 def _new_direct_lender_entry(address_type: str) -> dict[str, Any]:
@@ -1062,7 +1197,7 @@ def enrich_snapshot_with_flows(
             continue
         if entry.get("address_type") == "silo_vault":
             # We do not distribute directly to vault contracts.
-            for key in ("withdrawals", "total_withdrawals", "deposits", "total_deposits", "pending_assets"):
+            for key in FLOW_FIELD_KEYS:
                 entry.pop(key, None)
             continue
         _init_flow_fields(entry, int(entry.get("assets_collateral", 0)))
@@ -1091,17 +1226,34 @@ def enrich_snapshot_with_flows(
     silo_deposits = fetch_deposit_events(
         rpc, SILO_ADDRESS, from_block, to_block, label=f"silo {SILO_ADDRESS}", block_chunk=block_chunk
     )
+    silo_transfers = fetch_transfer_events(
+        rpc, SILO_ADDRESS, from_block, to_block, label=f"silo {SILO_ADDRESS}", block_chunk=block_chunk
+    )
+    # Convert transferred collateral shares to assets at the snapshot rate (same valuation
+    # basis as `assets_collateral`): assets = total_assets * shares / collateral_total_supply.
+    silo_total_assets = int(silo_entry.get("total_assets") or 0)
+    silo_total_supply = int(silo_entry.get("collateral_total_supply") or 0)
+
+    def silo_shares_to_assets(shares: int) -> int:
+        return (silo_total_assets * shares) // silo_total_supply if silo_total_supply else 0
 
     # Add lenders that first appear via a post-snapshot flow, classified at the snapshot block.
     existing_addrs = set(direct_lenders.keys())
     candidate_new: list[str] = []
     seen_new: set[str] = set()
+
+    def _consider_new(addr: str) -> None:
+        if addr in existing_addrs or addr in seen_new:
+            return
+        seen_new.add(addr)
+        candidate_new.append(addr)
+
     for event in (*silo_deposits, *silo_withdraws):
-        owner = event["owner"]
-        if owner in existing_addrs or owner in seen_new:
-            continue
-        seen_new.add(owner)
-        candidate_new.append(owner)
+        _consider_new(event["owner"])
+    for event in silo_transfers:
+        # Both sides of a peer transfer are real position changes (sender loses, receiver gains).
+        _consider_new(event["from"])
+        _consider_new(event["to"])
     new_types: dict[str, str] = {}
     if candidate_new:
         print(f"[info]   [silo] classifying {len(candidate_new)} new post-snapshot address(es) ...")
@@ -1141,6 +1293,20 @@ def enrich_snapshot_with_flows(
         _append_flow(entry, "deposits", "total_deposits", event, event["assets"])
         matched_deposits += 1
 
+    matched_transfers = 0
+    for event in silo_transfers:
+        assets = silo_shares_to_assets(event["value"])
+        for addr, direction in ((event["to"], "in"), (event["from"], "out")):
+            if addr in vault_addresses:
+                # Transfer to/from a vault contract: the vault side is non-attributable.
+                continue
+            entry = direct_lenders.get(addr)
+            if not isinstance(entry, dict) or entry.get("address_type") == "silo_vault":
+                continue
+            counterparty = event["from"] if direction == "in" else event["to"]
+            _append_transfer(entry, event, assets, direction, counterparty)
+            matched_transfers += 1
+
     for entry in direct_lenders.values():
         if not isinstance(entry, dict) or entry.get("address_type") == "silo_vault":
             continue
@@ -1148,7 +1314,7 @@ def enrich_snapshot_with_flows(
 
     print(
         f"[info]   [silo] matched {matched_deposits} deposit(s), {matched_withdraws} withdrawal(s), "
-        f"skipped {skipped_rebalances} vault rebalance event(s); "
+        f"{matched_transfers} transfer-side(s), skipped {skipped_rebalances} vault rebalance event(s); "
         f"added {len(direct_lenders) - len(existing_addrs)} new lender(s)"
     )
 
@@ -1170,6 +1336,9 @@ def enrich_snapshot_with_flows(
         vault_deposits = fetch_deposit_events(
             rpc, vault_addr, from_block, to_block, label=vault_label, block_chunk=block_chunk
         )
+        vault_transfers = fetch_transfer_events(
+            rpc, vault_addr, from_block, to_block, label=vault_label, block_chunk=block_chunk
+        )
         # A SiloVault can lend into multiple silos, and a vault Withdraw/Deposit moves vault
         # shares for the vault's *total* underlying across all of them. Attributing the raw
         # event assets to every silo entry would both double-count across silos and credit
@@ -1183,16 +1352,25 @@ def enrich_snapshot_with_flows(
         vault_silo_assets = int(vault.get("vault_silo_assets", 0) or 0)
         vault_total_supply = int(vault.get("vault_total_supply", 0) or 0)
 
-        # Add depositors that first appear via a post-snapshot deposit.
+        def vault_shares_to_assets(shares: int, _sa: int = vault_silo_assets, _ts: int = vault_total_supply) -> int:
+            return (_sa * shares) // _ts if _ts else 0
+
+        # Add depositors that first appear via a post-snapshot deposit or transfer.
         existing_depositors = set(depositors.keys())
         candidate_dep: list[str] = []
         seen_dep: set[str] = set()
+
+        def _consider_dep(addr: str) -> None:
+            if addr in existing_depositors or addr in seen_dep:
+                return
+            seen_dep.add(addr)
+            candidate_dep.append(addr)
+
         for event in vault_deposits:
-            owner = event["owner"]
-            if owner in existing_depositors or owner in seen_dep:
-                continue
-            seen_dep.add(owner)
-            candidate_dep.append(owner)
+            _consider_dep(event["owner"])
+        for event in vault_transfers:
+            _consider_dep(event["from"])
+            _consider_dep(event["to"])
         if candidate_dep:
             dep_types, _dep_incentives = classify_addresses(candidate_dep, rpc, mc)
             for owner in candidate_dep:
@@ -1200,17 +1378,17 @@ def enrich_snapshot_with_flows(
 
         matched_dep_withdraws = 0
         matched_dep_deposits = 0
+        matched_dep_transfers = 0
         for event in vault_withdraws:
             depositor = depositors.get(event["owner"])
             if not isinstance(depositor, dict):
                 continue
-            attributed = (vault_silo_assets * int(event["shares"])) // vault_total_supply if vault_total_supply else 0
             _append_flow(
                 depositor,
                 "withdrawals",
                 "total_withdrawals",
                 event,
-                attributed,
+                vault_shares_to_assets(int(event["shares"])),
                 extra={"vault_assets": str(event["assets"])},
             )
             matched_dep_withdraws += 1
@@ -1218,16 +1396,24 @@ def enrich_snapshot_with_flows(
             depositor = depositors.get(event["owner"])
             if not isinstance(depositor, dict):
                 continue
-            attributed = (vault_silo_assets * int(event["shares"])) // vault_total_supply if vault_total_supply else 0
             _append_flow(
                 depositor,
                 "deposits",
                 "total_deposits",
                 event,
-                attributed,
+                vault_shares_to_assets(int(event["shares"])),
                 extra={"vault_assets": str(event["assets"])},
             )
             matched_dep_deposits += 1
+        for event in vault_transfers:
+            assets = vault_shares_to_assets(event["value"])
+            for addr, direction in ((event["to"], "in"), (event["from"], "out")):
+                depositor = depositors.get(addr)
+                if not isinstance(depositor, dict):
+                    continue
+                counterparty = event["from"] if direction == "in" else event["to"]
+                _append_transfer(depositor, event, assets, direction, counterparty)
+                matched_dep_transfers += 1
 
         for depositor in depositors.values():
             if not isinstance(depositor, dict):
@@ -1236,7 +1422,8 @@ def enrich_snapshot_with_flows(
 
         print(
             f"[info]   [{vault_label}] matched {matched_dep_deposits} deposit(s), "
-            f"{matched_dep_withdraws} withdrawal(s); added {len(depositors) - len(existing_depositors)} new depositor(s)"
+            f"{matched_dep_withdraws} withdrawal(s), {matched_dep_transfers} transfer-side(s); "
+            f"added {len(depositors) - len(existing_depositors)} new depositor(s)"
         )
 
 
