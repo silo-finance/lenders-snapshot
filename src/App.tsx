@@ -691,7 +691,7 @@ function HolderTable({
     <div id="direct-lenders" className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
         <div className="flex min-w-0 items-center gap-2">
-          <h3 className="font-semibold text-white">Direct lenders</h3>
+          <h3 className="font-semibold text-white">Direct lenders ({rows.length})</h3>
           <SectionNavButtons nextId={navNextId} />
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -1379,7 +1379,11 @@ function VaultCard({
             <span>
               {vault.vaultTotalSupply.toString()} <span className="font-sans">shares</span>
             </span>
-            <ValidationBadge inline message="Vault shares equal sum of depositor shares" valid={vaultSharesValid} />
+            <ValidationBadge
+              inline
+              message={`Vault shares equal sum of ${vault.depositors.length} depositor shares`}
+              valid={vaultSharesValid}
+            />
           </span>
         ) : null}
       </p>
