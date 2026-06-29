@@ -15,9 +15,12 @@ type RawDirectLender = {
   total_assets?: RawAmount;
   total_withdrawals?: RawAmount;
   total_deposits?: RawAmount;
+  total_transfers_in?: RawAmount;
+  total_transfers_out?: RawAmount;
   pending_assets?: RawAmount;
   withdrawals?: RawWithdrawalEntry[];
   deposits?: RawWithdrawalEntry[];
+  transfers?: RawTransferEntry[];
 };
 
 type RawDepositor = {
@@ -27,9 +30,12 @@ type RawDepositor = {
   attributed_silo_assets?: RawAmount;
   total_withdrawals?: RawAmount;
   total_deposits?: RawAmount;
+  total_transfers_in?: RawAmount;
+  total_transfers_out?: RawAmount;
   pending_assets?: RawAmount;
   withdrawals?: RawWithdrawalEntry[];
   deposits?: RawWithdrawalEntry[];
+  transfers?: RawTransferEntry[];
 };
 
 type RawWithdrawalEntry = {
@@ -42,6 +48,12 @@ type RawWithdrawalEntry = {
   // across all silos). `assets` is the snapshot-rate slice attributed to this silo
   // and is what actually reduces `pending_assets`.
   vault_assets?: RawAmount;
+};
+
+type RawTransferEntry = RawWithdrawalEntry & {
+  // Peer-to-peer share transfer: "in" credits the account, "out" debits it.
+  direction?: string;
+  counterparty?: string;
 };
 
 type RawVault = {
@@ -87,9 +99,12 @@ export type DirectLender = {
   totalAssets: bigint;
   totalWithdrawals: bigint;
   totalDeposits: bigint;
+  totalTransfersIn: bigint;
+  totalTransfersOut: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
+  transfers: TransferEntry[];
   isVault: boolean;
 };
 
@@ -101,9 +116,12 @@ export type VaultDepositor = {
   attributedSiloAssets: bigint;
   totalWithdrawals: bigint;
   totalDeposits: bigint;
+  totalTransfersIn: bigint;
+  totalTransfersOut: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
+  transfers: TransferEntry[];
 };
 
 export type WithdrawalEntry = {
@@ -116,6 +134,14 @@ export type WithdrawalEntry = {
   // depositors it is the full vault redemption (across all silos), while `assets`
   // is the slice attributed to this silo.
   eventAssets: bigint;
+};
+
+export type TransferDirection = "in" | "out";
+
+export type TransferEntry = WithdrawalEntry & {
+  // Peer-to-peer share transfer: "in" increases the balance, "out" decreases it.
+  direction: TransferDirection;
+  counterparty: string;
 };
 
 export type VaultSnapshot = {
@@ -225,12 +251,35 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex || a.txHash.localeCompare(b.txHash));
   };
 
+  const parseTransfers = (entries: RawTransferEntry[] | undefined): TransferEntry[] => {
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+    return entries
+      .map((entry) => {
+        const assets = toBigInt(entry.assets);
+        return {
+          blockNumber: toNumber(entry.block_number, 0),
+          txHash: (entry.tx_hash ?? "").toLowerCase(),
+          logIndex: toNumber(entry.log_index, 0),
+          assets,
+          shares: toBigInt(entry.shares),
+          eventAssets: assets,
+          direction: (entry.direction === "out" ? "out" : "in") as TransferDirection,
+          counterparty: (entry.counterparty ?? "").toLowerCase(),
+        };
+      })
+      .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex || a.txHash.localeCompare(b.txHash));
+  };
+
   const directLenders = Object.entries(raw.direct_lenders ?? {}).map(([lenderAddress, entry]) => {
     const collateralShares = toBigInt(entry.collateral_shares);
     const assetsCollateral = toBigInt(entry.assets_collateral);
     const totalAssets = toBigInt(entry.total_assets) || assetsCollateral;
     const totalWithdrawals = toBigInt(entry.total_withdrawals);
     const totalDeposits = toBigInt(entry.total_deposits);
+    const totalTransfersIn = toBigInt(entry.total_transfers_in);
+    const totalTransfersOut = toBigInt(entry.total_transfers_out);
     const pendingAssets =
       entry.pending_assets === undefined || entry.pending_assets === null || entry.pending_assets === ""
         ? totalAssets
@@ -244,9 +293,12 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       totalAssets,
       totalWithdrawals,
       totalDeposits,
+      totalTransfersIn,
+      totalTransfersOut,
       pendingAssets,
       withdrawals: parseFlows(entry.withdrawals),
       deposits: parseFlows(entry.deposits),
+      transfers: parseTransfers(entry.transfers),
       isVault: entry.address_type === "silo_vault",
     };
   });
@@ -272,12 +324,15 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
         attributedSiloAssets,
         totalWithdrawals: toBigInt(depositor.total_withdrawals),
         totalDeposits: toBigInt(depositor.total_deposits),
+        totalTransfersIn: toBigInt(depositor.total_transfers_in),
+        totalTransfersOut: toBigInt(depositor.total_transfers_out),
         pendingAssets:
           depositor.pending_assets === undefined || depositor.pending_assets === null || depositor.pending_assets === ""
             ? attributedSiloAssets
             : toBigInt(depositor.pending_assets),
         withdrawals: parseFlows(depositor.withdrawals),
         deposits: parseFlows(depositor.deposits),
+        transfers: parseTransfers(depositor.transfers),
       };
     }),
   }));

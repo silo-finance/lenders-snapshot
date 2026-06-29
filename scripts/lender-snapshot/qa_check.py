@@ -9,14 +9,23 @@ share-sum invariants against the stored total supplies, with ZERO tolerance
   - sum(direct_lenders[].collateral_shares) == collateral_total_supply
   - for each indexed vault with in_withdraw_queue == true:
         sum(depositors[].vault_shares) == vault_total_supply
-  - for each lender/depositor:
-    pending_assets == max(0, base_assets + total_deposits - total_withdrawals)
+  - for each lender/depositor (exact, signed, NOT clamped to zero):
+    pending_assets == base_assets + total_deposits + total_transfers_in
+                      - total_withdrawals - total_transfers_out
   - for each lender/depositor:
     sum(withdrawals[].assets) == total_withdrawals
     sum(deposits[].assets) == total_deposits
+    sum(transfers[in].assets) == total_transfers_in
+    sum(transfers[out].assets) == total_transfers_out
 
-Any non-zero difference is an error and yields a non-zero exit code, with an
-expected/actual/diff report per contract.
+Any non-zero difference in the above is an error and yields a non-zero exit code,
+with an expected/actual/diff report per contract.
+
+Negative pending policy: a negative pending is expected only as interest accrued
+between the snapshot block and a later full withdrawal. We tolerate negatives up to
+`max(ABS_DUST, TOL_BPS/10000 * inflow)` (inflow = base + deposits + transfers_in) as a
+warning; anything larger is an unreconciled flow (e.g. a missed transfer) and is a hard
+error. TOL_BPS / ABS_DUST are overridable via QA_PENDING_TOL_BPS / QA_PENDING_ABS_DUST.
 
 Vaults flagged vault_not_indexed or with in_withdraw_queue == false are reported
 as warnings (their depositors are intentionally not enumerated), not errors.
@@ -33,11 +42,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_JSON = SCRIPT_DIR / "distribution_snapshot.json"
+
+# Negative-pending tolerance policy (see module docstring). Small negatives are interest
+# accrued before a full withdrawal; larger ones flag unreconciled flows.
+TOL_BPS = int(os.environ.get("QA_PENDING_TOL_BPS", "500"))  # 5% of inflow
+ABS_DUST = int(os.environ.get("QA_PENDING_ABS_DUST", "0"))  # absolute floor (smallest units)
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,6 +90,54 @@ def check_flow_sum(label: str, entries: Any, expected_total: int, report: "Repor
     report.check_equal(label, expected_total, summed)
 
 
+def check_transfer_sums(
+    label: str,
+    transfers: Any,
+    expected_in: int,
+    expected_out: int,
+    report: "Report",
+) -> None:
+    """Assert sum of 'in'/'out' transfer assets matches total_transfers_in/out."""
+    if not isinstance(transfers, list):
+        if expected_in or expected_out:
+            report.warn(f"{label}: transfers must be an array")
+        return
+    summed_in = 0
+    summed_out = 0
+    for item in transfers:
+        if not isinstance(item, dict):
+            continue
+        assets = to_int(item.get("assets", 0))
+        if item.get("direction") == "out":
+            summed_out += assets
+        else:
+            summed_in += assets
+    report.check_equal(f"{label} transfers_in_sum vs total_transfers_in", expected_in, summed_in)
+    report.check_equal(f"{label} transfers_out_sum vs total_transfers_out", expected_out, summed_out)
+
+
+def check_pending(
+    label: str,
+    base_assets: int,
+    total_deposits: int,
+    total_transfers_in: int,
+    total_withdrawals: int,
+    total_transfers_out: int,
+    pending_assets: int,
+    report: "Report",
+) -> None:
+    """Exact signed pending invariant plus negative-pending tolerance policy."""
+    expected = base_assets + total_deposits + total_transfers_in - total_withdrawals - total_transfers_out
+    report.check_equal(f"{label} pending_assets consistency", expected, pending_assets)
+    if pending_assets < 0:
+        inflow = base_assets + total_deposits + total_transfers_in
+        allowed = max(ABS_DUST, (TOL_BPS * inflow) // 10000)
+        if -pending_assets <= allowed:
+            report.warn(f"{label}: negative pending within interest tolerance ({pending_assets}, allowed -{allowed})")
+        else:
+            report.error(f"{label}: negative pending exceeds tolerance ({pending_assets}, allowed -{allowed})")
+
+
 class Report:
     def __init__(self) -> None:
         self.errors = 0
@@ -89,6 +152,11 @@ class Report:
             return
         self.errors += 1
         print(f"[FAIL] {label}: expected={expected} actual={actual} diff={diff:+d}")
+
+    def error(self, label: str) -> None:
+        """Record a hard failure that is not an expected/actual numeric comparison."""
+        self.errors += 1
+        print(f"[FAIL] {label}")
 
     def warn(self, label: str) -> None:
         self.warnings += 1
@@ -128,15 +196,18 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
         base_assets = to_int(entry.get("assets_collateral", entry.get("total_assets", 0)))
         total_withdrawals = to_int(entry.get("total_withdrawals", 0))
         total_deposits = to_int(entry.get("total_deposits", 0))
+        total_transfers_in = to_int(entry.get("total_transfers_in", 0))
+        total_transfers_out = to_int(entry.get("total_transfers_out", 0))
         pending_assets = to_int(entry.get("pending_assets", base_assets))
-        expected_pending = base_assets + total_deposits - total_withdrawals
-        if expected_pending < 0:
-            report.warn(f"{prefix} lender {lender_addr}: total_withdrawals exceed base assets + deposits")
-            expected_pending = 0
-        report.check_equal(
-            f"{prefix} lender {lender_addr} pending_assets consistency",
-            expected_pending,
+        check_pending(
+            f"{prefix} lender {lender_addr}",
+            base_assets,
+            total_deposits,
+            total_transfers_in,
+            total_withdrawals,
+            total_transfers_out,
             pending_assets,
+            report,
         )
         check_flow_sum(
             f"{prefix} lender {lender_addr} withdrawals_sum vs total_withdrawals",
@@ -148,6 +219,13 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
             f"{prefix} lender {lender_addr} deposits_sum vs total_deposits",
             entry.get("deposits", []),
             total_deposits,
+            report,
+        )
+        check_transfer_sums(
+            f"{prefix} lender {lender_addr}",
+            entry.get("transfers", []),
+            total_transfers_in,
+            total_transfers_out,
             report,
         )
 
@@ -185,15 +263,18 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
             base_assets = to_int(depositor.get("attributed_silo_assets", 0))
             total_withdrawals = to_int(depositor.get("total_withdrawals", 0))
             total_deposits = to_int(depositor.get("total_deposits", 0))
+            total_transfers_in = to_int(depositor.get("total_transfers_in", 0))
+            total_transfers_out = to_int(depositor.get("total_transfers_out", 0))
             pending_assets = to_int(depositor.get("pending_assets", base_assets))
-            expected_pending = base_assets + total_deposits - total_withdrawals
-            if expected_pending < 0:
-                report.warn(f"{vlabel} depositor {depositor_addr}: total_withdrawals exceed base assets + deposits")
-                expected_pending = 0
-            report.check_equal(
-                f"{vlabel} depositor {depositor_addr} pending_assets consistency",
-                expected_pending,
+            check_pending(
+                f"{vlabel} depositor {depositor_addr}",
+                base_assets,
+                total_deposits,
+                total_transfers_in,
+                total_withdrawals,
+                total_transfers_out,
                 pending_assets,
+                report,
             )
             check_flow_sum(
                 f"{vlabel} depositor {depositor_addr} withdrawals_sum vs total_withdrawals",
@@ -205,6 +286,13 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
                 f"{vlabel} depositor {depositor_addr} deposits_sum vs total_deposits",
                 depositor.get("deposits", []),
                 total_deposits,
+                report,
+            )
+            check_transfer_sums(
+                f"{vlabel} depositor {depositor_addr}",
+                depositor.get("transfers", []),
+                total_transfers_in,
+                total_transfers_out,
                 report,
             )
 
@@ -290,7 +378,7 @@ def main() -> int:
     print()
     print(f"Checks: {report.checks}  Warnings: {report.warnings}  Errors: {report.errors}")
     if report.errors == 0:
-        print("[OK] QA passed (zero tolerance)")
+        print("[OK] QA passed (exact invariants; negatives within interest tolerance)")
         return 0
     print("[FAIL] QA failed")
     return 1
