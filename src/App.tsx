@@ -34,6 +34,7 @@ import {
   parseUnits,
   shortAddress,
   siloCategory,
+  snapshotBlock,
 } from "./snapshot";
 import { useWallet } from "./useWallet";
 
@@ -237,6 +238,71 @@ function ChevronIcon({ className }: { className?: string }) {
   );
 }
 
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      height="16"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      width="16"
+    >
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" x2="12" y1="9" y2="13" />
+      <line x1="12" x2="12.01" y1="17" y2="17" />
+    </svg>
+  );
+}
+
+function ShareIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      height="14"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      width="14"
+    >
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" />
+      <line x1="15.41" x2="8.59" y1="6.51" y2="10.49" />
+    </svg>
+  );
+}
+
+function ExternalLinkIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      height="14"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      width="14"
+    >
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" x2="21" y1="14" y2="3" />
+    </svg>
+  );
+}
+
 function SectionNavButtons({ prevId, nextId }: { prevId?: string; nextId?: string }) {
   if (!prevId && !nextId) {
     return null;
@@ -400,30 +466,80 @@ function AddressFilterInput({
   id,
   value,
   onChange,
+  shareUrl,
 }: {
   id: string;
   value: string;
   onChange: (value: string) => void;
+  // Absolute URL for the currently filtered address. When present (and the filter is
+  // non-empty), share/open shortcuts are surfaced to the right of the input.
+  shareUrl?: string;
 }) {
+  const [copied, setCopied] = useState(false);
+  const showActions = value.trim().length > 0 && Boolean(shareUrl);
+  const hasTrailingControls = showActions || Boolean(value);
+
   return (
     <div className="relative mt-3">
       <input
         id={id}
-        className="w-full rounded-2xl border border-white/10 bg-slate-950/80 py-3 pl-4 pr-11 font-mono text-sm text-slate-300 outline-none placeholder:text-slate-600"
+        className={`w-full rounded-2xl border border-white/10 bg-slate-950/80 py-3 pl-4 font-mono text-sm text-slate-300 outline-none placeholder:text-slate-600 ${
+          hasTrailingControls ? "pr-28" : "pr-4"
+        }`}
         placeholder="Search by address substring"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-      {value ? (
-        <button
-          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full px-2 py-1 text-sm text-slate-400 transition hover:bg-white/10 hover:text-slate-200"
-          title="Clear address filter"
-          type="button"
-          onClick={() => onChange("")}
-        >
-          ×
-        </button>
-      ) : null}
+      <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+        {showActions && shareUrl ? (
+          <>
+            <button
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${
+                copied
+                  ? "border-emerald-300/60 bg-emerald-300/20 text-emerald-100"
+                  : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-emerald-300/40 hover:text-emerald-200"
+              }`}
+              title={copied ? "Link copied" : "Copy shareable link for this address"}
+              type="button"
+              onClick={() => {
+                void copyAddress(shareUrl).then(() => {
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 1200);
+                });
+              }}
+            >
+              {copied ? (
+                <span aria-hidden="true" className="text-xs">
+                  ✓
+                </span>
+              ) : (
+                <ShareIcon />
+              )}
+              <span className="sr-only">{copied ? "Link copied" : "Copy shareable link for this address"}</span>
+            </button>
+            <a
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-slate-400 transition hover:border-emerald-300/40 hover:text-emerald-200"
+              href={shareUrl}
+              rel="noreferrer"
+              target="_blank"
+              title="Open this address page in a new tab"
+            >
+              <ExternalLinkIcon />
+              <span className="sr-only">Open this address page in a new tab</span>
+            </a>
+          </>
+        ) : null}
+        {value ? (
+          <button
+            className="rounded-full px-2 py-1 text-sm text-slate-400 transition hover:bg-white/10 hover:text-slate-200"
+            title="Clear address filter"
+            type="button"
+            onClick={() => onChange("")}
+          >
+            ×
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -597,13 +713,16 @@ function PendingAssetsBreakdown({
             : "No deposits, withdrawals or transfers after snapshot block."}
         </div>
       ) : (
-        <div className="mt-2 space-y-2">
+        <div className="mt-2 divide-y divide-white/[0.06]">
           {flowRows.map(({ event, kind, counterparty, next }, index) => {
             const txUrl = explorerTxUrl(chain, event.txHash);
             const credit = isCredit(kind);
             const sign = credit ? "+" : "-";
             return (
-              <div key={`${kind}-${event.txHash}-${event.logIndex}-${index}`} className="space-y-1">
+              <div
+                key={`${kind}-${event.txHash}-${event.logIndex}-${index}`}
+                className="group -mx-2 space-y-1 rounded-md px-2 py-2.5 transition-colors hover:bg-white/[0.04]"
+              >
                 <div className="flex justify-between gap-3">
                   <span className={labelClass(kind)}>
                     {sign} {kind} (block {event.blockNumber}, tx{" "}
@@ -627,7 +746,7 @@ function PendingAssetsBreakdown({
                     ) : null}
                     )
                   </span>
-                  <span className={amountClass(kind)}>
+                  <span className={`shrink-0 tabular-nums ${amountClass(kind)}`}>
                     {sign}
                     {formatUnitsFixed(event.assets, decimals)}
                   </span>
@@ -635,7 +754,7 @@ function PendingAssetsBreakdown({
                 {event.eventAssets !== event.assets ? (
                   <div className="flex justify-between gap-3 text-[11px] text-slate-500">
                     <span>on-chain {credit ? "received" : "moved"}</span>
-                    <span>
+                    <span className="shrink-0 tabular-nums">
                       {sign}
                       {formatUnitsFixed(event.eventAssets, decimals)}
                     </span>
@@ -643,7 +762,7 @@ function PendingAssetsBreakdown({
                 ) : null}
                 <div className="flex justify-between gap-3 text-[11px] text-slate-500">
                   <span>running</span>
-                  <span>{formatUnitsFixed(next, decimals)}</span>
+                  <span className="shrink-0 tabular-nums">{formatUnitsFixed(next, decimals)}</span>
                 </div>
               </div>
             );
@@ -1510,6 +1629,13 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
             Static, no-RPC snapshot explorer for direct holders and vault depositors across chains.
           </p>
         )}
+        <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium text-amber-200">
+          <WarningIcon className="h-4 w-4 shrink-0" />
+          <span>
+            Figures do not account for interest accrued after block{" "}
+            <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>.
+          </span>
+        </p>
       </div>
     </header>
   );
@@ -1587,6 +1713,7 @@ function SiloDetailPanel({
   silo,
   addressFilter,
   setAddressFilter,
+  buildFilterShareUrl,
   addressTypeFilter,
   setAddressTypeFilter,
   addressTypes,
@@ -1618,6 +1745,9 @@ function SiloDetailPanel({
   silo: SiloSnapshot;
   addressFilter: string;
   setAddressFilter: (value: string) => void;
+  // Builds the relative shareable URL for a given address filter, used for the
+  // share/open shortcuts beside the address input.
+  buildFilterShareUrl?: (filter: string) => string;
   addressTypeFilter: string;
   setAddressTypeFilter: (value: string) => void;
   addressTypes: string[];
@@ -1848,7 +1978,16 @@ function SiloDetailPanel({
           <label className="text-xs uppercase tracking-[0.22em] text-slate-500" htmlFor="filter">
             Address filter
           </label>
-          <AddressFilterInput id="filter" value={addressFilter} onChange={setAddressFilter} />
+          <AddressFilterInput
+            id="filter"
+            shareUrl={
+              buildFilterShareUrl && addressFilter.trim()
+                ? `${window.location.origin}${buildFilterShareUrl(addressFilter.trim())}`
+                : undefined
+            }
+            value={addressFilter}
+            onChange={setAddressFilter}
+          />
         </div>
         {showTypeFilter ? (
           <div className="min-w-0">
@@ -2231,6 +2370,9 @@ function ExplorerView() {
           {selectedSilo ? (
             <SiloDetailPanel
               addressFilter={addressFilter}
+              buildFilterShareUrl={(filter) =>
+                buildExplorerSelectionUrl(selectedChain.chain, selectedSilo.address, filter)
+              }
               addressTypeFilter={addressTypeFilter}
               addressTypes={addressTypes}
               airdropSiloCount={airdropSilos.length}
@@ -2296,6 +2438,7 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
         <div className="min-w-0 space-y-6 py-8">
           <SiloDetailPanel
             addressFilter={addressFilter}
+            buildFilterShareUrl={(filter) => buildSiloPathWithFilter(chain.chain, silo.address, filter)}
             addressTypeFilter="all"
             addressTypes={[]}
             chain={chain}
