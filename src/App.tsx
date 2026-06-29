@@ -12,6 +12,7 @@ import {
   type DirectLender,
   type SiloCategory,
   type SiloSnapshot,
+  type TransferEntry,
   type VaultDepositor,
   type VaultSnapshot,
   type WithdrawalEntry,
@@ -472,14 +473,31 @@ function shortHash(hash: string): string {
   return `${hash.slice(0, 10)}...${hash.slice(-8)}`;
 }
 
+function hasFlowActivity(row: {
+  totalWithdrawals: bigint;
+  totalDeposits: bigint;
+  totalTransfersIn: bigint;
+  totalTransfersOut: bigint;
+}): boolean {
+  return (
+    row.totalWithdrawals > ZERO ||
+    row.totalDeposits > ZERO ||
+    row.totalTransfersIn > ZERO ||
+    row.totalTransfersOut > ZERO
+  );
+}
+
 function PendingAssetsBreakdown({
   chain,
   baseAssets,
   totalWithdrawals,
   totalDeposits,
+  totalTransfersIn,
+  totalTransfersOut,
   pendingAssets,
   withdrawals,
   deposits,
+  transfers,
   decimals,
   symbol,
 }: {
@@ -487,16 +505,25 @@ function PendingAssetsBreakdown({
   baseAssets: bigint;
   totalWithdrawals: bigint;
   totalDeposits: bigint;
+  totalTransfersIn: bigint;
+  totalTransfersOut: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
+  transfers: TransferEntry[];
   decimals: number;
   symbol: string;
 }) {
-  type FlowKind = "deposit" | "withdrawal";
-  const flows: Array<{ event: WithdrawalEntry; kind: FlowKind }> = [
+  type FlowKind = "deposit" | "withdrawal" | "transfer-in" | "transfer-out";
+  const isCredit = (kind: FlowKind) => kind === "deposit" || kind === "transfer-in";
+  const flows: Array<{ event: WithdrawalEntry; kind: FlowKind; counterparty?: string }> = [
     ...deposits.map((event) => ({ event, kind: "deposit" as FlowKind })),
     ...withdrawals.map((event) => ({ event, kind: "withdrawal" as FlowKind })),
+    ...transfers.map((event) => ({
+      event,
+      kind: (event.direction === "in" ? "transfer-in" : "transfer-out") as FlowKind,
+      counterparty: event.counterparty,
+    })),
   ].sort(
     (a, b) =>
       a.event.blockNumber - b.event.blockNumber ||
@@ -504,14 +531,27 @@ function PendingAssetsBreakdown({
       a.event.txHash.localeCompare(b.event.txHash),
   );
 
-  // Running balance is unclamped so the final value matches base + deposits - withdrawals;
-  // pending assets applies the max(0, ...) floor (mirrors the snapshot script).
-  const flowRows = flows.reduce<Array<{ event: WithdrawalEntry; kind: FlowKind; next: bigint }>>((acc, row) => {
-    const previous = acc.length > 0 ? acc[acc.length - 1].next : baseAssets;
-    const next = row.kind === "deposit" ? previous + row.event.assets : previous - row.event.assets;
-    acc.push({ ...row, next });
-    return acc;
-  }, []);
+  // Running balance is signed (no clamp) so the final value equals
+  // base + deposits + transfers_in - withdrawals - transfers_out.
+  const flowRows = flows.reduce<Array<{ event: WithdrawalEntry; kind: FlowKind; counterparty?: string; next: bigint }>>(
+    (acc, row) => {
+      const previous = acc.length > 0 ? acc[acc.length - 1].next : baseAssets;
+      const next = isCredit(row.kind) ? previous + row.event.assets : previous - row.event.assets;
+      acc.push({ ...row, next });
+      return acc;
+    },
+    [],
+  );
+
+  const labelClass = (kind: FlowKind) =>
+    kind === "deposit"
+      ? "text-emerald-300/80"
+      : kind === "withdrawal"
+        ? "text-rose-300/80"
+        : "text-amber-300/80";
+  const amountClass = (kind: FlowKind) =>
+    kind === "deposit" ? "text-emerald-300" : kind === "withdrawal" ? undefined : "text-amber-300";
+  const pendingNegative = pendingAssets < ZERO;
 
   return (
     <div className="rounded-xl border border-white/10 bg-slate-950/80 p-4 font-mono text-xs text-slate-300">
@@ -521,20 +561,20 @@ function PendingAssetsBreakdown({
       </div>
       {flows.length === 0 ? (
         <div className="mt-2 text-slate-500">
-          {totalWithdrawals > ZERO || totalDeposits > ZERO
+          {totalWithdrawals > ZERO || totalDeposits > ZERO || totalTransfersIn > ZERO || totalTransfersOut > ZERO
             ? "Itemized flow events are unavailable in this snapshot payload."
-            : "No deposits or withdrawals after snapshot block."}
+            : "No deposits, withdrawals or transfers after snapshot block."}
         </div>
       ) : (
         <div className="mt-2 space-y-2">
-          {flowRows.map(({ event, kind, next }, index) => {
+          {flowRows.map(({ event, kind, counterparty, next }, index) => {
             const txUrl = explorerTxUrl(chain, event.txHash);
-            const isDeposit = kind === "deposit";
-            const sign = isDeposit ? "+" : "-";
+            const credit = isCredit(kind);
+            const sign = credit ? "+" : "-";
             return (
               <div key={`${kind}-${event.txHash}-${event.logIndex}-${index}`} className="space-y-1">
                 <div className="flex justify-between gap-3">
-                  <span className={isDeposit ? "text-emerald-300/80" : "text-rose-300/80"}>
+                  <span className={labelClass(kind)}>
                     {sign} {kind} (block {event.blockNumber}, tx{" "}
                     {txUrl === "#" ? (
                       shortHash(event.txHash)
@@ -548,16 +588,16 @@ function PendingAssetsBreakdown({
                         {shortHash(event.txHash)}
                       </a>
                     )}
-                    )
+                    {counterparty ? `, ${kind === "transfer-in" ? "from" : "to"} ${shortAddress(counterparty)}` : ""})
                   </span>
-                  <span className={isDeposit ? "text-emerald-300" : undefined}>
+                  <span className={amountClass(kind)}>
                     {sign}
                     {formatUnitsFixed(event.assets, decimals)}
                   </span>
                 </div>
                 {event.eventAssets !== event.assets ? (
                   <div className="flex justify-between gap-3 text-[11px] text-slate-500">
-                    <span>on-chain {isDeposit ? "deposited" : "withdrawn"}</span>
+                    <span>on-chain {credit ? "received" : "moved"}</span>
                     <span>
                       {sign}
                       {formatUnitsFixed(event.eventAssets, decimals)}
@@ -578,11 +618,23 @@ function PendingAssetsBreakdown({
           <span className="text-slate-400">total deposits</span>
           <span className="text-emerald-300">+{formatUnitsFixed(totalDeposits, decimals)}</span>
         </div>
+        {totalTransfersIn > ZERO ? (
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-slate-400">total share transfers in</span>
+            <span className="text-amber-300">+{formatUnitsFixed(totalTransfersIn, decimals)}</span>
+          </div>
+        ) : null}
+        {totalTransfersOut > ZERO ? (
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-slate-400">total share transfers out</span>
+            <span className="text-amber-300">-{formatUnitsFixed(totalTransfersOut, decimals)}</span>
+          </div>
+        ) : null}
         <div className="mt-1 flex justify-between gap-3">
           <span className="text-slate-400">total withdrawals</span>
           <span>-{formatUnitsFixed(totalWithdrawals, decimals)}</span>
         </div>
-        <div className="mt-1 flex justify-between gap-3 text-emerald-200">
+        <div className={`mt-1 flex justify-between gap-3 ${pendingNegative ? "text-rose-300" : "text-emerald-200"}`}>
           <span>= pending assets ({symbol})</span>
           <span>{formatUnitsFixed(pendingAssets, decimals)}</span>
         </div>
@@ -628,7 +680,7 @@ function HolderTable({
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
   const [showOnlyPlusMinus, setShowOnlyPlusMinus] = useState(false);
   const tableRows = showOnlyPlusMinus
-    ? rows.filter((row) => !row.isVault && (row.totalWithdrawals > ZERO || row.totalDeposits > ZERO))
+    ? rows.filter((row) => !row.isVault && hasFlowActivity(row))
     : rows;
 
   function toggleBreakdown(address: string) {
@@ -728,7 +780,7 @@ function HolderTable({
               ) : (
                 tableRows.map((row) => {
                   const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-                  const hasFlows = !row.isVault && (row.totalWithdrawals > ZERO || row.totalDeposits > ZERO);
+                  const hasFlows = !row.isVault && hasFlowActivity(row);
                   return (
                     <Fragment key={row.address}>
                       <tr className="hover:bg-white/[0.03]">
@@ -768,7 +820,7 @@ function HolderTable({
                           {row.isVault ? (
                             <span className="text-slate-500">N/A</span>
                           ) : (
-                            <span>
+                            <span className={row.pendingAssets < ZERO ? "text-rose-300" : undefined}>
                               {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                             </span>
                           )}
@@ -816,7 +868,10 @@ function HolderTable({
                               pendingAssets={row.pendingAssets}
                               symbol={silo.inputToken.symbol}
                               totalDeposits={row.totalDeposits}
+                              totalTransfersIn={row.totalTransfersIn}
+                              totalTransfersOut={row.totalTransfersOut}
                               totalWithdrawals={row.totalWithdrawals}
+                              transfers={row.transfers}
                               withdrawals={row.withdrawals}
                             />
                           </td>
@@ -890,9 +945,7 @@ function DepositorTable({
     return addressMatches && typeMatches;
   });
   const filteredRows = sortDepositors(
-    showOnlyPlusMinus
-      ? visibleRows.filter((row) => row.totalWithdrawals > ZERO || row.totalDeposits > ZERO)
-      : visibleRows,
+    showOnlyPlusMinus ? visibleRows.filter((row) => hasFlowActivity(row)) : visibleRows,
     sortState,
   );
 
@@ -963,7 +1016,7 @@ function DepositorTable({
             ) : (
               filteredRows.map((row) => {
                 const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
-                const hasFlows = row.totalWithdrawals > ZERO || row.totalDeposits > ZERO;
+                const hasFlows = hasFlowActivity(row);
                 return (
                   <Fragment key={row.address}>
                     <tr className="hover:bg-white/[0.03]">
@@ -980,7 +1033,7 @@ function DepositorTable({
                         {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                       </td>
                       <td className="px-5 py-4 text-right font-mono tabular-nums">
-                        <span>
+                        <span className={row.pendingAssets < ZERO ? "text-rose-300" : undefined}>
                           {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                         </span>
                       </td>
@@ -1021,7 +1074,10 @@ function DepositorTable({
                             pendingAssets={row.pendingAssets}
                             symbol={silo.inputToken.symbol}
                             totalDeposits={row.totalDeposits}
+                            totalTransfersIn={row.totalTransfersIn}
+                            totalTransfersOut={row.totalTransfersOut}
                             totalWithdrawals={row.totalWithdrawals}
+                            transfers={row.transfers}
                             withdrawals={row.withdrawals}
                           />
                         </td>
@@ -1040,6 +1096,20 @@ function DepositorTable({
 
 function isVaultWarning(vault: VaultSnapshot): boolean {
   return vault.status !== "ok" || !vault.indexedInSubgraph || !vault.inWithdrawQueue;
+}
+
+function siloMatchesAddress(silo: SiloSnapshot, needle: string): boolean {
+  if (!needle) {
+    return true;
+  }
+  if (silo.directLenders.some((lender) => lender.address.toLowerCase().includes(needle))) {
+    return true;
+  }
+  return silo.vaults.some(
+    (vault) =>
+      !isVaultWarning(vault) &&
+      vault.depositors.some((depositor) => depositor.address.toLowerCase().includes(needle)),
+  );
 }
 
 function warningLabel(vault: VaultSnapshot): string {
@@ -1125,8 +1195,11 @@ function buildAirdropPlan(
         addCsvAirdrop(csvAirdrops, lender.address, null);
         continue;
       }
-      eligibleLeaves.push({ key: leafKey, address: lender.address, pending: lender.pendingAssets });
-      eligiblePending += lender.pendingAssets;
+      // Clamp negative pending (unreconciled interest/transfers) to zero so it neither
+      // shrinks the denominator nor produces a negative allocation.
+      const pending = lender.pendingAssets > ZERO ? lender.pendingAssets : ZERO;
+      eligibleLeaves.push({ key: leafKey, address: lender.address, pending });
+      eligiblePending += pending;
     }
 
     for (const vault of silo.vaults) {
@@ -1141,8 +1214,9 @@ function buildAirdropPlan(
           addCsvAirdrop(csvAirdrops, depositor.address, null);
           continue;
         }
-        eligibleLeaves.push({ key: leafKey, address: depositor.address, pending: depositor.pendingAssets });
-        eligiblePending += depositor.pendingAssets;
+        const pending = depositor.pendingAssets > ZERO ? depositor.pendingAssets : ZERO;
+        eligibleLeaves.push({ key: leafKey, address: depositor.address, pending });
+        eligiblePending += pending;
       }
     }
   }
@@ -1848,7 +1922,12 @@ function ExplorerView() {
   const chainCategories = availableCategories(selectedChain.silos);
   const activeCategory = chainCategories.includes(selectedCategory) ? selectedCategory : (chainCategories[0] ?? "usdc");
   const categorySilos = selectedChain.silos.filter((silo) => siloCategory(silo) === activeCategory);
-  const selectedSilo = categorySilos.find((silo) => silo.address === selectedSiloAddress) ?? categorySilos[0];
+  const addressNeedle = addressFilter.trim().toLowerCase();
+  const matchedSilos = addressNeedle
+    ? categorySilos.filter((silo) => siloMatchesAddress(silo, addressNeedle))
+    : categorySilos;
+  const selectedSilo =
+    matchedSilos.find((silo) => silo.address === selectedSiloAddress) ?? matchedSilos[0] ?? categorySilos[0];
   // Airdrops are distributed only across silos in the active category (the "selected" silos).
   const airdropSilos = chains.flatMap((chain) => chain.silos).filter((silo) => siloCategory(silo) === activeCategory);
   const addressTypes = selectedSilo
@@ -1998,7 +2077,7 @@ function ExplorerView() {
                     ) : null}
                   </div>
                   <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">
-                    {categorySilos.length} silo{categorySilos.length === 1 ? "" : "s"}
+                    {matchedSilos.length} silo{matchedSilos.length === 1 ? "" : "s"}
                   </span>
                 </div>
                 <div className="mt-3 flex min-w-0 flex-wrap gap-3">
@@ -2006,8 +2085,12 @@ function ExplorerView() {
                     <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
                       No silos are currently bundled for this chain.
                     </div>
+                  ) : matchedSilos.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
+                      No silos contain an address matching the current filter.
+                    </div>
                   ) : (
-                    categorySilos.map((silo) => (
+                    matchedSilos.map((silo) => (
                       <div
                         key={silo.address}
                         className={`min-w-0 rounded-2xl border px-4 py-3 text-left transition ${
