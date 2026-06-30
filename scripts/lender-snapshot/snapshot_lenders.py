@@ -1500,6 +1500,7 @@ def build_snapshot(
     rpc_url: str,
     withdrawals_to_block: int | None = None,
     withdrawals_block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
+    latest_block: int | None = None,
 ) -> dict[str, Any]:
     rpc = RpcClient(rpc_url, BLOCK)
     mc = Multicall(rpc, MULTICALL3, MULTICALL_BATCH)
@@ -1568,7 +1569,7 @@ def build_snapshot(
         "direct_lenders": direct_lenders,
         "vaults": vaults,
     }
-    latest = rpc.eth_block_number()
+    latest = latest_block if latest_block is not None else rpc.eth_block_number()
     scan_to = latest if withdrawals_to_block is None else min(withdrawals_to_block, latest)
     scan_from = BLOCK + 1
     target_label = "latest" if withdrawals_to_block is None else str(withdrawals_to_block)
@@ -1630,6 +1631,10 @@ def main() -> int:
             print(f"[skip] chain={target['chain']} has no configured silos")
             continue
         rpc_url = resolve_rpc_url(str(target["chain"]))
+        # Resolve the chain head once per chain so every silo on this chain shares
+        # the same block number instead of issuing a separate eth_blockNumber call.
+        chain_latest_block = RpcClient(rpc_url, 0).eth_block_number()
+        print(f"[info] chain={target['chain']} latest block={chain_latest_block} (shared across silos)")
         for silo in silos:
             silo_index += 1
             configure_context(target, silo)
@@ -1644,6 +1649,7 @@ def main() -> int:
                 rpc_url,
                 withdrawals_to_block=withdrawals_to_block,
                 withdrawals_block_chunk=withdrawals_block_chunk,
+                latest_block=chain_latest_block,
             )
             write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS)
             direct = len(silo_entry["direct_lenders"])
