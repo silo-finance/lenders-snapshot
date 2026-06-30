@@ -2377,9 +2377,9 @@ function ExplorerView() {
                           <AddressLink address={silo.address} chain={selectedChain.chain} showSiloPageLink />
                         </div>
                         {showAirdropColumn && airdropPlan ? (
-                          <div className="mt-1 text-xs text-emerald-200">
+                          <div className="mt-1 text-xs text-slate-400">
                             Airdrop:{" "}
-                            <span className="font-mono">
+                            <span className="font-mono text-slate-200">
                               {formatUnits(
                                 siloDistributedTotal(silo, airdropPlan),
                                 selectedSilo?.inputToken.decimals ?? silo.inputToken.decimals,
