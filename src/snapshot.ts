@@ -380,6 +380,19 @@ function parseSnapshot(root: RawRoot): ChainSnapshot[] {
 
 export const chains = parseSnapshot(snapshotJson as RawRoot);
 
+// Every silo in the snapshot is captured at the same block, so the first non-zero
+// value represents the global snapshot block used across the whole UI.
+export const snapshotBlock: number = (() => {
+  for (const chain of chains) {
+    for (const silo of chain.silos) {
+      if (silo.snapshotBlock > 0) {
+        return silo.snapshotBlock;
+      }
+    }
+  }
+  return 0;
+})();
+
 export type SiloCategory = "usdc" | "eth";
 
 export const SILO_CATEGORY_ORDER: SiloCategory[] = ["usdc", "eth"];
