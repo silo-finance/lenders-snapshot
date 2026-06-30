@@ -139,7 +139,17 @@ function sumDirectShares(silo: SiloSnapshot): bigint {
   return silo.directLenders.reduce((sum, lender) => sum + lender.collateralShares, ZERO);
 }
 
-function ValidationBadge({ message, valid, inline = false }: { message: string; valid: boolean; inline?: boolean }) {
+function ValidationBadge({
+  message,
+  valid,
+  inline = false,
+  label,
+}: {
+  message: string;
+  valid: boolean;
+  inline?: boolean;
+  label?: string;
+}) {
   if (!valid) {
     return null;
   }
@@ -149,7 +159,10 @@ function ValidationBadge({ message, valid, inline = false }: { message: string; 
       className={`inline-flex items-center gap-1 text-emerald-300 ${inline ? "text-xs" : "mt-2 gap-1.5 text-sm"}`}
     >
       <span aria-hidden="true">✓</span>
-      <span>{message}</span>
+      <span>
+        {label ? <span className="font-semibold">{label}: </span> : null}
+        {message}
+      </span>
     </span>
   );
 }
@@ -1547,6 +1560,7 @@ function VaultCard({
             </span>
             <ValidationBadge
               inline
+              label="Sanity check"
               message={`Vault shares equal sum of ${vault.depositors.length} depositor shares`}
               valid={vaultSharesValid}
             />
@@ -1564,6 +1578,19 @@ function VaultCard({
       }`}
     >
       {metaSection}
+      {!hasWarning ? (
+        <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
+          <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            This vault can lend into multiple silos. We do not determine which market funds a withdrawal or pending
+            balance for its depositors — any outstanding amount is treated as remaining through{" "}
+            <span className="font-semibold text-amber-100">
+              Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
+            </span>{" "}
+            (<AddressLink bareCopy address={silo.address} chain={chain} />) only.
+          </span>
+        </p>
+      ) : null}
       {hasWarning ? (
         <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
           <p>

@@ -27,7 +27,7 @@ npm run dev
 
 - `ci.yml` runs lint, type-check, and build on PRs to `master`.
 - `deploy-pages.yml` builds and deploys the static Vite app to GitHub Pages.
-- `version-bump.yml` keeps PR package patch versions bumped.
+- `version-bump.yml` sets `package.json` (and the lockfile) to the version in the `release/X.Y.Z` or `hotfix/X.Y.Z` branch name on PRs to `master`; non-release PRs fall back to an automatic patch bump.
 - `snapshot-scan.yml` manually generates a fresh snapshot release asset.
 - `snapshot-qa.yml` validates PR changes to `distribution_snapshot.json`.
 
