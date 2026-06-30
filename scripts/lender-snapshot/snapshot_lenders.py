@@ -16,7 +16,7 @@ with eth_call pinned at BLOCK. eth_getCode is issued in JSON-RPC batches.
 Secrets ({CHAIN}_RPC_URL/RPC_URL, THE_GRAPH_API_KEY) are read ONLY from the environment
 or a local gitignored `.env` next to this script. They must never be committed.
 
-    python3 scripts/tasks/lender-snapshot/snapshot_lenders.py
+    python3 scripts/lender-snapshot/snapshot_lenders.py
 """
 
 from __future__ import annotations
@@ -1550,10 +1550,11 @@ def build_snapshot(
         print("[info] vault target: skipping nested SiloVault expansion")
     else:
         vault_addrs = [a for a in accounts if types.get(a) == "silo_vault"]
+        assets_by_addr = dict(zip(ordered, assets))
         print(f"[info] expanding {len(vault_addrs)} SiloVault(s) ...")
         for vault in vault_addrs:
             vault_shares = shares_by_addr[vault]
-            vault_assets = next(a for x, a in zip(ordered, assets) if x == vault)
+            vault_assets = assets_by_addr[vault]
             print(f"[info]   vault {vault} ...")
             vaults[vault] = expand_vault(vault, vault_shares, vault_assets, rpc, mc)
 

@@ -7,12 +7,12 @@ Builds block-pinned snapshots of all lenders for configured Silos, splitting the
 
 Redeemable `assets` per address are computed purely via on-chain `previewRedeem` at the snapshot block. The subgraph is only used to enumerate addresses (lenders of the Silo and depositors of each vault).
 
-After the snapshot is assembled, the script also scans post-snapshot `Withdraw(address,address,address,uint256,uint256)` events (`snapshot_block + 1` to latest) on:
+After the snapshot is assembled, the script also scans post-snapshot events (`snapshot_block + 1` to latest) on:
 
 - the Silo contract (for direct lenders), and
 - each indexed vault contract (for vault depositors).
 
-The withdrawals are merged into the same `distribution_snapshot.json` consumed by the UI (`total_withdrawals`, `pending_assets`, and per-event `withdrawals[]` breakdown).
+It records `Withdraw(...)`, `Deposit(...)`, and peer-to-peer share `Transfer(...)` events to reconcile post-snapshot position changes. These flows are merged into the same `distribution_snapshot.json` consumed by the UI (`total_withdrawals`, `total_deposits`, `total_transfers_in`, `total_transfers_out`, `pending_assets`, and the per-event `withdrawals[]` / `deposits[]` / `transfers[]` breakdowns).
 
 Withdrawal attribution differs by lender type:
 
@@ -153,7 +153,7 @@ All share/supply amounts are raw integers (as strings, to preserve precision), e
 
 - `sum(direct_lenders[].collateral_shares) == collateral_total_supply`
 - for each indexed vault with `in_withdraw_queue == true`: `sum(depositors[].vault_shares) == vault_total_supply`
-- for each lender/depositor: `pending_assets == max(0, base_assets - total_withdrawals)`
-- for each lender/depositor: `sum(withdrawals[].assets) == total_withdrawals`
+- for each lender/depositor (exact, signed, NOT clamped to zero): `pending_assets == base_assets + total_deposits + total_transfers_in - total_withdrawals - total_transfers_out`
+- for each lender/depositor: `sum(withdrawals[].assets) == total_withdrawals`, `sum(deposits[].assets) == total_deposits`, `sum(transfers[in].assets) == total_transfers_in`, `sum(transfers[out].assets) == total_transfers_out`
 
 Vaults with `status == vault_not_indexed` or `in_withdraw_queue == false` are reported as warnings (their depositors are intentionally not enumerated), not errors.
