@@ -1656,11 +1656,13 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
             Static, no-RPC snapshot explorer for direct holders and vault depositors across chains.
           </p>
         )}
-        <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium text-amber-200">
-          <WarningIcon className="h-4 w-4 shrink-0" />
+        <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
+          <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
             Figures do not account for interest accrued after block{" "}
-            <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>.
+            <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Negative pending
+            balances stem from this unaccounted accrued interest, and may also reflect interest over-accrued in
+            connection with the Stream Finance incident.
           </span>
         </p>
       </div>
