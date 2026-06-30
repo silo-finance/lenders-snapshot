@@ -381,7 +381,8 @@ function parseSnapshot(root: RawRoot): ChainSnapshot[] {
 export const chains = parseSnapshot(snapshotJson as RawRoot);
 
 // Every silo in the snapshot is captured at the same block, so the first non-zero
-// value represents the global snapshot block used across the whole UI.
+// value represents the global snapshot block (the "from" / state block) used across
+// the whole UI.
 export const snapshotBlock: number = (() => {
   for (const chain of chains) {
     for (const silo of chain.silos) {
@@ -391,6 +392,37 @@ export const snapshotBlock: number = (() => {
     }
   }
   return 0;
+})();
+
+// Highest event block we indexed across all flows (withdrawals, deposits, transfers)
+// for both direct lenders and vault depositors. This is the "to" end of the range:
+// the block up to which post-snapshot events were fetched.
+export const eventsToBlock: number = (() => {
+  let max = 0;
+  const consider = (entries: { blockNumber: number }[]) => {
+    for (const entry of entries) {
+      if (entry.blockNumber > max) {
+        max = entry.blockNumber;
+      }
+    }
+  };
+  for (const chain of chains) {
+    for (const silo of chain.silos) {
+      for (const lender of silo.directLenders) {
+        consider(lender.withdrawals);
+        consider(lender.deposits);
+        consider(lender.transfers);
+      }
+      for (const vault of silo.vaults) {
+        for (const depositor of vault.depositors) {
+          consider(depositor.withdrawals);
+          consider(depositor.deposits);
+          consider(depositor.transfers);
+        }
+      }
+    }
+  }
+  return max;
 })();
 
 export type SiloCategory = "usdc" | "eth";

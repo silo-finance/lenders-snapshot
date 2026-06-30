@@ -377,9 +377,18 @@ class RpcClient:
             for item in res:
                 addr = id_to_addr.get(item.get("id"))
                 if addr is None:
-                    continue
-                code_hex = item.get("result", "0x")
-                out[addr] = bytes.fromhex(code_hex[2:]) if isinstance(code_hex, str) else b""
+                    raise RuntimeError(f"eth_getCode batch returned unknown id: {item!r}")
+                if item.get("error"):
+                    raise RuntimeError(f"eth_getCode error for {addr}: {item['error']}")
+                code_hex = item.get("result")
+                if not isinstance(code_hex, str):
+                    raise RuntimeError(f"eth_getCode invalid result for {addr}: {code_hex!r}")
+                out[addr] = bytes.fromhex(code_hex[2:])
+            # Misclassification (e.g. a missing contract treated as EOA) would silently drop
+            # data downstream, so every requested address must have a result.
+            missing = [addr for addr in chunk if addr not in out]
+            if missing:
+                raise RuntimeError(f"eth_getCode batch missing results for {len(missing)} address(es): {missing}")
         return out
 
 
@@ -559,17 +568,26 @@ def graph_query(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     res = _http_post_json(SUBGRAPH_URL, payload, headers)
     if "errors" in res and res["errors"]:
         raise RuntimeError(f"Subgraph error: {res['errors']}")
-    return res.get("data", {})
+    data = res.get("data")
+    if data is None:
+        # No errors but no data: do not let pagination silently treat this as "empty".
+        raise RuntimeError(f"Subgraph returned no data (response keys: {sorted(res.keys())})")
+    return data
 
 
+# Cursor pagination ordered by the primary key `id` (always indexed). skip-based
+# pagination is unstable: without orderBy The Graph does not guarantee a consistent
+# order across pages, so skip can drop or duplicate rows between runs.
 Q_LENDERS_TEMPLATE = """
-query Lenders($m:String!,$first:Int!,$skip:Int!){
+query Lenders($m:String!,$first:Int!,$lastId:String!){
   positions(
     block:{number:%d}
     first:$first
-    skip:$skip
-    where:{ market:$m, sTokenBalance_gt:0 }
+    orderBy:id
+    orderDirection:asc
+    where:{ market:$m, sTokenBalance_gt:0, id_gt:$lastId }
   ){
+    id
     account{ id }
     sToken{ id }
     sTokenBalance
@@ -584,13 +602,15 @@ query IsVault($v:String!){
 """
 
 Q_VAULT_DEPOSITORS_TEMPLATE = """
-query VaultDepositors($v:String!,$first:Int!,$skip:Int!){
+query VaultDepositors($v:String!,$first:Int!,$lastId:ID!){
   vaultPositions(
     block:{number:%d}
     first:$first
-    skip:$skip
-    where:{ vault:$v, shares_gt:0 }
+    orderBy:id
+    orderDirection:asc
+    where:{ vault:$v, shares_gt:0, id_gt:$lastId }
   ){
+    id
     account{ id }
     shares
   }
@@ -602,9 +622,9 @@ def fetch_lenders(market: str) -> list[str]:
     """Return unique collateral lender addresses."""
     accounts: list[str] = []
     seen: set[str] = set()
-    skip = 0
+    last_id = ""
     while True:
-        data = graph_query(Q_LENDERS_TEMPLATE % BLOCK, {"m": market, "first": SUBGRAPH_PAGE, "skip": skip})
+        data = graph_query(Q_LENDERS_TEMPLATE % BLOCK, {"m": market, "first": SUBGRAPH_PAGE, "lastId": last_id})
         rows = data.get("positions", [])
         if not rows:
             break
@@ -615,7 +635,7 @@ def fetch_lenders(market: str) -> list[str]:
                 accounts.append(acc)
         if len(rows) < SUBGRAPH_PAGE:
             break
-        skip += SUBGRAPH_PAGE
+        last_id = rows[-1]["id"]
     return accounts
 
 
@@ -628,9 +648,9 @@ def fetch_vault_depositors(vault: str) -> list[str]:
     """Return unique depositor addresses. Share amounts come from RPC balanceOf, not the graph."""
     out: list[str] = []
     seen: set[str] = set()
-    skip = 0
+    last_id = ""
     while True:
-        data = graph_query(Q_VAULT_DEPOSITORS_TEMPLATE % BLOCK, {"v": vault, "first": SUBGRAPH_PAGE, "skip": skip})
+        data = graph_query(Q_VAULT_DEPOSITORS_TEMPLATE % BLOCK, {"v": vault, "first": SUBGRAPH_PAGE, "lastId": last_id})
         rows = data.get("vaultPositions", [])
         if not rows:
             break
@@ -641,7 +661,7 @@ def fetch_vault_depositors(vault: str) -> list[str]:
                 out.append(acc)
         if len(rows) < SUBGRAPH_PAGE:
             break
-        skip += SUBGRAPH_PAGE
+        last_id = rows[-1]["id"]
     return out
 
 
@@ -734,10 +754,19 @@ def fetch_silo_metadata(rpc: RpcClient, mc: Multicall) -> dict[str, Any]:
             (SILO_ADDRESS, call_silo_config()),
         ]
     )
-    asset_addr = dec_address(res[0][1]) if res[0][0] else None
-    collateral_total_supply = dec_uint(res[1][1]) if res[1][0] else 0
-    total_assets = dec_uint(res[2][1]) if res[2][0] else None
-    config_addr = dec_address(res[3][1]) if res[3][0] else None
+    # Critical fields drive share->asset valuation; a revert here must fail loudly.
+    if not res[0][0]:
+        raise RuntimeError(f"asset() reverted for silo {SILO_ADDRESS} at block {BLOCK}")
+    if not res[1][0]:
+        raise RuntimeError(f"totalSupply() reverted for silo {SILO_ADDRESS} at block {BLOCK}")
+    if not res[2][0]:
+        raise RuntimeError(f"totalAssets() reverted for silo {SILO_ADDRESS} at block {BLOCK}")
+    if not res[3][0]:
+        raise RuntimeError(f"silo_config() reverted for silo {SILO_ADDRESS} at block {BLOCK}")
+    asset_addr = dec_address(res[0][1])
+    collateral_total_supply = dec_uint(res[1][1])
+    total_assets = dec_uint(res[2][1])
+    config_addr = dec_address(res[3][1])
 
     decimals = None
     symbol = None
@@ -777,9 +806,16 @@ def fetch_vault_metadata(rpc: RpcClient, mc: Multicall) -> dict[str, Any]:
             (SILO_ADDRESS, call_total_assets()),
         ]
     )
-    asset_addr = dec_address(res[0][1]) if res[0][0] else None
-    total_supply = dec_uint(res[1][1]) if res[1][0] else 0
-    total_assets = dec_uint(res[2][1]) if res[2][0] else None
+    # Critical fields drive share->asset valuation; a revert here must fail loudly.
+    if not res[0][0]:
+        raise RuntimeError(f"asset() reverted for vault {SILO_ADDRESS} at block {BLOCK}")
+    if not res[1][0]:
+        raise RuntimeError(f"totalSupply() reverted for vault {SILO_ADDRESS} at block {BLOCK}")
+    if not res[2][0]:
+        raise RuntimeError(f"totalAssets() reverted for vault {SILO_ADDRESS} at block {BLOCK}")
+    asset_addr = dec_address(res[0][1])
+    total_supply = dec_uint(res[1][1])
+    total_assets = dec_uint(res[2][1])
 
     decimals = None
     symbol = None
@@ -809,7 +845,9 @@ def fetch_direct_lender_shares(addresses: list[str], mc: Multicall) -> dict[str,
     out: dict[str, int] = {}
     for idx, addr in enumerate(addresses):
         ok, data = res[idx]
-        out[addr] = dec_uint(data) if ok else 0
+        if not ok:
+            raise RuntimeError(f"balanceOf reverted for lender {addr} on {SILO_ADDRESS} at block {BLOCK}")
+        out[addr] = dec_uint(data)
     return out
 
 
@@ -818,8 +856,12 @@ def preview_redeem_collateral(shares: list[int], mc: Multicall) -> list[int]:
     calls = [(SILO_ADDRESS, call_preview_redeem_silo(amount, COLLATERAL_TYPE_COLLATERAL)) for amount in shares]
     res = mc.aggregate(calls)
     out: list[int] = []
-    for ok, data in res:
-        out.append(dec_uint(data) if ok else 0)
+    for idx, (ok, data) in enumerate(res):
+        if not ok:
+            raise RuntimeError(
+                f"Silo previewRedeem reverted for shares={shares[idx]} on {SILO_ADDRESS} at block {BLOCK}"
+            )
+        out.append(dec_uint(data))
     return out
 
 
@@ -828,8 +870,12 @@ def preview_redeem_vault_shares(shares: list[int], mc: Multicall) -> list[int]:
     calls = [(SILO_ADDRESS, call_preview_redeem_erc4626(amount)) for amount in shares]
     res = mc.aggregate(calls)
     out: list[int] = []
-    for ok, data in res:
-        out.append(dec_uint(data) if ok else 0)
+    for idx, (ok, data) in enumerate(res):
+        if not ok:
+            raise RuntimeError(
+                f"ERC4626 previewRedeem reverted for shares={shares[idx]} on {SILO_ADDRESS} at block {BLOCK}"
+            )
+        out.append(dec_uint(data))
     return out
 
 
@@ -887,20 +933,22 @@ def _fetch_flow_events(
 
         for log in logs:
             topics = log.get("topics")
+            # The topic0 filter guarantees a fixed event shape; a mismatch is an anomaly,
+            # not something to silently skip (that would drop a real flow event).
             if not isinstance(topics, list) or len(topics) < min_topics:
-                continue
-            try:
-                assets, shares = dec_flow_data(str(log.get("data", "0x")))
-                event = {
-                    "block_number": int(str(log.get("blockNumber", "0x0")), 16),
-                    "tx_hash": str(log.get("transactionHash", "")).lower(),
-                    "log_index": int(str(log.get("logIndex", "0x0")), 16),
-                    "owner": dec_event_topic_address(topics[owner_topic_index]),
-                    "assets": assets,
-                    "shares": shares,
-                }
-            except Exception:
-                continue
+                raise RuntimeError(
+                    f"{kind} log with unexpected topic count on {contract_address} "
+                    f"(tx={log.get('transactionHash')}, logIndex={log.get('logIndex')}): {topics!r}"
+                )
+            assets, shares = dec_flow_data(str(log.get("data", "0x")))
+            event = {
+                "block_number": int(str(log.get("blockNumber", "0x0")), 16),
+                "tx_hash": str(log.get("transactionHash", "")).lower(),
+                "log_index": int(str(log.get("logIndex", "0x0")), 16),
+                "owner": dec_event_topic_address(topics[owner_topic_index]),
+                "assets": assets,
+                "shares": shares,
+            }
             events.append(event)
 
         start = end + 1
@@ -1005,25 +1053,27 @@ def fetch_transfer_events(
 
         for log in logs:
             topics = log.get("topics")
+            # The Transfer topic0 filter guarantees indexed from/to topics; a mismatch is
+            # an anomaly, not something to silently skip (that would drop a real transfer).
             if not isinstance(topics, list) or len(topics) < 3:
+                raise RuntimeError(
+                    f"Transfer log with unexpected topic count on {contract_address} "
+                    f"(tx={log.get('transactionHash')}, logIndex={log.get('logIndex')}): {topics!r}"
+                )
+            sender = dec_event_topic_address(topics[1])
+            receiver = dec_event_topic_address(topics[2])
+            if sender == ZERO_ADDRESS or receiver == ZERO_ADDRESS:
+                # Mint / burn: already represented by Deposit / Withdraw scans.
                 continue
-            try:
-                sender = dec_event_topic_address(topics[1])
-                receiver = dec_event_topic_address(topics[2])
-                if sender == ZERO_ADDRESS or receiver == ZERO_ADDRESS:
-                    # Mint / burn: already represented by Deposit / Withdraw scans.
-                    continue
-                value = int(str(log.get("data", "0x")), 16)
-                event = {
-                    "block_number": int(str(log.get("blockNumber", "0x0")), 16),
-                    "tx_hash": str(log.get("transactionHash", "")).lower(),
-                    "log_index": int(str(log.get("logIndex", "0x0")), 16),
-                    "from": sender,
-                    "to": receiver,
-                    "value": value,
-                }
-            except Exception:
-                continue
+            value = int(str(log.get("data", "0x")), 16)
+            event = {
+                "block_number": int(str(log.get("blockNumber", "0x0")), 16),
+                "tx_hash": str(log.get("transactionHash", "")).lower(),
+                "log_index": int(str(log.get("logIndex", "0x0")), 16),
+                "from": sender,
+                "to": receiver,
+                "value": value,
+            }
             events.append(event)
 
         start = end + 1
@@ -1437,12 +1487,12 @@ def expand_vault(
     """Build the vaults[vault] entry, including depositor attribution."""
     # config(SILO).enabled -> in withdraw queue?
     cfg = mc.aggregate([(vault, call_config(SILO_ADDRESS))])
+    # A clean revert (ok=False) is a valid signal: the silo is not configured in this
+    # vault, i.e. not in the withdraw queue. But if the call succeeded we MUST be able to
+    # decode it; a decode failure on returned data is an anomaly, not a "not in queue".
     in_withdraw_queue = False
     if cfg[0][0]:
-        try:
-            _cap, in_withdraw_queue, _removable = dec_config(cfg[0][1])
-        except Exception:
-            in_withdraw_queue = False
+        _cap, in_withdraw_queue, _removable = dec_config(cfg[0][1])
 
     indexed = fetch_vault_indexed(vault)
     name = indexed.get("name") if isinstance(indexed, dict) else None
@@ -1470,7 +1520,9 @@ def expand_vault(
 
     # Total supply + per-depositor balanceOf (raw) via multicall.
     ts_res = mc.aggregate([(vault, call_total_supply())])
-    vault_total_supply = dec_uint(ts_res[0][1]) if ts_res[0][0] else 0
+    if not ts_res[0][0]:
+        raise RuntimeError(f"totalSupply reverted for vault {vault} at block {BLOCK}")
+    vault_total_supply = dec_uint(ts_res[0][1])
     entry["vault_total_supply"] = str(vault_total_supply)
 
     bal_calls = [(vault, call_balance_of(d)) for d in depositor_addrs]
@@ -1478,7 +1530,9 @@ def expand_vault(
     balances: dict[str, int] = {}
     for idx, d in enumerate(depositor_addrs):
         ok, data = bal_res[idx]
-        balances[d] = dec_uint(data) if ok else 0
+        if not ok:
+            raise RuntimeError(f"balanceOf reverted for depositor {d} on vault {vault} at block {BLOCK}")
+        balances[d] = dec_uint(data)
 
     types, _ = classify_addresses(depositor_addrs, rpc, mc)
 
@@ -1500,6 +1554,7 @@ def build_snapshot(
     rpc_url: str,
     withdrawals_to_block: int | None = None,
     withdrawals_block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
+    latest_block: int | None = None,
 ) -> dict[str, Any]:
     rpc = RpcClient(rpc_url, BLOCK)
     mc = Multicall(rpc, MULTICALL3, MULTICALL_BATCH)
@@ -1568,7 +1623,7 @@ def build_snapshot(
         "direct_lenders": direct_lenders,
         "vaults": vaults,
     }
-    latest = rpc.eth_block_number()
+    latest = latest_block if latest_block is not None else rpc.eth_block_number()
     scan_to = latest if withdrawals_to_block is None else min(withdrawals_to_block, latest)
     scan_from = BLOCK + 1
     target_label = "latest" if withdrawals_to_block is None else str(withdrawals_to_block)
@@ -1593,12 +1648,14 @@ def write_output(silo_entry: dict[str, Any], chain: str, chain_id: int, silo_add
     path = Path(OUTPUT_JSON)
     root: dict[str, Any] = {}
     if path.exists():
+        # Silently resetting a corrupt/unexpected output file would wipe previously written
+        # chains/silos. Fail loudly instead so no prior result is lost unnoticed.
         try:
             root = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(root, dict):
-                root = {}
-        except json.JSONDecodeError:
-            root = {}
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Existing output {path} is not valid JSON; refusing to overwrite: {exc}") from exc
+        if not isinstance(root, dict):
+            raise RuntimeError(f"Existing output {path} is not a JSON object; refusing to overwrite.")
 
     chain_obj = root.get(chain)
     if not isinstance(chain_obj, dict):
@@ -1630,6 +1687,10 @@ def main() -> int:
             print(f"[skip] chain={target['chain']} has no configured silos")
             continue
         rpc_url = resolve_rpc_url(str(target["chain"]))
+        # Resolve the chain head once per chain so every silo on this chain shares
+        # the same block number instead of issuing a separate eth_blockNumber call.
+        chain_latest_block = RpcClient(rpc_url, 0).eth_block_number()
+        print(f"[info] chain={target['chain']} latest block={chain_latest_block} (shared across silos)")
         for silo in silos:
             silo_index += 1
             configure_context(target, silo)
@@ -1644,6 +1705,7 @@ def main() -> int:
                 rpc_url,
                 withdrawals_to_block=withdrawals_to_block,
                 withdrawals_block_chunk=withdrawals_block_chunk,
+                latest_block=chain_latest_block,
             )
             write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS)
             direct = len(silo_entry["direct_lenders"])
