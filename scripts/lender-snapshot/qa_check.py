@@ -34,8 +34,8 @@ Optional: --verify-onchain re-reads the *_total_supply values from each chain at
 the snapshot block (reuses the main script's per-chain RPC client / Multicall
 layer) to confirm the stored totals match the chain.
 
-    python3 scripts/tasks/lender-snapshot/qa_check.py
-    python3 scripts/tasks/lender-snapshot/qa_check.py --verify-onchain
+    python3 scripts/lender-snapshot/qa_check.py
+    python3 scripts/lender-snapshot/qa_check.py --verify-onchain
 """
 
 from __future__ import annotations
