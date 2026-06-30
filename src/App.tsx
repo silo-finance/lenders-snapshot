@@ -24,6 +24,7 @@ import {
   chains,
   compareBigIntAsc,
   compareBigIntDesc,
+  eventsToBlock,
   explorerAddressUrl,
   explorerTxUrl,
   findSiloByAddress,
@@ -64,6 +65,9 @@ type AirdropPlan = {
   distributed: bigint;
   undistributed: bigint;
   nonAttributableAssets: bigint;
+  // Number of distinct addresses that received a strictly positive raw allocation
+  // (counted on the true smallest-unit value, so even a 1-wei recipient counts).
+  recipientCount: number;
 };
 
 const ZERO = 0n;
@@ -133,6 +137,39 @@ function sumDepositorTotals(depositors: VaultDepositor[]): AggregateTotals {
     }),
     { shares: ZERO, assets: ZERO, withdrawals: ZERO, pending: ZERO },
   );
+}
+
+// Total distinct lender entries across a set of silos: every direct lender plus
+// every vault depositor, counted once per silo they lend into. A `silo_vault`
+// direct lender is just a placeholder for an underlying vault that gets expanded
+// into its depositors, so it is not counted itself — unless we have no depositor
+// data for it (a warning vault), in which case the placeholder stands in as the
+// single lender we know about.
+function countLenders(silos: SiloSnapshot[]): number {
+  let total = 0;
+  for (const silo of silos) {
+    for (const lender of silo.directLenders) {
+      if (!lender.isVault) {
+        total += 1;
+        continue;
+      }
+      const vault = silo.vaults.find(
+        (entry) => entry.address.toLowerCase() === lender.address.toLowerCase(),
+      );
+      if (vault && !isVaultWarning(vault)) {
+        // Expanded into its depositors below; skip the placeholder.
+        continue;
+      }
+      total += 1;
+    }
+    for (const vault of silo.vaults) {
+      if (isVaultWarning(vault)) {
+        continue;
+      }
+      total += vault.depositors.length;
+    }
+  }
+  return total;
 }
 
 function sumDirectShares(silo: SiloSnapshot): bigint {
@@ -1337,6 +1374,18 @@ function isAirdropEligible(addressType: string, includeOtherContracts: boolean):
   return includeOtherContracts || addressType !== OTHER_CONTRACT_TYPE;
 }
 
+// Distinct addresses whose aggregated allocation is strictly greater than zero in
+// raw smallest units (not rounded for display), so a 1-wei recipient still counts.
+function countPositiveRecipients(csvAirdrops: Map<string, bigint | null>): number {
+  let count = 0;
+  for (const amount of csvAirdrops.values()) {
+    if (amount !== null && amount > ZERO) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 function formatAirdropCell(airdropPlan: AirdropPlan | null, leafKey: string, decimals: number, symbol: string): string {
   if (!airdropPlan) {
     return "--";
@@ -1421,6 +1470,7 @@ function buildAirdropPlan(
       distributed: ZERO,
       undistributed: airdropRaw,
       nonAttributableAssets,
+      recipientCount: 0,
     };
   }
 
@@ -1474,6 +1524,7 @@ function buildAirdropPlan(
     distributed,
     undistributed: airdropRaw > distributed ? airdropRaw - distributed : ZERO,
     nonAttributableAssets,
+    recipientCount: countPositiveRecipients(csvAirdrops),
   };
 }
 
@@ -1867,8 +1918,19 @@ function SiloDetailPanel({
             </div>
             <h2 className="mt-2 text-3xl font-semibold text-white">Silo lenders details</h2>
             <p className="mt-2 text-sm">
-              <span className="text-slate-500">On block</span>{" "}
-              <span className="font-mono text-slate-200">{silo.snapshotBlock.toString()}</span>
+              {eventsToBlock > snapshotBlock ? (
+                <>
+                  <span className="text-slate-500">Blocks from</span>{" "}
+                  <span className="font-mono text-slate-200">{snapshotBlock.toString()}</span>{" "}
+                  <span className="text-slate-500">to</span>{" "}
+                  <span className="font-mono text-slate-200">{eventsToBlock.toString()}</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-slate-500">On block</span>{" "}
+                  <span className="font-mono text-slate-200">{snapshotBlock.toString()}</span>
+                </>
+              )}
             </p>
           </div>
           {showAirdrops ? (
@@ -1969,7 +2031,9 @@ function SiloDetailPanel({
                     <div className="mt-3 space-y-1 text-xs text-slate-400">
                       <p>
                         {categoryLabel ? `${categoryLabel} distributed` : "Distributed"}:{" "}
-                        {formatUnits(airdropPlan.distributed, silo.inputToken.decimals)} {airdropSymbol}
+                        {formatUnits(airdropPlan.distributed, silo.inputToken.decimals)} {airdropSymbol} to{" "}
+                        {new Intl.NumberFormat("en-US").format(airdropPlan.recipientCount)}{" "}
+                        {airdropPlan.recipientCount === 1 ? "user" : "users"}
                       </p>
                       {airdropPlan.undistributed > ZERO ? (
                         <p className="text-amber-200">
@@ -2169,6 +2233,7 @@ function ExplorerView() {
   const chainCategories = availableCategories(selectedChain.silos);
   const activeCategory = chainCategories.includes(selectedCategory) ? selectedCategory : (chainCategories[0] ?? "usdc");
   const categorySilos = selectedChain.silos.filter((silo) => siloCategory(silo) === activeCategory);
+  const categoryLenderCount = countLenders(categorySilos);
   const addressNeedle = addressFilter.trim().toLowerCase();
   const matchedSilos = addressNeedle
     ? categorySilos.filter((silo) => siloMatchesAddress(silo, addressNeedle))
@@ -2330,6 +2395,12 @@ function ExplorerView() {
                         ))}
                       </div>
                     ) : null}
+                    <span className="text-xs uppercase tracking-[0.22em] text-slate-500">
+                      Total lenders{" "}
+                      <span className="font-mono text-sm normal-case tracking-normal text-slate-200">
+                        {new Intl.NumberFormat("en-US").format(categoryLenderCount)}
+                      </span>
+                    </span>
                   </div>
                   <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">
                     {matchedSilos.length} silo{matchedSilos.length === 1 ? "" : "s"}
