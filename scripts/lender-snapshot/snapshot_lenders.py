@@ -562,14 +562,19 @@ def graph_query(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     return res.get("data", {})
 
 
+# Cursor pagination ordered by the primary key `id` (always indexed). skip-based
+# pagination is unstable: without orderBy The Graph does not guarantee a consistent
+# order across pages, so skip can drop or duplicate rows between runs.
 Q_LENDERS_TEMPLATE = """
-query Lenders($m:String!,$first:Int!,$skip:Int!){
+query Lenders($m:String!,$first:Int!,$lastId:String!){
   positions(
     block:{number:%d}
     first:$first
-    skip:$skip
-    where:{ market:$m, sTokenBalance_gt:0 }
+    orderBy:id
+    orderDirection:asc
+    where:{ market:$m, sTokenBalance_gt:0, id_gt:$lastId }
   ){
+    id
     account{ id }
     sToken{ id }
     sTokenBalance
@@ -584,13 +589,15 @@ query IsVault($v:String!){
 """
 
 Q_VAULT_DEPOSITORS_TEMPLATE = """
-query VaultDepositors($v:String!,$first:Int!,$skip:Int!){
+query VaultDepositors($v:String!,$first:Int!,$lastId:ID!){
   vaultPositions(
     block:{number:%d}
     first:$first
-    skip:$skip
-    where:{ vault:$v, shares_gt:0 }
+    orderBy:id
+    orderDirection:asc
+    where:{ vault:$v, shares_gt:0, id_gt:$lastId }
   ){
+    id
     account{ id }
     shares
   }
@@ -602,9 +609,9 @@ def fetch_lenders(market: str) -> list[str]:
     """Return unique collateral lender addresses."""
     accounts: list[str] = []
     seen: set[str] = set()
-    skip = 0
+    last_id = ""
     while True:
-        data = graph_query(Q_LENDERS_TEMPLATE % BLOCK, {"m": market, "first": SUBGRAPH_PAGE, "skip": skip})
+        data = graph_query(Q_LENDERS_TEMPLATE % BLOCK, {"m": market, "first": SUBGRAPH_PAGE, "lastId": last_id})
         rows = data.get("positions", [])
         if not rows:
             break
@@ -615,7 +622,7 @@ def fetch_lenders(market: str) -> list[str]:
                 accounts.append(acc)
         if len(rows) < SUBGRAPH_PAGE:
             break
-        skip += SUBGRAPH_PAGE
+        last_id = rows[-1]["id"]
     return accounts
 
 
@@ -628,9 +635,9 @@ def fetch_vault_depositors(vault: str) -> list[str]:
     """Return unique depositor addresses. Share amounts come from RPC balanceOf, not the graph."""
     out: list[str] = []
     seen: set[str] = set()
-    skip = 0
+    last_id = ""
     while True:
-        data = graph_query(Q_VAULT_DEPOSITORS_TEMPLATE % BLOCK, {"v": vault, "first": SUBGRAPH_PAGE, "skip": skip})
+        data = graph_query(Q_VAULT_DEPOSITORS_TEMPLATE % BLOCK, {"v": vault, "first": SUBGRAPH_PAGE, "lastId": last_id})
         rows = data.get("vaultPositions", [])
         if not rows:
             break
@@ -641,7 +648,7 @@ def fetch_vault_depositors(vault: str) -> list[str]:
                 out.append(acc)
         if len(rows) < SUBGRAPH_PAGE:
             break
-        skip += SUBGRAPH_PAGE
+        last_id = rows[-1]["id"]
     return out
 
 
