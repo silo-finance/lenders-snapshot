@@ -1644,6 +1644,139 @@ def build_snapshot(
 # --------------------------------------------------------------------------------------
 # Output (incremental, per-chain)
 # --------------------------------------------------------------------------------------
+# The RPC endpoint is load-balanced and eth_getLogs can silently return an INCOMPLETE set
+# of logs for a block range (different backends answer identical queries with different
+# result counts). A plain overwrite would let an unlucky run replace a more complete result
+# with a smaller one. To guarantee we never lose data, each write UNIONS the freshly fetched
+# flow events with whatever is already on disk (dedup by tx_hash+log_index[+direction]) and
+# recomputes the derived totals. Runs are therefore append-only per event: repeating the run
+# can only ever grow the recorded set. To start clean, delete the output JSON file.
+def _event_dedup_key(list_key: str, row: dict[str, Any]) -> tuple[Any, ...]:
+    # A single Transfer log credits one side ('in') and debits the other ('out'); for one
+    # account the same log can legitimately appear under both directions, so direction is
+    # part of the identity. Deposit/Withdraw are one row per (tx, logIndex).
+    if list_key == "transfers":
+        return (row.get("tx_hash"), row.get("log_index"), row.get("direction"))
+    return (row.get("tx_hash"), row.get("log_index"))
+
+
+def _merge_event_list(
+    old_rows: Any, new_rows: Any, list_key: str
+) -> list[dict[str, Any]]:
+    merged: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for row in list(old_rows or []) + list(new_rows or []):
+        if isinstance(row, dict):
+            # Later writes win on collision; identical events carry identical payloads.
+            merged[_event_dedup_key(list_key, row)] = row
+    out = list(merged.values())
+    out.sort(key=lambda r: (r.get("block_number", 0), r.get("log_index", 0), str(r.get("tx_hash", ""))))
+    return out
+
+
+def _entry_base_assets(entry: dict[str, Any]) -> int:
+    # Direct lenders reconcile against collateral assets; vault depositors against the
+    # assets attributed to them at the snapshot block.
+    if "assets_collateral" in entry:
+        return int(entry.get("assets_collateral") or 0)
+    if "attributed_silo_assets" in entry:
+        return int(entry.get("attributed_silo_assets") or 0)
+    return 0
+
+
+def _recompute_flow_totals(entry: dict[str, Any]) -> None:
+    withdrawals = entry.get("withdrawals") or []
+    deposits = entry.get("deposits") or []
+    transfers = entry.get("transfers") or []
+    total_w = sum(int(r.get("assets", 0)) for r in withdrawals if isinstance(r, dict))
+    total_d = sum(int(r.get("assets", 0)) for r in deposits if isinstance(r, dict))
+    total_in = sum(int(r.get("assets", 0)) for r in transfers if isinstance(r, dict) and r.get("direction") == "in")
+    total_out = sum(int(r.get("assets", 0)) for r in transfers if isinstance(r, dict) and r.get("direction") == "out")
+    entry["total_withdrawals"] = str(total_w)
+    entry["total_deposits"] = str(total_d)
+    entry["total_transfers_in"] = str(total_in)
+    entry["total_transfers_out"] = str(total_out)
+    base = _entry_base_assets(entry)
+    # Same signed reconciliation as _finalize_pending (NOT clamped to zero).
+    entry["pending_assets"] = str(base + total_d + total_in - total_w - total_out)
+
+
+def _merge_flow_entry(old_entry: Any, new_entry: Any) -> Any:
+    """Union the flow lists of two entries for the same account and recompute totals.
+
+    Base fields (address_type, balances, previewRedeem assets) are deterministic reads at the
+    snapshot block, so the fresh run's values are kept; only the volatile event lists merge.
+    """
+    if not isinstance(old_entry, dict):
+        return new_entry
+    if not isinstance(new_entry, dict):
+        return old_entry
+    flow_lists = ("withdrawals", "deposits", "transfers")
+    has_flows = any(k in old_entry for k in flow_lists) or any(k in new_entry for k in flow_lists)
+    if not has_flows:
+        # e.g. a silo_vault direct-lender entry: flow fields are intentionally absent.
+        return new_entry
+    merged = dict(new_entry)
+    for list_key in flow_lists:
+        merged[list_key] = _merge_event_list(old_entry.get(list_key), new_entry.get(list_key), list_key)
+    _recompute_flow_totals(merged)
+    return merged
+
+
+def _merge_entry_map(old_map: Any, new_map: Any) -> dict[str, Any]:
+    """Merge two {address: entry} maps, never dropping an address present in either."""
+    if not isinstance(new_map, dict):
+        return old_map if isinstance(old_map, dict) else {}
+    if not isinstance(old_map, dict):
+        return new_map
+    out = dict(new_map)
+    for addr, old_entry in old_map.items():
+        if addr in out:
+            out[addr] = _merge_flow_entry(old_entry, out[addr])
+        else:
+            # Present only in the prior file (e.g. a post-snapshot lender whose events did
+            # not come back this run): keep it verbatim so we never lose it.
+            out[addr] = old_entry
+    return out
+
+
+def _merge_vaults(old_vaults: Any, new_vaults: Any) -> dict[str, Any]:
+    if not isinstance(new_vaults, dict):
+        return old_vaults if isinstance(old_vaults, dict) else {}
+    if not isinstance(old_vaults, dict):
+        return new_vaults
+    out = dict(new_vaults)
+    for vault_addr, old_v in old_vaults.items():
+        new_v = out.get(vault_addr)
+        if not isinstance(new_v, dict) or not isinstance(old_v, dict):
+            if vault_addr not in out:
+                out[vault_addr] = old_v
+            continue
+        merged_v = dict(new_v)
+        merged_v["depositors"] = _merge_entry_map(old_v.get("depositors"), new_v.get("depositors"))
+        out[vault_addr] = merged_v
+    return out
+
+
+def _merge_silo_entry(old_silo: Any, new_silo: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(old_silo, dict):
+        return new_silo
+    merged = dict(new_silo)
+    # Scalar metadata are deterministic snapshot-block reads; prefer the fresh value but fall
+    # back to the prior one if this run failed to resolve it (None/empty).
+    for key in ("silo_id", "input_token", "total_assets", "collateral_total_supply"):
+        if merged.get(key) in (None, "") and old_silo.get(key) not in (None, ""):
+            merged[key] = old_silo[key]
+    old_scan = old_silo.get("withdrawals_scanned_to_block")
+    new_scan = merged.get("withdrawals_scanned_to_block")
+    if isinstance(old_scan, int) and isinstance(new_scan, int):
+        merged["withdrawals_scanned_to_block"] = max(old_scan, new_scan)
+    elif isinstance(old_scan, int) and not isinstance(new_scan, int):
+        merged["withdrawals_scanned_to_block"] = old_scan
+    merged["direct_lenders"] = _merge_entry_map(old_silo.get("direct_lenders"), new_silo.get("direct_lenders"))
+    merged["vaults"] = _merge_vaults(old_silo.get("vaults"), new_silo.get("vaults"))
+    return merged
+
+
 def write_output(silo_entry: dict[str, Any], chain: str, chain_id: int, silo_address: str) -> None:
     path = Path(OUTPUT_JSON)
     root: dict[str, Any] = {}
@@ -1664,7 +1797,10 @@ def write_output(silo_entry: dict[str, Any], chain: str, chain_id: int, silo_add
     silos = chain_obj.get("silos")
     if not isinstance(silos, dict):
         silos = {}
-    silos[norm(silo_address)] = silo_entry
+    key = norm(silo_address)
+    # Merge (union) with any previously written result for this silo so a run that fetched
+    # fewer logs (incomplete RPC response) can never shrink the recorded data.
+    silos[key] = _merge_silo_entry(silos.get(key), silo_entry)
     chain_obj["silos"] = silos
     root[chain] = chain_obj
 

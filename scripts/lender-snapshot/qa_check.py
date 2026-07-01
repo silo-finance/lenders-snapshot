@@ -89,6 +89,13 @@ KNOWN_FEE_MINT_RESIDUALS: dict[tuple[str, str, str | None, str], int] = {
      "0x1b35727072435bb97fbe8cc378eb6973c98faab3"): -23205876274247,
     ("sonic", "0x592d1e187729c76efacc6dffb9355bd7bf47b2a7", None,
      "0x93db2e90f8b2b073010b425f9350202330bd923e"): -5896436179744690916838791,
+    # Contract account (net-zero position: on-chain balance 0 -> 0, and base + all Transfers
+    # incl. mint/burn reconciles to 0, i.e. NO missing events). The residual is an ERC4626
+    # accounting artifact: this account's Deposit-event shares exceed the shares actually
+    # minted to it (~+8.2e25) and its Withdraw-event shares exceed the shares burned (~+1.8e26),
+    # netting -1.006e26 shares (~ -$61 in assets). Accepted, same class as the fee-mint gaps.
+    ("sonic", "0x92ebf5a1fb4061b45222a6d76accf4698bde4b95", None,
+     "0xc73a3e5a887882d8e3d12dabdada470ac373718d"): -100610673716430074875330292,
 }
 
 # Filled in as exceptions are matched, so a stale (no-longer-present) exception can be flagged.
