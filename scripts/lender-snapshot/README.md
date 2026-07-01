@@ -77,7 +77,7 @@ python3 scripts/lender-snapshot/qa_check.py
 python3 scripts/lender-snapshot/qa_check.py --verify-onchain
 ```
 
-Re-running for the same Silo **overwrites** that Silo's entry under its chain key; other Silos and other chains are preserved.
+Re-running for the same Silo **merges (unions)** its flow events into the existing entry rather than overwriting: recorded `withdrawals[]` / `deposits[]` / `transfers[]` are combined and de-duplicated (by `tx_hash`+`log_index`[+`direction`]) and the derived totals are recomputed. This is deliberate — the RPC endpoint is load-balanced and `eth_getLogs` can silently return an **incomplete** set of logs for a range (identical queries hit different backends and return different counts), so a plain overwrite could let an unlucky run replace a more complete result with a smaller one. Because writes are append-only per event, repeating the run can only ever grow the recorded set; other Silos and chains are preserved. **To start clean, delete `distribution_snapshot.json`.**
 
 ## Performance
 
@@ -157,3 +157,10 @@ All share/supply amounts are raw integers (as strings, to preserve precision), e
 - for each lender/depositor: `sum(withdrawals[].assets) == total_withdrawals`, `sum(deposits[].assets) == total_deposits`, `sum(transfers[in].assets) == total_transfers_in`, `sum(transfers[out].assets) == total_transfers_out`
 
 Vaults with `status == vault_not_indexed` or `in_withdraw_queue == false` are reported as warnings (their depositors are intentionally not enumerated), not errors.
+
+## Known limitations & disclaimers
+
+- **RPC log completeness.** The Sonic RPC is load-balanced and `eth_getLogs` can silently return a *partial* log set for a block range (identical queries hit different backends — some pruned to ~block 63.2M — and return different counts, with no JSON-RPC error). Mitigations: (a) flows are unioned across runs (see [Usage](#usage)), so repeated runs can only grow the recorded set; and (b) `qa_check.py` reconciles each account in shares and hard-fails on a negative residual (more shares left than the account ever held ⇒ a missed inflow). **Caveat:** a dropped inflow whose residual stays ≥ 0 is *not* detected by QA. A `balanceOf`-based reconciliation (walking each lender's on-chain balance and bisecting against the recorded events) can locate such gaps deterministically if stronger guarantees are needed.
+- **SiloVault contract rows are not distribution recipients.** A direct-lender with `address_type == silo_vault` is never credited directly; its holders are attributed via that vault's `depositors`. Silo-level `Deposit`/`Withdraw`/`Transfer` events performed by vault addresses are treated as vault rebalances and skipped.
+- **Mint/burn transfers are excluded** from the peer-`Transfer` scan (mint `from==0x0`, burn `to==0x0`): they accompany `Deposit`/`Withdraw` and counting them would double-count.
+- **Accepted unreconciled residuals.** A few contract accounts have share residuals that don't reconcile under the ERC4626 model even with complete data (their `Deposit`/`Withdraw`-event shares differ from the actual mint/burn amounts, or fee shares are minted with no paired `Deposit`). These are net-zero / economically immaterial contract positions, pinned exactly in `KNOWN_FEE_MINT_RESIDUALS` (exact identity **and** residual) and surfaced as warnings; any change to the identity or amount re-triggers a hard error.

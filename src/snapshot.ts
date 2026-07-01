@@ -68,6 +68,7 @@ type RawVault = {
 
 type RawSilo = {
   snapshot_block?: number | string;
+  withdrawals_scanned_to_block?: number | string;
   silo_type?: string | null;
   silo_id?: string | number | null;
   input_token?: RawInputToken;
@@ -394,10 +395,7 @@ export const snapshotBlock: number = (() => {
   return 0;
 })();
 
-// Highest event block we indexed across all flows (withdrawals, deposits, transfers)
-// for both direct lenders and vault depositors. This is the "to" end of the range:
-// the block up to which post-snapshot events were fetched.
-export const eventsToBlock: number = (() => {
+function maxFlowEventBlock(): number {
   let max = 0;
   const consider = (entries: { blockNumber: number }[]) => {
     for (const entry of entries) {
@@ -423,6 +421,23 @@ export const eventsToBlock: number = (() => {
     }
   }
   return max;
+}
+
+// Highest block up to which post-snapshot events were scanned across the whole
+// snapshot. This is a single global value (not per-silo): prefer the maximum
+// `withdrawals_scanned_to_block` from the raw JSON, and fall back to the max event
+// block for backward compatibility with older snapshots that lack that field.
+export const eventsToBlock: number = (() => {
+  let max = 0;
+  for (const rawChain of Object.values(snapshotJson as RawRoot)) {
+    for (const rawSilo of Object.values(rawChain?.silos ?? {})) {
+      const scannedTo = toNumber(rawSilo.withdrawals_scanned_to_block, 0);
+      if (scannedTo > max) {
+        max = scannedTo;
+      }
+    }
+  }
+  return max > 0 ? max : maxFlowEventBlock();
 })();
 
 export type SiloCategory = "usdc" | "eth";
