@@ -33,7 +33,7 @@ with accrued interest, shares do not). For each lender/depositor we reconcile in
     a vault whose attributed assets in this silo are 0 so every flow values to 0 assets), in
     which case the share mismatch carries no distribution value and is only a WARNING; OR the
     (chain, silo, vault, account) identity with that EXACT share_residual is in the pinned
-    KNOWN_FEE_MINT_RESIDUALS allowlist (4 accepted fee-mint gaps deliberately not fixed
+    KNOWN_FEE_MINT_RESIDUALS allowlist (accepted gaps deliberately not fixed
     upstream), in which case it is downgraded to a visible WARNING. The pin is exact on both
     identity and residual, so any change re-triggers the hard error; and a pinned entry whose
     chain is scanned but never matched is itself a HARD error (stale-exception guard).
@@ -89,6 +89,12 @@ KNOWN_FEE_MINT_RESIDUALS: dict[tuple[str, str, str | None, str], int] = {
      "0x1b35727072435bb97fbe8cc378eb6973c98faab3"): -23205876274247,
     ("sonic", "0x592d1e187729c76efacc6dffb9355bd7bf47b2a7", None,
      "0x93db2e90f8b2b073010b425f9350202330bd923e"): -5896436179744690916838791,
+    # Balancer Vault hub contract (very high transfer volume, 4368+ Transfer logs in this silo).
+    # A portion of its inflow Transfers is permanently truncated by the RPC provider: repeated
+    # union-on-write runs no longer recover any new logs for it, so the residual has stabilised at
+    # this value. Not a real lender position (infrastructure hub); accepted as a known gap.
+    ("sonic", "0x92ebf5a1fb4061b45222a6d76accf4698bde4b95", None,
+     "0xba1333333333a1ba1108e8412f11850a5c319ba9"): -21548230279612218208239545,
 }
 
 # Filled in as exceptions are matched, so a stale (no-longer-present) exception can be flagged.
