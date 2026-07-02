@@ -1686,6 +1686,7 @@ function VaultCard({
 }
 
 function AppHeader({ subtitle }: { subtitle?: string }) {
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
   return (
     <header className="border-b border-white/10 pb-8">
       <div>
@@ -1694,26 +1695,52 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
             className="text-3xl font-semibold tracking-tight text-white transition hover:text-emerald-200 sm:text-4xl"
             href={explorerHomePath()}
           >
-            Lenders Snapshot
+            Lender Snapshot for Trevee Markets
           </a>
           <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-semibold text-slate-400">
             v{APP_VERSION}
           </span>
         </div>
         {subtitle ? (
-          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">{subtitle}</p>
+          <p className="mt-0.5 mb-2 max-w-2xl text-sm leading-6 text-slate-400">{subtitle}</p>
         ) : (
-          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+          <p className="mt-0.5 mb-2 max-w-2xl text-sm leading-6 text-slate-400">
             Static, no-RPC snapshot explorer for direct holders and vault depositors across chains.
           </p>
+        )}
+        {subtitle ? null : (
+          <div className="mt-4 max-w-3xl">
+            <button
+              aria-expanded={descriptionOpen}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-300 transition hover:text-emerald-200"
+              onClick={() => setDescriptionOpen((open) => !open)}
+              type="button"
+            >
+              {descriptionOpen ? "Hide info about this snapshot" : "Show info about this snapshot"}
+              <ChevronIcon className={descriptionOpen ? "rotate-180 transition-transform" : "transition-transform"} />
+            </button>
+            {descriptionOpen ? (
+              <div className="mt-3 space-y-3 border-l-2 border-emerald-400/30 pl-4 text-[0.95rem] italic leading-7 text-slate-300">
+                <p>
+                  Trevee is the issuer of the wstkscUSD and wstkscETH assets. Approximately 95% of the assets backing
+                  these tokens were lent to Stream Finance, while the remaining 5% stayed unallocated.
+                </p>
+                <p>
+                  Following the Stream Finance incident, Trevee transferred 46,019 USDC and 42.53239 ETH to Silo for
+                  distribution to affected lenders. This page shows the snapshot used to calculate each lender&rsquo;s
+                  share of the recovery distribution across all impacted markets and vaults.
+                </p>
+              </div>
+            ) : null}
+          </div>
         )}
         <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
           <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Figures do not account for interest accrued after block{" "}
-            <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Negative pending
-            balances stem from this unaccounted accrued interest, and may also reflect interest over-accrued in
-            connection with the Stream Finance incident.
+            Recovery calculations are based on balances at block{" "}
+            <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest accrued
+            after this block is not included. Any negative pending balances are attributable to unaccounted
+            post-snapshot interest and may also reflect interest over-accrual related to the Stream Finance incident.
           </span>
         </p>
       </div>
