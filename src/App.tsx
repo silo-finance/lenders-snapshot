@@ -47,6 +47,7 @@ type ActiveCategory = {
   label: string;
   title: string;
   description: string[];
+  airdropEnabled: boolean;
   airdropDefaults: Partial<Record<SiloCategory, string>>;
   chains: ChainSnapshot[];
   snapshotBlock: number;
@@ -72,6 +73,7 @@ function toActiveCategory(category: SnapshotCategory): ActiveCategory {
     label: category.label,
     title: category.title,
     description: category.description,
+    airdropEnabled: category.airdropEnabled,
     airdropDefaults: category.airdropDefaults,
     chains: category.data.chains,
     snapshotBlock: category.data.snapshotBlock,
@@ -2309,7 +2311,7 @@ function SiloDetailPanel({
 }
 
 function ExplorerView() {
-  const { chains, slug, airdropDefaults } = useActiveCategory();
+  const { chains, slug, airdropDefaults, airdropEnabled } = useActiveCategory();
 
   // Silos from every chain in this category, rendered in one uniform list. Each pair keeps
   // its chain so the network badge and category-scoped links resolve correctly.
@@ -2358,7 +2360,8 @@ function ExplorerView() {
     selectedSilo && airdropRaw !== null
       ? buildAirdropPlan(airdropSilos, airdropRaw, includeOtherContracts)
       : null;
-  const showAirdropColumn = distributeAirdropsEnabled && airdropRaw !== null && airdropRaw > ZERO;
+  const showAirdropColumn =
+    airdropEnabled && distributeAirdropsEnabled && airdropRaw !== null && airdropRaw > ZERO;
 
   function syncSelectionUrl(chainName: string, siloAddress: string, replace = false) {
     if (!siloAddress) {
@@ -2564,6 +2567,7 @@ function ExplorerView() {
               setExpandedVaults={setExpandedVaults}
               setIncludeOtherContracts={setIncludeOtherContracts}
               setAirdropInput={setAirdropInput}
+              showAirdrops={airdropEnabled}
               showAirdropColumn={showAirdropColumn}
               silo={selectedSilo}
             />

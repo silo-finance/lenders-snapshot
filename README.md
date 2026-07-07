@@ -1,6 +1,6 @@
 # Lenders Snapshot UI
 
-Static Vite + React + TypeScript UI for browsing Silo lender snapshots and preparing pro-rata airdrop distributions. Each snapshot category (e.g. `trevee`) is rendered under its own path and bundled from its per-category `scripts/lender-snapshot/data/<slug>.json` file.
+Static Vite + React + TypeScript UI for browsing Silo lender snapshots and preparing pro-rata airdrop distributions. Each snapshot category (e.g. `trevee-airdrop`) is rendered under its own path and bundled from its per-category `scripts/lender-snapshot/data/<slug>.json` file.
 
 The app performs no runtime RPC, subgraph, or API calls. Snapshot data is imported into the Vite bundle at build time.
 
