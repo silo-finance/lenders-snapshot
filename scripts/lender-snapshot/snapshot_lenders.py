@@ -105,6 +105,97 @@ CATEGORIES: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    # The following three categories were classified from on-chain liquidation thresholds
+    # (see the throwaway classify_markets.py): only the borrowable/lending side of each
+    # market is kept. Set the per-chain "block" and the non-sonic "subgraph_url" (TODO)
+    # before scanning these categories.
+    "pendle": {
+        "targets": [
+            {
+                "chain": "sonic",
+                "chain_id": 146,
+                "subgraph_url": DEFAULT_SUBGRAPH_URL,
+                "block": 54144258,
+                "block_chunk": 500000,
+                "silos": [
+                    {"address": "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2"},  # WETH
+                    {"address": "0x08c320a84a59c6f533e0dca655cf497594bca1f9"},  # WETH
+                    {"address": "0x24c74b30d1a4261608e84bf5a618693032681dac"},  # scETH
+                    {"address": "0x4f55e28d36b30a638c3aa1d5cbf9c4ccb3831506"},  # USDC
+                    {"address": "0x27968d36b937dcb26f33902fa489e5b228b104be"},  # dUSD
+                    {"address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64"},  # USDC
+                    {"address": "0xda14a41dbda731f03a94cb722191639dd22b35b2"},  # frxUSD
+                ],
+            },
+        ],
+    },
+    "trevee": {
+        "targets": [
+            {
+                "chain": "sonic",
+                "chain_id": 146,
+                "subgraph_url": DEFAULT_SUBGRAPH_URL,
+                "block": 54144258,
+                "block_chunk": 500000,
+                "silos": [
+                    {"address": "0x219656f33c58488d09d518badf50aa8cdcaca2aa"},  # WETH
+                    {"address": "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de"},  # USDC
+                    {"address": "0x4935fadb17df859667cc4f7bfe6a8cb24f86f8d0"},  # USDC
+                ],
+            },
+        ],
+    },
+    "stream": {
+        "targets": [
+            {
+                "chain": "sonic",
+                "chain_id": 146,
+                "subgraph_url": DEFAULT_SUBGRAPH_URL,
+                "block": 54144258,
+                "block_chunk": 500000,
+                "silos": [
+                    {"address": "0x172a687c397e315dbe56ed78ab347d7743d0d4fa"},  # xUSD
+                    {"address": "0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1"},  # USDC
+                    {"address": "0x596aef68a03a0e35c4d8e624fbbdb0df0862f172"},  # xUSD
+                    {"address": "0xb1412442aa998950f2f652667d5eba35fe66e43f"},  # scUSD
+                ],
+            },
+            {
+                "chain": "avalanche",
+                "chain_id": 43114,
+                "subgraph_url": "TODO_SET_AVALANCHE_SUBGRAPH_URL",
+                "block": 71568801,  # timestamp-matched to sonic block 54144258
+                "block_chunk": 2048,
+                "silos": [
+                    {"address": "0x7437ac81457fa98ffb2d0c8f9943ecfe4813e2f1"},  # BTC.b
+                    {"address": "0x672b77f0538b53dc117c9ddfeb7377a678d321a6"},  # USDC
+                    {"address": "0x9c4d4800b489d217724155399cd64d07eae603f3"},  # AUSD
+                    {"address": "0xe0fc62e685e2b3183b4b88b1fe674cfec55a63f7"},  # USDt
+                ],
+            },
+            {
+                "chain": "arbitrum",
+                "chain_id": 42161,
+                "subgraph_url": "TODO_SET_ARBITRUM_SUBGRAPH_URL",
+                "block": 397731482,  # timestamp-matched to sonic block 54144258
+                "block_chunk": 10000,
+                "silos": [
+                    {"address": "0xf0543d476e7906374863091034fe679a7be8ee20"},  # xUSD
+                    {"address": "0xacb7432a4bb15402ce2afe0a7c9d5b738604f6f9"},  # USDC
+                ],
+            },
+            {
+                "chain": "ethereum",
+                "chain_id": 1,
+                "subgraph_url": "TODO_SET_ETHEREUM_SUBGRAPH_URL",
+                "block": 23747116,  # timestamp-matched to sonic block 54144258
+                "block_chunk": 10000,
+                "silos": [
+                    {"address": "0x1de3ba67da79a81bc0c3922689c98550e4bd9bc2"},  # USDC
+                ],
+            },
+        ],
+    },
 }
 
 BLOCK = 0
