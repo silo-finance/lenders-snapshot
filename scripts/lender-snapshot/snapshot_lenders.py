@@ -16,7 +16,9 @@ with eth_call pinned at BLOCK. eth_getCode is issued in JSON-RPC batches.
 Secrets ({CHAIN}_RPC_URL/RPC_URL, THE_GRAPH_API_KEY) are read ONLY from the environment
 or a local gitignored `.env` next to this script. They must never be committed.
 
-    python3 scripts/lender-snapshot/snapshot_lenders.py
+A category slug is required (scanning is per-category, never implicitly all):
+
+    python3 scripts/lender-snapshot/snapshot_lenders.py <category-slug>
 """
 
 from __future__ import annotations
@@ -1871,14 +1873,17 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
 def main() -> int:
     load_secrets()
 
-    # Optional positional args select which categories to scan (default: all). This is the
-    # "new silo list -> new file" workflow: `./run.sh snapshot_lenders.py <slug>`.
+    # Positional args select which categories to scan. At least one slug is REQUIRED:
+    # scanning is deliberate and per-category, so we never scan everything implicitly.
+    # This is the "new silo list -> new file" workflow: `./run.sh snapshot_lenders.py <slug>`.
+    available = ", ".join(sorted(CATEGORIES)) or "(none)"
     requested = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
+    if not requested:
+        raise SystemExit(f"No category slug provided. Specify at least one of: {available}")
     unknown = [slug for slug in requested if slug not in CATEGORIES]
     if unknown:
-        available = ", ".join(sorted(CATEGORIES)) or "(none)"
         raise SystemExit(f"Unknown category slug(s): {', '.join(unknown)}. Available: {available}")
-    selected = requested or list(CATEGORIES)
+    selected = requested
 
     print(f"[info] scanning {len(selected)} categor(y/ies): {', '.join(selected)}")
     total_completed = 0

@@ -76,11 +76,12 @@ The script auto-loads `scripts/lender-snapshot/.env` if present; you can also ex
 ```bash
 python3 -m pip install -r scripts/lender-snapshot/requirements.txt
 
-# Produce / refresh snapshots for ALL categories (writes data/<slug>.json each):
-python3 scripts/lender-snapshot/snapshot_lenders.py
-
-# Produce / refresh a single category only:
+# Produce / refresh a snapshot for one category (a category slug is REQUIRED;
+# writes data/<slug>.json). Scanning is per-category, never implicitly all:
 python3 scripts/lender-snapshot/snapshot_lenders.py trevee-airdrop
+
+# You can pass several slugs to scan more than one category in a single run:
+python3 scripts/lender-snapshot/snapshot_lenders.py trevee-airdrop another-slug
 
 # Validate the JSON invariants for all data/*.json (zero tolerance, exact wei equality):
 python3 scripts/lender-snapshot/qa_check.py
