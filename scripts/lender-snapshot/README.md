@@ -38,10 +38,9 @@ are intentionally hardcoded: adding one is a rare, deliberate edit.
 
 Each category maps to a list of chain `targets`:
 
-- `chain`, `chain_id`, `subgraph_url`
+- `chain`, `chain_id`, `subgraph_url`, `block` (the single snapshot block shared by every silo on that chain)
 - `silos[]` entries with:
   - `address`
-  - `block`
   - optional `type` (`"silo"` default, or `"silo_vault"`)
   - optional `withdrawals_to_block`:
     - integer block number, or
