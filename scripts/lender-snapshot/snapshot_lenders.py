@@ -49,7 +49,9 @@ DEFAULT_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/8wcbzcdNir
 #
 # Each category maps to a list of chain targets. Each chain target has:
 #   "chain" (slug), "chain_id", "subgraph_url", "block" (required; the single snapshot
-#   block shared by every silo on that chain), and a "silos" list.
+#   block shared by every silo on that chain), "block_chunk" (required; the eth_getLogs
+#   block range per call, declared per chain because RPC limits are chain-specific),
+#   and a "silos" list.
 # Each entry in a chain's `silos` list supports:
 #   "address" (required),
 #   "type"    (optional): "silo" (default) enumerates collateral lenders via the subgraph
@@ -63,6 +65,8 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 # Single snapshot block shared by every silo on this chain.
                 "block": 54144258,
+                # eth_getLogs range per call for this chain (required, per-chain).
+                "block_chunk": 500000,
                 "silos": [
                     {"address": "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de"},
                     {"address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64"},
@@ -1187,15 +1191,22 @@ def resolve_withdrawals_to_block(silo: dict[str, Any]) -> int | None:
     return value
 
 
-def resolve_withdrawals_block_chunk(silo: dict[str, Any]) -> int:
-    raw = silo.get("withdrawals_block_chunk")
+def resolve_block_chunk(target: dict[str, Any]) -> int:
+    """The eth_getLogs chunk is declared once per chain target and is required.
+
+    Different chains' RPCs tolerate different `eth_getLogs` ranges (and some load
+    balancers silently truncate oversized ranges), so the value is chain-specific
+    with no per-silo or env override.
+    """
+    raw = target.get("block_chunk")
     if raw in (None, ""):
-        raw = os.environ.get("WITHDRAWALS_BLOCK_CHUNK", "").strip()
-    if raw in (None, ""):
-        return WITHDRAW_LOG_BLOCK_CHUNK
+        raise SystemExit(
+            f"Missing 'block_chunk' for chain target {target.get('chain')!r}; "
+            "it must be declared per chain."
+        )
     value = int(raw)
     if value <= 0:
-        raise ValueError("withdrawals_block_chunk must be positive")
+        raise ValueError("block_chunk must be positive")
     return value
 
 
@@ -1924,10 +1935,14 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
             print(f"[skip] category={slug} chain={target['chain']} has no configured silos")
             continue
         rpc_url = resolve_rpc_url(str(target["chain"]))
-        # Resolve the chain head once per chain so every silo on this chain shares
-        # the same block number instead of issuing a separate eth_blockNumber call.
+        # Both the eth_getLogs chunk and the chain head are per-chain: resolve them
+        # once so every silo on this chain shares them (one eth_blockNumber call).
+        chain_block_chunk = resolve_block_chunk(target)
         chain_latest_block = RpcClient(rpc_url, 0).eth_block_number()
-        print(f"[info] chain={target['chain']} latest block={chain_latest_block} (shared across silos)")
+        print(
+            f"[info] chain={target['chain']} latest block={chain_latest_block} "
+            f"block_chunk={chain_block_chunk} (shared across silos)"
+        )
         for silo in silos:
             silo_index += 1
             configure_context(target, silo)
@@ -1937,7 +1952,7 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
             )
             silo_started_at = time.monotonic()
             withdrawals_to_block = resolve_withdrawals_to_block(silo)
-            withdrawals_block_chunk = resolve_withdrawals_block_chunk(silo)
+            withdrawals_block_chunk = chain_block_chunk
             silo_entry = build_snapshot(
                 rpc_url,
                 withdrawals_to_block=withdrawals_to_block,
