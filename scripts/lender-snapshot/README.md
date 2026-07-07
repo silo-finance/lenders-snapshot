@@ -39,13 +39,13 @@ are intentionally hardcoded: adding one is a rare, deliberate edit.
 Each category maps to a list of chain `targets`:
 
 - `chain`, `chain_id`, `subgraph_url`, `block` (the single snapshot block shared by every silo on that chain)
+- `block_chunk` (required): the number of blocks per `eth_getLogs` call, declared per chain because RPC range limits are chain-specific (some load balancers silently truncate oversized ranges). There is no per-silo or env override; the scanner still auto-halves the range on RPC rejection.
 - `silos[]` entries with:
   - `address`
   - optional `type` (`"silo"` default, or `"silo_vault"`)
   - optional `withdrawals_to_block`:
     - integer block number, or
     - `"latest"` (resolved right before the withdraw scan starts for that silo)
-  - optional `withdrawals_block_chunk` (number of blocks per `eth_getLogs` call for this silo)
 
 A category may also set an explicit `output` filename (defaults to `<slug>.json`).
 
@@ -62,7 +62,6 @@ Secrets are read **only** from the environment (or a local, gitignored `.env`):
 - `RPC_URL` – optional fallback used if a chain-specific URL is not set.
 - `THE_GRAPH_API_KEY` – The Graph gateway Bearer token.
 - `WITHDRAWALS_TO_BLOCK` – optional global override for scan end block (`latest` or integer).
-- `WITHDRAWALS_BLOCK_CHUNK` – optional global override for `eth_getLogs` chunk size.
 
 ```bash
 cp scripts/lender-snapshot/.env.example scripts/lender-snapshot/.env

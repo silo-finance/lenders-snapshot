@@ -1,5 +1,6 @@
 import { buildCategoryData, type CategoryData, type RawRoot, type SiloCategory } from "./snapshot";
-import treveeData from "../scripts/lender-snapshot/data/trevee-airdrop.json";
+import treveeAirdropData from "../scripts/lender-snapshot/data/trevee-airdrop.json";
+import treveeData from "../scripts/lender-snapshot/data/trevee.json";
 
 /**
  * A snapshot category is a self-contained snapshot rendered under its own path
@@ -35,6 +36,18 @@ export const SNAPSHOT_CATEGORIES: SnapshotCategory[] = [
     ],
     airdropEnabled: true,
     airdropDefaults: { usdc: "46019", eth: "42.53239" },
+    data: buildCategoryData(treveeAirdropData as unknown as RawRoot),
+  },
+  {
+    slug: "trevee",
+    label: "Trevee",
+    title: "Lender Snapshot for Trevee",
+    description: [
+      "This snapshot lists the lenders of the Trevee markets on Silo, captured at a fixed block.",
+      "Use it to review each lender\u2019s position across the tracked Trevee silos and vaults.",
+    ],
+    airdropEnabled: false,
+    airdropDefaults: {},
     data: buildCategoryData(treveeData as unknown as RawRoot),
   },
 ];

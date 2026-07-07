@@ -2332,7 +2332,12 @@ function ExplorerView() {
 
   const assetCategories = availableCategories(allSilos);
   const activeCategory = assetCategories.includes(selectedCategory) ? selectedCategory : (assetCategories[0] ?? "usdc");
-  const categoryPairs = allPairs.filter(({ silo }) => siloCategory(silo) === activeCategory);
+  // Bucketing by token category (USDC/ETH) only exists to scope an airdrop. Without an
+  // airdrop we drop the split entirely: show every silo (all categories) at once and hide
+  // the switcher.
+  const categoryPairs = airdropEnabled
+    ? allPairs.filter(({ silo }) => siloCategory(silo) === activeCategory)
+    : allPairs;
   const categoryLenderCount = countLenders(categoryPairs.map((pair) => pair.silo));
   const addressNeedle = addressFilter.trim().toLowerCase();
   const matchedPairs = addressNeedle
@@ -2444,7 +2449,7 @@ function ExplorerView() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Silos</p>
-                  {assetCategories.length > 0 ? (
+                  {airdropEnabled && assetCategories.length > 0 ? (
                     <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] p-0.5">
                       {assetCategories.map((category) => (
                         <button
@@ -2548,7 +2553,7 @@ function ExplorerView() {
               addressTypeFilter={addressTypeFilter}
               addressTypes={addressTypes}
               airdropSiloCount={airdropSilos.length}
-              categoryLabel={SILO_CATEGORY_LABELS[activeCategory]}
+              categoryLabel={airdropEnabled ? SILO_CATEGORY_LABELS[activeCategory] : undefined}
               chain={selectedChain}
               defaultAirdropAmount={airdropDefaults[activeCategory] ?? ""}
               directExpanded={directExpanded}

@@ -40,7 +40,19 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # --------------------------------------------------------------------------------------
 # HARDCODED (non-secret) configuration
 # --------------------------------------------------------------------------------------
+# Per-chain Silo subgraph deployments (The Graph gateway). DEFAULT_SUBGRAPH_URL is Sonic;
+# each non-sonic chain has its own deployment and is referenced by name in CATEGORIES.
 DEFAULT_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/8wcbzcdNirQvk1ETh25wpVzb5GWs8DvugpbwrYnTCcxj"
+AVALANCHE_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/6NLL9WmjPYima4NhUpNEWeDu5eBXFuhP9QheRXkoJXR5"
+ARBITRUM_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/DK5qWsSJSqkeW2GHDQQCB7xHnHwVN3K1LPpP6CYNXMh8"
+ETHEREUM_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/2z5Mn4WW7K4yR1iH9KdignREkTq9EM1S4GX3yLaztRFg"
+
+# eth_getLogs block range per call, hardcoded per chain (RPC providers cap the range
+# differently). Referenced by "block_chunk" in CATEGORIES.
+SONIC_BLOCK_CHUNK = 500_000
+AVALANCHE_BLOCK_CHUNK = 2_048
+ARBITRUM_BLOCK_CHUNK = 10_000
+ETHEREUM_BLOCK_CHUNK = 10_000
 
 # Snapshot categories. Each category is a self-contained snapshot rendered under its own
 # path in the UI (e.g. `/lenders-snapshot/trevee-airdrop`) and written to its own data file
@@ -49,7 +61,9 @@ DEFAULT_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/8wcbzcdNir
 #
 # Each category maps to a list of chain targets. Each chain target has:
 #   "chain" (slug), "chain_id", "subgraph_url", "block" (required; the single snapshot
-#   block shared by every silo on that chain), and a "silos" list.
+#   block shared by every silo on that chain), "block_chunk" (required; the eth_getLogs
+#   block range per call, declared per chain because RPC limits are chain-specific),
+#   and a "silos" list.
 # Each entry in a chain's `silos` list supports:
 #   "address" (required),
 #   "type"    (optional): "silo" (default) enumerates collateral lenders via the subgraph
@@ -63,6 +77,8 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 # Single snapshot block shared by every silo on this chain.
                 "block": 54144258,
+                # eth_getLogs range per call for this chain (required, per-chain).
+                "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de"},
                     {"address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64"},
@@ -105,6 +121,96 @@ CATEGORIES: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    # The following three categories were classified from on-chain liquidation thresholds:
+    # only the borrowable/lending side of each market is kept. Non-sonic chains use their
+    # own Silo subgraph deployment and require the matching {CHAIN}_RPC_URL env var.
+    "pendle": {
+        "targets": [
+            {
+                "chain": "sonic",
+                "chain_id": 146,
+                "subgraph_url": DEFAULT_SUBGRAPH_URL,
+                "block": 54144258,
+                "block_chunk": SONIC_BLOCK_CHUNK,
+                "silos": [
+                    {"address": "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2"},  # WETH
+                    {"address": "0x08c320a84a59c6f533e0dca655cf497594bca1f9"},  # WETH
+                    {"address": "0x24c74b30d1a4261608e84bf5a618693032681dac"},  # scETH
+                    {"address": "0x4f55e28d36b30a638c3aa1d5cbf9c4ccb3831506"},  # USDC
+                    {"address": "0x27968d36b937dcb26f33902fa489e5b228b104be"},  # dUSD
+                    {"address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64"},  # USDC
+                    {"address": "0xda14a41dbda731f03a94cb722191639dd22b35b2"},  # frxUSD
+                ],
+            },
+        ],
+    },
+    "trevee": {
+        "targets": [
+            {
+                "chain": "sonic",
+                "chain_id": 146,
+                "subgraph_url": DEFAULT_SUBGRAPH_URL,
+                "block": 54144258,
+                "block_chunk": SONIC_BLOCK_CHUNK,
+                "silos": [
+                    {"address": "0x219656f33c58488d09d518badf50aa8cdcaca2aa"},  # WETH
+                    {"address": "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de"},  # USDC
+                    {"address": "0x4935fadb17df859667cc4f7bfe6a8cb24f86f8d0"},  # USDC
+                ],
+            },
+        ],
+    },
+    "stream": {
+        "targets": [
+            {
+                "chain": "sonic",
+                "chain_id": 146,
+                "subgraph_url": DEFAULT_SUBGRAPH_URL,
+                "block": 54144258,
+                "block_chunk": SONIC_BLOCK_CHUNK,
+                "silos": [
+                    {"address": "0x172a687c397e315dbe56ed78ab347d7743d0d4fa"},  # xUSD
+                    {"address": "0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1"},  # USDC
+                    {"address": "0x596aef68a03a0e35c4d8e624fbbdb0df0862f172"},  # xUSD
+                    {"address": "0xb1412442aa998950f2f652667d5eba35fe66e43f"},  # scUSD
+                ],
+            },
+            {
+                "chain": "avalanche",
+                "chain_id": 43114,
+                "subgraph_url": AVALANCHE_SUBGRAPH_URL,
+                "block": 71568801,  # timestamp-matched to sonic block 54144258
+                "block_chunk": AVALANCHE_BLOCK_CHUNK,
+                "silos": [
+                    {"address": "0x7437ac81457fa98ffb2d0c8f9943ecfe4813e2f1"},  # BTC.b
+                    {"address": "0x672b77f0538b53dc117c9ddfeb7377a678d321a6"},  # USDC
+                    {"address": "0x9c4d4800b489d217724155399cd64d07eae603f3"},  # AUSD
+                    {"address": "0xe0fc62e685e2b3183b4b88b1fe674cfec55a63f7"},  # USDt
+                ],
+            },
+            {
+                "chain": "arbitrum",
+                "chain_id": 42161,
+                "subgraph_url": ARBITRUM_SUBGRAPH_URL,
+                "block": 397731482,  # timestamp-matched to sonic block 54144258
+                "block_chunk": ARBITRUM_BLOCK_CHUNK,
+                "silos": [
+                    {"address": "0xf0543d476e7906374863091034fe679a7be8ee20"},  # xUSD
+                    {"address": "0xacb7432a4bb15402ce2afe0a7c9d5b738604f6f9"},  # USDC
+                ],
+            },
+            {
+                "chain": "ethereum",
+                "chain_id": 1,
+                "subgraph_url": ETHEREUM_SUBGRAPH_URL,
+                "block": 23747116,  # timestamp-matched to sonic block 54144258
+                "block_chunk": ETHEREUM_BLOCK_CHUNK,
+                "silos": [
+                    {"address": "0x1de3ba67da79a81bc0c3922689c98550e4bd9bc2"},  # USDC
+                ],
+            },
+        ],
+    },
 }
 
 BLOCK = 0
@@ -136,7 +242,6 @@ MULTICALL_BATCH = 300
 
 GETCODE_BATCH = 200
 SUBGRAPH_PAGE = 1000
-WITHDRAW_LOG_BLOCK_CHUNK = 500_000
 
 # CollateralType enum (ISilo.sol): Collateral = 1
 COLLATERAL_TYPE_COLLATERAL = 1
@@ -887,8 +992,8 @@ def _fetch_flow_events(
     kind: str,
     from_block: int,
     to_block: int,
+    block_chunk: int,
     label: str = "",
-    block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
 ) -> list[dict[str, Any]]:
     """Scan ERC4626 Withdraw/Deposit logs for one contract.
 
@@ -962,8 +1067,8 @@ def fetch_withdraw_events(
     contract_address: str,
     from_block: int,
     to_block: int,
+    block_chunk: int,
     label: str = "",
-    block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
 ) -> list[dict[str, Any]]:
     return _fetch_flow_events(
         rpc,
@@ -984,8 +1089,8 @@ def fetch_deposit_events(
     contract_address: str,
     from_block: int,
     to_block: int,
+    block_chunk: int,
     label: str = "",
-    block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
 ) -> list[dict[str, Any]]:
     return _fetch_flow_events(
         rpc,
@@ -1006,8 +1111,8 @@ def fetch_transfer_events(
     contract_address: str,
     from_block: int,
     to_block: int,
+    block_chunk: int,
     label: str = "",
-    block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
 ) -> list[dict[str, Any]]:
     """Scan peer-to-peer ERC20 Transfer logs for one share token.
 
@@ -1096,15 +1201,22 @@ def resolve_withdrawals_to_block(silo: dict[str, Any]) -> int | None:
     return value
 
 
-def resolve_withdrawals_block_chunk(silo: dict[str, Any]) -> int:
-    raw = silo.get("withdrawals_block_chunk")
+def resolve_block_chunk(target: dict[str, Any]) -> int:
+    """The eth_getLogs chunk is declared once per chain target and is required.
+
+    Different chains' RPCs tolerate different `eth_getLogs` ranges (and some load
+    balancers silently truncate oversized ranges), so the value is chain-specific
+    with no per-silo or env override.
+    """
+    raw = target.get("block_chunk")
     if raw in (None, ""):
-        raw = os.environ.get("WITHDRAWALS_BLOCK_CHUNK", "").strip()
-    if raw in (None, ""):
-        return WITHDRAW_LOG_BLOCK_CHUNK
+        raise SystemExit(
+            f"Missing 'block_chunk' for chain target {target.get('chain')!r}; "
+            "it must be declared per chain."
+        )
     value = int(raw)
     if value <= 0:
-        raise ValueError("withdrawals_block_chunk must be positive")
+        raise ValueError("block_chunk must be positive")
     return value
 
 
@@ -1551,8 +1663,8 @@ def expand_vault(
 
 def build_snapshot(
     rpc_url: str,
+    withdrawals_block_chunk: int,
     withdrawals_to_block: int | None = None,
-    withdrawals_block_chunk: int = WITHDRAW_LOG_BLOCK_CHUNK,
     latest_block: int | None = None,
 ) -> dict[str, Any]:
     rpc = RpcClient(rpc_url, BLOCK)
@@ -1833,10 +1945,14 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
             print(f"[skip] category={slug} chain={target['chain']} has no configured silos")
             continue
         rpc_url = resolve_rpc_url(str(target["chain"]))
-        # Resolve the chain head once per chain so every silo on this chain shares
-        # the same block number instead of issuing a separate eth_blockNumber call.
+        # Both the eth_getLogs chunk and the chain head are per-chain: resolve them
+        # once so every silo on this chain shares them (one eth_blockNumber call).
+        chain_block_chunk = resolve_block_chunk(target)
         chain_latest_block = RpcClient(rpc_url, 0).eth_block_number()
-        print(f"[info] chain={target['chain']} latest block={chain_latest_block} (shared across silos)")
+        print(
+            f"[info] chain={target['chain']} latest block={chain_latest_block} "
+            f"block_chunk={chain_block_chunk} (shared across silos)"
+        )
         for silo in silos:
             silo_index += 1
             configure_context(target, silo)
@@ -1846,7 +1962,7 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
             )
             silo_started_at = time.monotonic()
             withdrawals_to_block = resolve_withdrawals_to_block(silo)
-            withdrawals_block_chunk = resolve_withdrawals_block_chunk(silo)
+            withdrawals_block_chunk = chain_block_chunk
             silo_entry = build_snapshot(
                 rpc_url,
                 withdrawals_to_block=withdrawals_to_block,
