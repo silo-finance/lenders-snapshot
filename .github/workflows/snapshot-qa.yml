@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths:
-      - scripts/lender-snapshot/distribution_snapshot.json
+      - scripts/lender-snapshot/data/*.json
 
 jobs:
   qa:
