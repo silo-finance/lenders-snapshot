@@ -1,8 +1,8 @@
 # Reproducible environment for the lender-snapshot scripts, independent of the
 # local Python install (avoids Homebrew / PEP 668 / Python-version issues).
 #
-# The source is mounted at runtime (see run.sh) so that the produced
-# distribution_snapshot.json persists on the host and code changes are picked
+# The source is mounted at runtime (see run.sh) so that the produced per-category
+# data/<slug>.json files persist on the host and code changes are picked
 # up without rebuilding the image. Only requirements.txt is needed at build time.
 FROM python:3.12-slim
 

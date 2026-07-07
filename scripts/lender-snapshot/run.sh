@@ -3,8 +3,8 @@
 # regardless of the local Python setup.
 #
 # Usage:
-#   ./run.sh                          # runs snapshot_lenders.py
-#   ./run.sh qa_check.py              # runs the QA validator
+#   ./run.sh snapshot_lenders.py <category-slug>   # scan one category (slug REQUIRED)
+#   ./run.sh qa_check.py                           # runs the QA validator
 #   ./run.sh qa_check.py --verify-onchain
 #
 # Secrets: the script auto-loads ./.env (mounted into the container). You may
@@ -28,7 +28,7 @@ if [ -n "${THE_GRAPH_API_KEY:-}" ]; then ENV_ARGS+=(-e "THE_GRAPH_API_KEY=${THE_
 SCRIPT="${1:-snapshot_lenders.py}"
 if [ "$#" -gt 0 ]; then shift; fi
 
-# Mount the task dir so outputs (distribution_snapshot.json) land on the host.
+# Mount the task dir so outputs (data/<slug>.json) land on the host.
 # ${ENV_ARGS[@]+...} keeps this safe under `set -u` with macOS bash 3.2.
 docker run --rm \
   -v "$HERE":/app \

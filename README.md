@@ -1,6 +1,6 @@
 # Lenders Snapshot UI
 
-Static Vite + React + TypeScript UI for browsing Silo lender snapshots and preparing pro-rata airdrop distributions from the bundled `scripts/lender-snapshot/distribution_snapshot.json` file.
+Static Vite + React + TypeScript UI for browsing Silo lender snapshots and preparing pro-rata airdrop distributions. Each snapshot category (e.g. `trevee-airdrop`) is rendered under its own path and bundled from its per-category `scripts/lender-snapshot/data/<slug>.json` file.
 
 The app performs no runtime RPC, subgraph, or API calls. Snapshot data is imported into the Vite bundle at build time.
 
@@ -29,7 +29,7 @@ npm run dev
 - `deploy-pages.yml` builds and deploys the static Vite app to GitHub Pages.
 - `version-bump.yml` sets `package.json` (and the lockfile) to the version in the `release/X.Y.Z` or `hotfix/X.Y.Z` branch name on PRs to `master`; non-release PRs fall back to an automatic patch bump.
 - `snapshot-scan.yml` manually generates a fresh snapshot release asset.
-- `snapshot-qa.yml` validates PR changes to `distribution_snapshot.json`.
+- `snapshot-qa.yml` validates PR changes to `scripts/lender-snapshot/data/*.json`.
 
 ## Snapshot tooling
 

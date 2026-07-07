@@ -1,4 +1,4 @@
-# Lender snapshot (Trevee)
+# Lender snapshot
 
 Builds block-pinned snapshots of all lenders for configured Silos, splitting them into:
 
@@ -12,7 +12,7 @@ After the snapshot is assembled, the script also scans post-snapshot events (`sn
 - the Silo contract (for direct lenders), and
 - each indexed vault contract (for vault depositors).
 
-It records `Withdraw(...)`, `Deposit(...)`, and peer-to-peer share `Transfer(...)` events to reconcile post-snapshot position changes. These flows are merged into the same `distribution_snapshot.json` consumed by the UI (`total_withdrawals`, `total_deposits`, `total_transfers_in`, `total_transfers_out`, `pending_assets`, and the per-event `withdrawals[]` / `deposits[]` / `transfers[]` breakdowns).
+It records `Withdraw(...)`, `Deposit(...)`, and peer-to-peer share `Transfer(...)` events to reconcile post-snapshot position changes. These flows are merged into the same per-category `data/<slug>.json` consumed by the UI (`total_withdrawals`, `total_deposits`, `total_transfers_in`, `total_transfers_out`, `pending_assets`, and the per-event `withdrawals[]` / `deposits[]` / `transfers[]` breakdowns).
 
 Withdrawal attribution differs by lender type:
 
@@ -23,28 +23,37 @@ For vault depositors, each `withdrawals[]` entry also keeps the raw on-chain amo
 
 ## Layout
 
-- `snapshot_lenders.py` – main script that produces `distribution_snapshot.json`.
+- `snapshot_lenders.py` – main script that produces one `data/<category>.json` per category.
 - `qa_check.py` – pure-JSON validator (no RPC/graph) that asserts share-sum invariants against the stored total supplies.
+- `data/` – generated per-category snapshot files (e.g. `data/trevee-airdrop.json`), imported by the UI.
 - `requirements.txt` – Python dependencies (`web3`).
 - `.env.example` – template for the required secrets.
 
 ## Configuration
 
-Non-secret parameters are hardcoded near the top of `snapshot_lenders.py` in `TARGETS`:
+Non-secret parameters are hardcoded near the top of `snapshot_lenders.py` in the `CATEGORIES`
+dict. Each **category** is a self-contained snapshot rendered under its own path in the UI
+(e.g. `/lenders-snapshot/trevee-airdrop`) and written to its own `data/<slug>.json` file. Categories
+are intentionally hardcoded: adding one is a rare, deliberate edit.
 
-- `chain`, `chain_id`, `subgraph_url`
+Each category maps to a list of chain `targets`:
+
+- `chain`, `chain_id`, `subgraph_url`, `block` (the single snapshot block shared by every silo on that chain)
 - `silos[]` entries with:
   - `address`
-  - `block`
+  - optional `type` (`"silo"` default, or `"silo_vault"`)
   - optional `withdrawals_to_block`:
     - integer block number, or
     - `"latest"` (resolved right before the withdraw scan starts for that silo)
   - optional `withdrawals_block_chunk` (number of blocks per `eth_getLogs` call for this silo)
-- `OUTPUT_JSON`
-- `MULTICALL3` address and `MULTICALL_BATCH`
 
-Sonic is configured with the current silo/block. Ethereum is present as a placeholder with
-`silos: []` until silo addresses and snapshot blocks are supplied.
+A category may also set an explicit `output` filename (defaults to `<slug>.json`).
+
+`MULTICALL3` address / `MULTICALL_BATCH` and the per-category output directory (`data/`) are
+also defined near the top of the script.
+
+The `trevee-airdrop` category currently holds the Sonic silos/blocks. Its `ethereum` target is present
+as a placeholder with `silos: []` until Ethereum silo addresses and snapshot blocks are supplied.
 
 Secrets are read **only** from the environment (or a local, gitignored `.env`):
 
@@ -67,17 +76,24 @@ The script auto-loads `scripts/lender-snapshot/.env` if present; you can also ex
 ```bash
 python3 -m pip install -r scripts/lender-snapshot/requirements.txt
 
-# Produce / refresh snapshots for all configured chain/silo targets:
-python3 scripts/lender-snapshot/snapshot_lenders.py
+# Produce / refresh a snapshot for one category (a category slug is REQUIRED;
+# writes data/<slug>.json). Scanning is per-category, never implicitly all:
+python3 scripts/lender-snapshot/snapshot_lenders.py trevee-airdrop
 
-# Validate the JSON invariants (zero tolerance, exact wei equality):
+# You can pass several slugs to scan more than one category in a single run:
+python3 scripts/lender-snapshot/snapshot_lenders.py trevee-airdrop another-slug
+
+# Validate the JSON invariants for all data/*.json (zero tolerance, exact wei equality):
 python3 scripts/lender-snapshot/qa_check.py
+
+# Validate a specific file:
+python3 scripts/lender-snapshot/qa_check.py --json scripts/lender-snapshot/data/trevee-airdrop.json
 
 # Optionally re-confirm stored total supplies against the chain:
 python3 scripts/lender-snapshot/qa_check.py --verify-onchain
 ```
 
-Re-running for the same Silo **merges (unions)** its flow events into the existing entry rather than overwriting: recorded `withdrawals[]` / `deposits[]` / `transfers[]` are combined and de-duplicated (by `tx_hash`+`log_index`[+`direction`]) and the derived totals are recomputed. This is deliberate — the RPC endpoint is load-balanced and `eth_getLogs` can silently return an **incomplete** set of logs for a range (identical queries hit different backends and return different counts), so a plain overwrite could let an unlucky run replace a more complete result with a smaller one. Because writes are append-only per event, repeating the run can only ever grow the recorded set; other Silos and chains are preserved. **To start clean, delete `distribution_snapshot.json`.**
+Re-running for the same Silo **merges (unions)** its flow events into the existing entry rather than overwriting: recorded `withdrawals[]` / `deposits[]` / `transfers[]` are combined and de-duplicated (by `tx_hash`+`log_index`[+`direction`]) and the derived totals are recomputed. This is deliberate — the RPC endpoint is load-balanced and `eth_getLogs` can silently return an **incomplete** set of logs for a range (identical queries hit different backends and return different counts), so a plain overwrite could let an unlucky run replace a more complete result with a smaller one. Because writes are append-only per event, repeating the run can only ever grow the recorded set; other Silos and chains are preserved. **To start clean, delete the category's `data/<slug>.json`.**
 
 ## Performance
 

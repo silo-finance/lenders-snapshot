@@ -65,7 +65,7 @@ from pathlib import Path
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_JSON = SCRIPT_DIR / "distribution_snapshot.json"
+DATA_DIR = SCRIPT_DIR / "data"
 
 # Negative-pending policy (see module docstring): reconciliation is done in shares, the
 # conserved quantity. A negative share residual means more shares left the account than it
@@ -103,7 +103,13 @@ _matched_fee_mint_keys: set[tuple[str, str, str | None, str]] = set()
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="QA check for lender snapshot JSON.")
-    p.add_argument("--json", type=Path, default=DEFAULT_JSON, help="Snapshot JSON file.")
+    p.add_argument(
+        "--json",
+        type=Path,
+        action="append",
+        default=[],
+        help="Snapshot JSON file (repeatable). Defaults to all data/*.json.",
+    )
     p.add_argument("--chain", action="append", default=[], help="Optional chain filter (repeatable).")
     p.add_argument(
         "--verify-onchain",
@@ -111,6 +117,13 @@ def parse_args() -> argparse.Namespace:
         help="Re-read *_total_supply from chain at the snapshot block and compare.",
     )
     return p.parse_args()
+
+
+def resolve_json_paths(args: argparse.Namespace) -> list[Path]:
+    """The explicit --json files, or every data/*.json when none were given."""
+    if args.json:
+        return list(args.json)
+    return sorted(DATA_DIR.glob("*.json"))
 
 
 def to_int(value: Any) -> int:
@@ -486,36 +499,46 @@ def verify_onchain(root: dict[str, Any], chain_filter: set[str], report: Report)
 
 def main() -> int:
     args = parse_args()
-    if not args.json.exists():
-        print(f"[FAIL] snapshot JSON not found: {args.json}")
-        return 1
-
-    root = json.loads(args.json.read_text(encoding="utf-8"))
-    if not isinstance(root, dict):
-        print("[FAIL] snapshot JSON root must be an object")
+    json_paths = resolve_json_paths(args)
+    if not json_paths:
+        print(f"[FAIL] no snapshot JSON files found (looked in {DATA_DIR})")
         return 1
 
     chain_filter = {c.strip().lower() for c in args.chain} if args.chain else set()
     report = Report()
 
     checked_chains: set[str] = set()
-    for chain, chain_obj in root.items():
-        if chain_filter and chain.lower() not in chain_filter:
+    for json_path in json_paths:
+        if not json_path.exists():
+            print(f"[FAIL] snapshot JSON not found: {json_path}")
+            report.error(f"snapshot JSON not found: {json_path}")
             continue
-        if not isinstance(chain_obj, dict):
-            continue
-        silos = chain_obj.get("silos", {})
-        if not isinstance(silos, dict):
-            continue
-        checked_chains.add(chain.lower())
-        for silo_addr, silo in silos.items():
-            if isinstance(silo, dict):
-                check_silo(chain, silo_addr, silo, report)
 
-    if args.verify_onchain:
+        root = json.loads(json_path.read_text(encoding="utf-8"))
+        if not isinstance(root, dict):
+            print(f"[FAIL] snapshot JSON root must be an object: {json_path}")
+            report.error(f"snapshot JSON root must be an object: {json_path}")
+            continue
+
         print()
-        print("[verify-onchain] re-reading total supplies from chain ...")
-        verify_onchain(root, chain_filter, report)
+        print(f"===== validating {json_path.name} =====")
+        for chain, chain_obj in root.items():
+            if chain_filter and chain.lower() not in chain_filter:
+                continue
+            if not isinstance(chain_obj, dict):
+                continue
+            silos = chain_obj.get("silos", {})
+            if not isinstance(silos, dict):
+                continue
+            checked_chains.add(chain.lower())
+            for silo_addr, silo in silos.items():
+                if isinstance(silo, dict):
+                    check_silo(chain, silo_addr, silo, report)
+
+        if args.verify_onchain:
+            print()
+            print(f"[verify-onchain] re-reading total supplies from chain for {json_path.name} ...")
+            verify_onchain(root, chain_filter, report)
 
     # Stale-exception guard: a pinned fee-mint exception whose chain was fully scanned but was
     # never matched means the underlying residual/identity moved (or was fixed). Fail loudly so

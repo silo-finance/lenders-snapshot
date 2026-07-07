@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trevee lender snapshot.
+Silo lender snapshot.
 
 Builds block-pinned snapshots of all lenders for configured Silos:
   - direct lenders (every account holding collateral shares), and
@@ -16,7 +16,9 @@ with eth_call pinned at BLOCK. eth_getCode is issued in JSON-RPC batches.
 Secrets ({CHAIN}_RPC_URL/RPC_URL, THE_GRAPH_API_KEY) are read ONLY from the environment
 or a local gitignored `.env` next to this script. They must never be committed.
 
-    python3 scripts/lender-snapshot/snapshot_lenders.py
+A category slug is required (scanning is per-category, never implicitly all):
+
+    python3 scripts/lender-snapshot/snapshot_lenders.py <category-slug>
 """
 
 from __future__ import annotations
@@ -40,82 +42,70 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # --------------------------------------------------------------------------------------
 DEFAULT_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/8wcbzcdNirQvk1ETh25wpVzb5GWs8DvugpbwrYnTCcxj"
 
+# Snapshot categories. Each category is a self-contained snapshot rendered under its own
+# path in the UI (e.g. `/lenders-snapshot/trevee-airdrop`) and written to its own data file
+# (`data/<slug>.json`). Categories are intentionally HARDCODED here: adding one is a rare,
+# deliberate edit (new silo list) followed by a rerun of this script.
+#
+# Each category maps to a list of chain targets. Each chain target has:
+#   "chain" (slug), "chain_id", "subgraph_url", "block" (required; the single snapshot
+#   block shared by every silo on that chain), and a "silos" list.
 # Each entry in a chain's `silos` list supports:
-#   "address" (required), "block" (required),
+#   "address" (required),
 #   "type"    (optional): "silo" (default) enumerates collateral lenders via the subgraph
 #             `positions`; "silo_vault" enumerates ERC4626 depositors via `vaultPositions`.
-TARGETS: list[dict[str, Any]] = [
-    {
-        "chain": "sonic",
-        "chain_id": 146,
-        "subgraph_url": DEFAULT_SUBGRAPH_URL,
-        "silos": [
+CATEGORIES: dict[str, dict[str, Any]] = {
+    "trevee-airdrop": {
+        "targets": [
             {
-                "address": "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de",
+                "chain": "sonic",
+                "chain_id": 146,
+                "subgraph_url": DEFAULT_SUBGRAPH_URL,
+                # Single snapshot block shared by every silo on this chain.
                 "block": 54144258,
+                "silos": [
+                    {"address": "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de"},
+                    {"address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64"},
+                    {"address": "0x4935fadb17df859667cc4f7bfe6a8cb24f86f8d0"},
+                    {"address": "0x4f55e28d36b30a638c3aa1d5cbf9c4ccb3831506"},
+                    {"address": "0xc3a18f1efa66234e7d233c8ad00d597f6e585f2b"},
+                    {"address": "0x24c74b30d1a4261608e84bf5a618693032681dac"},
+                    {"address": "0x219656f33c58488d09d518badf50aa8cdcaca2aa"},
+                    {"address": "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2"},
+                    {"address": "0x08c320a84a59c6f533e0dca655cf497594bca1f9"},
+                    # --- SiloVaults added manually ---------------------------------------------
+                    # These addresses are SiloVaults that were NOT auto-discovered as silo_vault
+                    # lenders of the silos above (e.g. they do not lend into any tracked silo, or
+                    # were not indexed). A SiloVault exposes the same read interface as a Silo, but
+                    # its holders are indexed as vault depositors, so they are tagged
+                    # type="silo_vault" to enumerate positions via the subgraph `vaultPositions`.
+                    {"address": "0x94e84f3a18a9f318a2915058d4f49c3565bc935e", "type": "silo_vault"},
+                    {"address": "0x3710b212b39477df2deaadcf16ef56c384a3d142", "type": "silo_vault"},
+                    {"address": "0x17271da949bbd4713c7c599759e2bf30604fc8da", "type": "silo_vault"},
+                    {"address": "0x5b63bd1574d40d98c6967047f0323cc5d4895775", "type": "silo_vault"},
+                    {"address": "0xb47cb414aab743c977dfd1fdb758f971907e810e", "type": "silo_vault"},
+                    {"address": "0x1320382143d98a80a0b247148a42dd2aa33d9c2d", "type": "silo_vault"},
+                    {"address": "0xffa4f67d4facff62e53e6ac4f76a1e049673876b", "type": "silo_vault"},
+                    {"address": "0x3e11288c2e1ec2a5200e407d1eebd416dbe43656", "type": "silo_vault"},
+                    {"address": "0x271a367898fbf1f70045ad413f2a072ff0b907d5", "type": "silo_vault"},
+                    {"address": "0x92ebf5a1fb4061b45222a6d76accf4698bde4b95", "type": "silo_vault"},
+                    {"address": "0x61e175f91f017987c421e0731d6baa0594eca6eb", "type": "silo_vault"},
+                    {"address": "0x391b3f70e254d582588b27e97e48d1cfcdf0be7e", "type": "silo_vault"},
+                    {"address": "0x592d1e187729c76efacc6dffb9355bd7bf47b2a7", "type": "silo_vault"},
+                    {"address": "0xb6a23cb29e512df41876b28d7a848bd831f9c5ba", "type": "silo_vault"},
+                ],
             },
             {
-                "address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64",
-                "block": 54144258,
+                "chain": "ethereum",
+                "chain_id": 1,
+                "subgraph_url": DEFAULT_SUBGRAPH_URL,
+                # Placeholder until Ethereum silo addresses are supplied; set the target-level
+                # "block" here (shared by all silos) once they are configured.
+                "silos": [],
             },
-            {
-                "address": "0x4935fadb17df859667cc4f7bfe6a8cb24f86f8d0",
-                "block": 54144258,
-            },
-            {
-                "address": "0x4f55e28d36b30a638c3aa1d5cbf9c4ccb3831506",
-                "block": 54144258,
-            },
-            {
-                "address": "0xc3a18f1efa66234e7d233c8ad00d597f6e585f2b",
-                "block": 54144258,
-            },
-            {
-                "address": "0x24c74b30d1a4261608e84bf5a618693032681dac",
-                "block": 54144258,
-            },
-            {
-                "address": "0x219656f33c58488d09d518badf50aa8cdcaca2aa",
-                "block": 54144258,
-            },
-            {
-                "address": "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2",
-                "block": 54144258,
-            },
-            {
-                "address": "0x08c320a84a59c6f533e0dca655cf497594bca1f9",
-                "block": 54144258,
-            },
-            # --- SiloVaults added manually ---------------------------------------------
-            # These addresses are SiloVaults that were NOT auto-discovered as silo_vault
-            # lenders of the silos above (e.g. they do not lend into any tracked silo, or
-            # were not indexed). A SiloVault exposes the same read interface as a Silo, but
-            # its holders are indexed as vault depositors, so they are tagged
-            # type="silo_vault" to enumerate positions via the subgraph `vaultPositions`.
-            {"address": "0x94e84f3a18a9f318a2915058d4f49c3565bc935e", "block": 54144258, "type": "silo_vault"},
-            {"address": "0x3710b212b39477df2deaadcf16ef56c384a3d142", "block": 54144258, "type": "silo_vault"},
-            {"address": "0x17271da949bbd4713c7c599759e2bf30604fc8da", "block": 54144258, "type": "silo_vault"},
-            {"address": "0x5b63bd1574d40d98c6967047f0323cc5d4895775", "block": 54144258, "type": "silo_vault"},
-            {"address": "0xb47cb414aab743c977dfd1fdb758f971907e810e", "block": 54144258, "type": "silo_vault"},
-            {"address": "0x1320382143d98a80a0b247148a42dd2aa33d9c2d", "block": 54144258, "type": "silo_vault"},
-            {"address": "0xffa4f67d4facff62e53e6ac4f76a1e049673876b", "block": 54144258, "type": "silo_vault"},
-            {"address": "0x3e11288c2e1ec2a5200e407d1eebd416dbe43656", "block": 54144258, "type": "silo_vault"},
-            {"address": "0x271a367898fbf1f70045ad413f2a072ff0b907d5", "block": 54144258, "type": "silo_vault"},
-            {"address": "0x92ebf5a1fb4061b45222a6d76accf4698bde4b95", "block": 54144258, "type": "silo_vault"},
-            {"address": "0x61e175f91f017987c421e0731d6baa0594eca6eb", "block": 54144258, "type": "silo_vault"},
-            {"address": "0x391b3f70e254d582588b27e97e48d1cfcdf0be7e", "block": 54144258, "type": "silo_vault"},
-            {"address": "0x592d1e187729c76efacc6dffb9355bd7bf47b2a7", "block": 54144258, "type": "silo_vault"},
-            {"address": "0xb6a23cb29e512df41876b28d7a848bd831f9c5ba", "block": 54144258, "type": "silo_vault"},
         ],
     },
-    {
-        "chain": "ethereum",
-        "chain_id": 1,
-        "subgraph_url": DEFAULT_SUBGRAPH_URL,
-        # Placeholder until Ethereum silo addresses and snapshot blocks are supplied.
-        "silos": [],
-    },
-]
+}
 
 BLOCK = 0
 SILO_ADDRESS = ""
@@ -131,7 +121,15 @@ SILO_TYPE_SILO = "silo"
 SILO_TYPE_VAULT = "silo_vault"
 VALID_SILO_TYPES = (SILO_TYPE_SILO, SILO_TYPE_VAULT)
 
-OUTPUT_JSON = str(SCRIPT_DIR / "distribution_snapshot.json")
+# Per-category snapshot files live under `data/<slug>.json`. This directory is also what
+# the frontend imports from (see src/categories.ts).
+DATA_DIR = SCRIPT_DIR / "data"
+
+
+def category_output_path(slug: str, category: dict[str, Any]) -> Path:
+    """Resolve the output JSON path for a category (defaults to `data/<slug>.json`)."""
+    filename = str(category.get("output") or f"{slug}.json")
+    return DATA_DIR / filename
 
 MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11"
 MULTICALL_BATCH = 300
@@ -237,7 +235,8 @@ def configure_context(target: dict[str, Any], silo: dict[str, Any]) -> None:
     CHAIN_ID = int(target["chain_id"])
     SUBGRAPH_URL = str(target.get("subgraph_url") or DEFAULT_SUBGRAPH_URL)
     SILO_ADDRESS = norm(str(silo["address"]))
-    BLOCK = int(silo["block"])
+    # The snapshot block is defined once per chain target and shared by all its silos.
+    BLOCK = int(target["block"])
     silo_type = str(silo.get("type", SILO_TYPE_SILO)).strip().lower()
     if silo_type not in VALID_SILO_TYPES:
         raise SystemExit(
@@ -1777,8 +1776,11 @@ def _merge_silo_entry(old_silo: Any, new_silo: dict[str, Any]) -> dict[str, Any]
     return merged
 
 
-def write_output(silo_entry: dict[str, Any], chain: str, chain_id: int, silo_address: str) -> None:
-    path = Path(OUTPUT_JSON)
+def write_output(
+    silo_entry: dict[str, Any], chain: str, chain_id: int, silo_address: str, output_path: Path
+) -> None:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     root: dict[str, Any] = {}
     if path.exists():
         # Silently resetting a corrupt/unexpected output file would wipe previously written
@@ -1808,19 +1810,27 @@ def write_output(silo_entry: dict[str, Any], chain: str, chain_id: int, silo_add
     print(f"[ok] wrote {path}")
 
 
-def main() -> int:
+def run_category(slug: str, category: dict[str, Any]) -> int:
+    """Scan every silo configured for one category and write `data/<slug>.json`.
+
+    Returns the number of silos completed for this category.
+    """
     import time
 
-    load_secrets()
-    total_silos = sum(len(target.get("silos") or []) for target in TARGETS)
-    print(f"[info] configured targets: {total_silos} silo(s) across {len(TARGETS)} chain(s)")
+    targets = category.get("targets") or []
+    output_path = category_output_path(slug, category)
+    total_silos = sum(len(target.get("silos") or []) for target in targets)
+    print(
+        f"[info] ##### category '{slug}': {total_silos} silo(s) across {len(targets)} chain(s) "
+        f"-> {output_path} #####"
+    )
     completed = 0
     silo_index = 0
     started_at = time.monotonic()
-    for target in TARGETS:
+    for target in targets:
         silos = target.get("silos") or []
         if not silos:
-            print(f"[skip] chain={target['chain']} has no configured silos")
+            print(f"[skip] category={slug} chain={target['chain']} has no configured silos")
             continue
         rpc_url = resolve_rpc_url(str(target["chain"]))
         # Resolve the chain head once per chain so every silo on this chain shares
@@ -1831,7 +1841,7 @@ def main() -> int:
             silo_index += 1
             configure_context(target, silo)
             print(
-                f"[info] ===== silo {silo_index}/{total_silos}: chain={CHAIN} "
+                f"[info] ===== [{slug}] silo {silo_index}/{total_silos}: chain={CHAIN} "
                 f"silo={SILO_ADDRESS} block={BLOCK} ====="
             )
             silo_started_at = time.monotonic()
@@ -1843,20 +1853,47 @@ def main() -> int:
                 withdrawals_block_chunk=withdrawals_block_chunk,
                 latest_block=chain_latest_block,
             )
-            write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS)
+            write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS, output_path)
             direct = len(silo_entry["direct_lenders"])
             vaults = len(silo_entry["vaults"])
             elapsed = time.monotonic() - silo_started_at
             print(
-                f"[done] silo {silo_index}/{total_silos} chain={CHAIN} silo={SILO_ADDRESS} "
+                f"[done] [{slug}] silo {silo_index}/{total_silos} chain={CHAIN} silo={SILO_ADDRESS} "
                 f"direct_lenders={direct} vaults={vaults} elapsed={elapsed:.1f}s"
             )
             completed += 1
     if completed == 0:
-        print("[done] no silos configured")
+        print(f"[done] category '{slug}': no silos configured")
     else:
         total_elapsed = time.monotonic() - started_at
-        print(f"[done] all {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
+        print(f"[done] category '{slug}': {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
+    return completed
+
+
+def main() -> int:
+    load_secrets()
+
+    # Positional args select which categories to scan. At least one slug is REQUIRED:
+    # scanning is deliberate and per-category, so we never scan everything implicitly.
+    # This is the "new silo list -> new file" workflow: `./run.sh snapshot_lenders.py <slug>`.
+    available = ", ".join(sorted(CATEGORIES)) or "(none)"
+    requested = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
+    if not requested:
+        raise SystemExit(f"No category slug provided. Specify at least one of: {available}")
+    unknown = [slug for slug in requested if slug not in CATEGORIES]
+    if unknown:
+        raise SystemExit(f"Unknown category slug(s): {', '.join(unknown)}. Available: {available}")
+    selected = requested
+
+    print(f"[info] scanning {len(selected)} categor(y/ies): {', '.join(selected)}")
+    total_completed = 0
+    for slug in selected:
+        total_completed += run_category(slug, CATEGORIES[slug])
+
+    if total_completed == 0:
+        print("[done] no silos configured")
+    else:
+        print(f"[done] all categories complete: {total_completed} silo(s) total")
     return 0
 
 

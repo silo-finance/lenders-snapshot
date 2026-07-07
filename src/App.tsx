@@ -1,10 +1,12 @@
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Fragment, createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import packageJson from "../package.json";
 import {
   buildExplorerSelectionUrl,
   buildSiloPath,
   buildSiloPathWithFilter,
-  explorerHomePath,
+  categoryHomePath,
+  landingHomePath,
+  parseCategoryFromUrl,
   parseExplorerSelectionFromUrl,
   parseFilterFromUrl,
   parseSiloPathFromUrl,
@@ -18,13 +20,10 @@ import {
   type VaultDepositor,
   type VaultSnapshot,
   type WithdrawalEntry,
-  SILO_CATEGORY_DEFAULT_AIRDROP,
   SILO_CATEGORY_LABELS,
   SILO_CATEGORY_ORDER,
-  chains,
   compareBigIntAsc,
   compareBigIntDesc,
-  eventsToBlock,
   explorerAddressUrl,
   explorerTxUrl,
   findSiloByAddress,
@@ -35,9 +34,52 @@ import {
   parseUnits,
   shortAddress,
   siloCategory,
-  snapshotBlock,
 } from "./snapshot";
+import { SNAPSHOT_CATEGORIES, findCategory, type SnapshotCategory } from "./categories";
+import { getNetworkIconPath, getNetworkName } from "./networks";
 import { useWallet } from "./useWallet";
+
+// Active snapshot category (resolved from the URL) shared with the whole view tree so
+// deeply nested components can build category-scoped URLs and read the snapshot metadata
+// without prop-drilling.
+type ActiveCategory = {
+  slug: string;
+  label: string;
+  title: string;
+  description: string[];
+  airdropEnabled: boolean;
+  airdropDefaults: Partial<Record<SiloCategory, string>>;
+  chains: ChainSnapshot[];
+  snapshotBlock: number;
+  eventsToBlock: number;
+};
+
+const CategoryContext = createContext<ActiveCategory | null>(null);
+
+function useActiveCategory(): ActiveCategory {
+  const value = useContext(CategoryContext);
+  if (!value) {
+    throw new Error("useActiveCategory must be used within a CategoryContext provider");
+  }
+  return value;
+}
+
+function toActiveCategory(category: SnapshotCategory): ActiveCategory {
+  if (!category.data) {
+    throw new Error(`snapshot category '${category.slug}' has no data`);
+  }
+  return {
+    slug: category.slug,
+    label: category.label,
+    title: category.title,
+    description: category.description,
+    airdropEnabled: category.airdropEnabled,
+    airdropDefaults: category.airdropDefaults,
+    chains: category.data.chains,
+    snapshotBlock: category.data.snapshotBlock,
+    eventsToBlock: category.data.eventsToBlock,
+  };
+}
 
 type SortDirection = "asc" | "desc";
 type TableSortKey = "address" | "type" | "assets" | "withdrawals" | "pending";
@@ -470,16 +512,32 @@ function CopyAddressButton({ address, bare = false }: { address: string; bare?: 
 }
 
 function SiloPageLinkButton({ chain, address }: { chain: string; address: string }) {
+  const { slug } = useActiveCategory();
   return (
     <a
       className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-xs text-slate-400 transition hover:border-emerald-300/40 hover:text-emerald-200"
-      href={buildSiloPath(chain, address)}
+      href={buildSiloPath(slug, chain, address)}
       title="Open silo-only page"
       onClick={(event) => event.stopPropagation()}
     >
       <span aria-hidden="true">↗</span>
       <span className="sr-only">Open silo-only page</span>
     </a>
+  );
+}
+
+// Network name + icon (icons ported from the actions project). Shown per silo so a
+// category can span multiple chains while the data view stays uniform.
+function NetworkBadge({ chainId, className = "" }: { chainId: number; className?: string }) {
+  const icon = getNetworkIconPath(chainId);
+  const name = getNetworkName(chainId);
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-xs font-medium text-slate-300 ${className}`}
+    >
+      {icon ? <img alt="" aria-hidden="true" className="h-3.5 w-3.5 rounded-full" src={icon} /> : null}
+      <span>{name}</span>
+    </span>
   );
 }
 
@@ -1686,16 +1744,24 @@ function VaultCard({
 }
 
 function AppHeader({ subtitle }: { subtitle?: string }) {
+  const { slug, title, description, snapshotBlock } = useActiveCategory();
   const [descriptionOpen, setDescriptionOpen] = useState(false);
   return (
     <header className="border-b border-white/10 pb-8">
       <div>
-        <div className="flex flex-wrap items-baseline gap-3">
+        <a
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 transition hover:text-emerald-200"
+          href={landingHomePath()}
+        >
+          <ChevronIcon className="rotate-90" />
+          All snapshots
+        </a>
+        <div className="mt-3 flex flex-wrap items-baseline gap-3">
           <a
             className="text-3xl font-semibold tracking-tight text-white transition hover:text-emerald-200 sm:text-4xl"
-            href={explorerHomePath()}
+            href={categoryHomePath(slug)}
           >
-            Lender Snapshot for Trevee Markets
+            {title}
           </a>
           <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-semibold text-slate-400">
             v{APP_VERSION}
@@ -1721,15 +1787,9 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
             </button>
             {descriptionOpen ? (
               <div className="mt-3 space-y-3 border-l-2 border-emerald-400/30 pl-4 text-[0.95rem] italic leading-7 text-slate-300">
-                <p>
-                  Trevee is the issuer of the wstkscUSD and wstkscETH assets. Approximately 95% of the assets backing
-                  these tokens were lent to Stream Finance, while the remaining 5% stayed unallocated.
-                </p>
-                <p>
-                  Following the Stream Finance incident, Trevee transferred 46,019 USDC and 42.53239 ETH to Silo for
-                  distribution to affected lenders. This page shows the snapshot used to calculate each lender&rsquo;s
-                  share of the recovery distribution across all impacted markets and vaults.
-                </p>
+                {description.map((paragraph, index) => (
+                  <p key={index}>{paragraph}</p>
+                ))}
               </div>
             ) : null}
           </div>
@@ -1773,31 +1833,37 @@ function ScrollToTopButton() {
   );
 }
 
-function getInitialChain(): ChainSnapshot {
+function firstPopulatedChain(chains: ChainSnapshot[]): ChainSnapshot | undefined {
   return chains.find((chain) => chain.silos.length > 0) ?? chains[0];
 }
 
-function getInitialExplorerSelection(): { chainName: string; siloAddress: string } {
-  const fallbackChain = getInitialChain();
+function getInitialExplorerSelection(chains: ChainSnapshot[]): { chainName: string; siloAddress: string } {
+  const fallbackChain = firstPopulatedChain(chains);
   const fallback = {
-    chainName: fallbackChain.chain,
-    siloAddress: fallbackChain.silos[0]?.address ?? "",
+    chainName: fallbackChain?.chain ?? "",
+    siloAddress: fallbackChain?.silos[0]?.address ?? "",
   };
   const selection = parseExplorerSelectionFromUrl();
   if (!selection.address) {
     return fallback;
   }
-  const match = findSiloByAddress(selection.address, selection.chain);
+  const match = findSiloByAddress(chains, selection.address, selection.chain);
   if (!match) {
     return fallback;
   }
   return { chainName: match.chain.chain, siloAddress: match.silo.address };
 }
 
-function getInitialCategory(): SiloCategory {
-  const selection = getInitialExplorerSelection();
-  const match = findSiloByAddress(selection.siloAddress, selection.chainName);
+function getInitialCategory(chains: ChainSnapshot[]): SiloCategory {
+  const selection = getInitialExplorerSelection(chains);
+  const match = findSiloByAddress(chains, selection.siloAddress, selection.chainName);
   return match ? siloCategory(match.silo) : "usdc";
+}
+
+// Every (chain, silo) pair across the category, so silos from different chains render in a
+// single uniform list (each tagged with its network).
+function flattenSilos(chains: ChainSnapshot[]): { chain: ChainSnapshot; silo: SiloSnapshot }[] {
+  return chains.flatMap((chain) => chain.silos.map((silo) => ({ chain, silo })));
 }
 
 function availableCategories(silos: SiloSnapshot[]): SiloCategory[] {
@@ -1882,6 +1948,7 @@ function SiloDetailPanel({
   forceExpanded?: boolean;
   showConnectWallet?: boolean;
 }) {
+  const { snapshotBlock, eventsToBlock } = useActiveCategory();
   const { account, connect, connecting, hasProvider } = useWallet(
     showConnectWallet ? setAddressFilter : undefined,
   );
@@ -1941,6 +2008,7 @@ function SiloDetailPanel({
               <span>
                 {silo.inputToken.symbol} / <SiloKindLabel silo={silo} />
               </span>
+              <NetworkBadge chainId={chain.chainId} />
               <AddressLink address={silo.address} chain={chain.chain} />
             </div>
             <h2 className="mt-2 text-3xl font-semibold text-white">Silo lenders details</h2>
@@ -2243,10 +2311,16 @@ function SiloDetailPanel({
 }
 
 function ExplorerView() {
-  const initialChain = getInitialChain();
-  const [selectedChainName, setSelectedChainName] = useState(() => getInitialExplorerSelection().chainName);
-  const [selectedSiloAddress, setSelectedSiloAddress] = useState(() => getInitialExplorerSelection().siloAddress);
-  const [selectedCategory, setSelectedCategory] = useState<SiloCategory>(getInitialCategory);
+  const { chains, slug, airdropDefaults, airdropEnabled } = useActiveCategory();
+
+  // Silos from every chain in this category, rendered in one uniform list. Each pair keeps
+  // its chain so the network badge and category-scoped links resolve correctly.
+  const allPairs = flattenSilos(chains);
+  const allSilos = allPairs.map((pair) => pair.silo);
+
+  const [selectedChainName, setSelectedChainName] = useState(() => getInitialExplorerSelection(chains).chainName);
+  const [selectedSiloAddress, setSelectedSiloAddress] = useState(() => getInitialExplorerSelection(chains).siloAddress);
+  const [selectedCategory, setSelectedCategory] = useState<SiloCategory>(() => getInitialCategory(chains));
   const [addressFilter, setAddressFilter] = useState(() => parseFilterFromUrl());
   const [addressTypeFilter, setAddressTypeFilter] = useState("all");
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
@@ -2256,19 +2330,22 @@ function ExplorerView() {
   const [airdropInput, setAirdropInput] = useState("");
   const [includeOtherContracts, setIncludeOtherContracts] = useState(false);
 
-  const selectedChain = chains.find((chain) => chain.chain === selectedChainName) ?? initialChain;
-  const chainCategories = availableCategories(selectedChain.silos);
-  const activeCategory = chainCategories.includes(selectedCategory) ? selectedCategory : (chainCategories[0] ?? "usdc");
-  const categorySilos = selectedChain.silos.filter((silo) => siloCategory(silo) === activeCategory);
-  const categoryLenderCount = countLenders(categorySilos);
+  const assetCategories = availableCategories(allSilos);
+  const activeCategory = assetCategories.includes(selectedCategory) ? selectedCategory : (assetCategories[0] ?? "usdc");
+  const categoryPairs = allPairs.filter(({ silo }) => siloCategory(silo) === activeCategory);
+  const categoryLenderCount = countLenders(categoryPairs.map((pair) => pair.silo));
   const addressNeedle = addressFilter.trim().toLowerCase();
-  const matchedSilos = addressNeedle
-    ? categorySilos.filter((silo) => siloMatchesAddress(silo, addressNeedle))
-    : categorySilos;
-  const selectedSilo =
-    matchedSilos.find((silo) => silo.address === selectedSiloAddress) ?? matchedSilos[0] ?? categorySilos[0];
-  // Airdrops are distributed only across silos in the active category (the "selected" silos).
-  const airdropSilos = chains.flatMap((chain) => chain.silos).filter((silo) => siloCategory(silo) === activeCategory);
+  const matchedPairs = addressNeedle
+    ? categoryPairs.filter(({ silo }) => siloMatchesAddress(silo, addressNeedle))
+    : categoryPairs;
+  const selectedPair =
+    matchedPairs.find((pair) => pair.silo.address === selectedSiloAddress && pair.chain.chain === selectedChainName) ??
+    matchedPairs[0] ??
+    categoryPairs[0];
+  const selectedSilo = selectedPair?.silo;
+  const selectedChain = selectedPair?.chain;
+  // Airdrops are distributed across every silo in the active asset category (across all chains).
+  const airdropSilos = allPairs.filter(({ silo }) => siloCategory(silo) === activeCategory).map((pair) => pair.silo);
   const addressTypes = selectedSilo
     ? Array.from(
         new Set([
@@ -2283,13 +2360,14 @@ function ExplorerView() {
     selectedSilo && airdropRaw !== null
       ? buildAirdropPlan(airdropSilos, airdropRaw, includeOtherContracts)
       : null;
-  const showAirdropColumn = distributeAirdropsEnabled && airdropRaw !== null && airdropRaw > ZERO;
+  const showAirdropColumn =
+    airdropEnabled && distributeAirdropsEnabled && airdropRaw !== null && airdropRaw > ZERO;
 
   function syncSelectionUrl(chainName: string, siloAddress: string, replace = false) {
     if (!siloAddress) {
       return;
     }
-    const url = buildExplorerSelectionUrl(chainName, siloAddress, addressFilter);
+    const url = buildExplorerSelectionUrl(slug, chainName, siloAddress, addressFilter);
     const current = `${window.location.pathname}${window.location.search}`;
     if (current === url) {
       return;
@@ -2318,51 +2396,41 @@ function ExplorerView() {
   // Keep selection in sync with browser back/forward navigation.
   useEffect(() => {
     function handlePopState() {
-      const selection = getInitialExplorerSelection();
+      const selection = getInitialExplorerSelection(chains);
       setSelectedChainName(selection.chainName);
       setSelectedSiloAddress(selection.siloAddress);
       setAddressFilter(parseFilterFromUrl());
     }
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
-
-  function selectChain(chain: ChainSnapshot) {
-    const nextSilo = chain.silos[0];
-    const nextSiloAddress = nextSilo?.address ?? "";
-    setSelectedChainName(chain.chain);
-    setSelectedCategory(nextSilo ? siloCategory(nextSilo) : "usdc");
-    setSelectedSiloAddress(nextSiloAddress);
-    setAddressTypeFilter("all");
-    setDirectExpanded(true);
-    setExpandedVaults({});
-    resetAirdropsState(setDistributeAirdropsEnabled, setAirdropInput, setIncludeOtherContracts);
-    syncSelectionUrl(chain.chain, nextSiloAddress);
-  }
+  }, [chains]);
 
   function selectCategory(category: SiloCategory) {
     if (category === activeCategory) {
       return;
     }
-    const nextSilo = selectedChain.silos.find((silo) => siloCategory(silo) === category);
-    const nextSiloAddress = nextSilo?.address ?? "";
+    const nextPair = allPairs.find(({ silo }) => siloCategory(silo) === category);
+    const nextChainName = nextPair?.chain.chain ?? "";
+    const nextSiloAddress = nextPair?.silo.address ?? "";
     setSelectedCategory(category);
+    setSelectedChainName(nextChainName);
     setSelectedSiloAddress(nextSiloAddress);
     setAddressTypeFilter("all");
     setDirectExpanded(true);
     setExpandedVaults({});
     resetAirdropsState(setDistributeAirdropsEnabled, setAirdropInput, setIncludeOtherContracts);
-    syncSelectionUrl(selectedChainName, nextSiloAddress);
+    syncSelectionUrl(nextChainName, nextSiloAddress);
   }
 
-  function selectSilo(siloAddress: string) {
+  function selectSilo(chainName: string, siloAddress: string) {
     // Switching silos within the same token keeps the active distribution so the
     // airdrops panel and airdrop column stay visible.
+    setSelectedChainName(chainName);
     setSelectedSiloAddress(siloAddress);
     setAddressTypeFilter("all");
     setDirectExpanded(true);
     setExpandedVaults({});
-    syncSelectionUrl(selectedChainName, siloAddress);
+    syncSelectionUrl(chainName, siloAddress);
   }
 
   return (
@@ -2372,92 +2440,68 @@ function ExplorerView() {
 
         <div className="min-w-0 space-y-6 py-8">
           <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-slate-950/30 sm:p-5">
-            <div
-              className={`grid min-w-0 gap-5 ${
-                chains.length > 1 ? "xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] xl:items-start" : ""
-              }`}
-            >
-              {chains.length > 1 ? (
-                <div className="min-w-0">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Chain</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {chains.map((chain) => (
-                      <button
-                        key={chain.chain}
-                        className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                          selectedChain.chain === chain.chain
-                            ? "bg-emerald-300 text-slate-950 shadow-lg shadow-emerald-500/20"
-                            : "border border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/10"
-                        }`}
-                        type="button"
-                        onClick={() => selectChain(chain)}
-                      >
-                        {chain.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Silos</p>
-                    {chainCategories.length > 0 ? (
-                      <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] p-0.5">
-                        {chainCategories.map((category) => (
-                          <button
-                            key={category}
-                            aria-pressed={activeCategory === category}
-                            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                              activeCategory === category
-                                ? "bg-emerald-300 text-slate-950 shadow-sm shadow-emerald-500/20"
-                                : "text-slate-300 hover:text-emerald-200"
-                            }`}
-                            type="button"
-                            onClick={() => selectCategory(category)}
-                          >
-                            {SILO_CATEGORY_LABELS[category]}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                    <span className="text-xs uppercase tracking-[0.22em] text-slate-500">
-                      Total lenders{" "}
-                      <span className="font-mono text-sm normal-case tracking-normal text-slate-200">
-                        {new Intl.NumberFormat("en-US").format(categoryLenderCount)}
-                      </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Silos</p>
+                  {assetCategories.length > 0 ? (
+                    <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] p-0.5">
+                      {assetCategories.map((category) => (
+                        <button
+                          key={category}
+                          aria-pressed={activeCategory === category}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                            activeCategory === category
+                              ? "bg-emerald-300 text-slate-950 shadow-sm shadow-emerald-500/20"
+                              : "text-slate-300 hover:text-emerald-200"
+                          }`}
+                          type="button"
+                          onClick={() => selectCategory(category)}
+                        >
+                          {SILO_CATEGORY_LABELS[category]}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <span className="text-xs uppercase tracking-[0.22em] text-slate-500">
+                    Total lenders{" "}
+                    <span className="font-mono text-sm normal-case tracking-normal text-slate-200">
+                      {new Intl.NumberFormat("en-US").format(categoryLenderCount)}
                     </span>
-                  </div>
-                  <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">
-                    {matchedSilos.length} silo{matchedSilos.length === 1 ? "" : "s"}
                   </span>
                 </div>
-                <div className="mt-3 flex min-w-0 flex-wrap gap-3">
-                  {categorySilos.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
-                      No silos are currently bundled for this chain.
-                    </div>
-                  ) : matchedSilos.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
-                      No silos contain an address matching the current filter.
-                    </div>
-                  ) : (
-                    matchedSilos.map((silo) => (
+                <span className="rounded-full bg-emerald-300/10 px-3 py-1 text-sm text-emerald-200">
+                  {matchedPairs.length} silo{matchedPairs.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="mt-3 flex min-w-0 flex-wrap gap-3">
+                {categoryPairs.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
+                    No silos are currently bundled for this snapshot.
+                  </div>
+                ) : matchedPairs.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
+                    No silos contain an address matching the current filter.
+                  </div>
+                ) : (
+                  matchedPairs.map(({ chain, silo }) => {
+                    const isSelected =
+                      selectedChain?.chain === chain.chain && selectedSilo?.address === silo.address;
+                    return (
                       <div
-                        key={silo.address}
+                        key={`${chain.chain}-${silo.address}`}
                         className={`min-w-0 rounded-2xl border px-4 py-3 text-left transition ${
-                          selectedSilo?.address === silo.address
+                          isSelected
                             ? "border-emerald-300/40 bg-emerald-300/10"
                             : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
                         }`}
                         role="button"
                         tabIndex={0}
-                        onClick={() => selectSilo(silo.address)}
+                        onClick={() => selectSilo(chain.chain, silo.address)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            selectSilo(silo.address);
+                            selectSilo(chain.chain, silo.address);
                           }
                         }}
                       >
@@ -2465,14 +2509,15 @@ function ExplorerView() {
                           <span className="truncate font-semibold">
                             {silo.inputToken.symbol} <SiloKindLabel silo={silo} />
                           </span>
-                          {selectedSilo?.address === silo.address ? (
+                          {isSelected ? (
                             <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">
                               Selected
                             </span>
                           ) : null}
                         </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
-                          <AddressLink address={silo.address} chain={selectedChain.chain} showSiloPageLink />
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                          <NetworkBadge chainId={chain.chainId} />
+                          <AddressLink address={silo.address} chain={chain.chain} showSiloPageLink />
                         </div>
                         {showAirdropColumn && airdropPlan ? (
                           <div className="mt-1 text-xs text-slate-400">
@@ -2487,25 +2532,25 @@ function ExplorerView() {
                           </div>
                         ) : null}
                       </div>
-                    ))
-                  )}
-                </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </section>
 
-          {selectedSilo ? (
+          {selectedSilo && selectedChain ? (
             <SiloDetailPanel
               addressFilter={addressFilter}
               buildFilterShareUrl={(filter) =>
-                buildExplorerSelectionUrl(selectedChain.chain, selectedSilo.address, filter)
+                buildExplorerSelectionUrl(slug, selectedChain.chain, selectedSilo.address, filter)
               }
               addressTypeFilter={addressTypeFilter}
               addressTypes={addressTypes}
               airdropSiloCount={airdropSilos.length}
               categoryLabel={SILO_CATEGORY_LABELS[activeCategory]}
               chain={selectedChain}
-              defaultAirdropAmount={SILO_CATEGORY_DEFAULT_AIRDROP[activeCategory]}
+              defaultAirdropAmount={airdropDefaults[activeCategory] ?? ""}
               directExpanded={directExpanded}
               directSort={directSort}
               distributeAirdropsEnabled={distributeAirdropsEnabled}
@@ -2522,12 +2567,13 @@ function ExplorerView() {
               setExpandedVaults={setExpandedVaults}
               setIncludeOtherContracts={setIncludeOtherContracts}
               setAirdropInput={setAirdropInput}
+              showAirdrops={airdropEnabled}
               showAirdropColumn={showAirdropColumn}
               silo={selectedSilo}
             />
           ) : (
             <section className="min-w-0">
-              <EmptyState message="Select a chain with bundled silo data to view snapshot details." />
+              <EmptyState message="Select a silo to view snapshot details." />
             </section>
           )}
         </div>
@@ -2537,6 +2583,7 @@ function ExplorerView() {
 }
 
 function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapshot }) {
+  const { slug } = useActiveCategory();
   const [addressFilter, setAddressFilter] = useState(() => parseFilterFromUrl());
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
@@ -2546,12 +2593,12 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
 
   // Reflect the address filter in the URL so the filtered silo view is shareable.
   useEffect(() => {
-    const url = buildSiloPathWithFilter(chain.chain, silo.address, addressFilter);
+    const url = buildSiloPathWithFilter(slug, chain.chain, silo.address, addressFilter);
     const current = `${window.location.pathname}${window.location.search}`;
     if (current !== url) {
       window.history.replaceState(null, "", url);
     }
-  }, [addressFilter, chain.chain, silo.address]);
+  }, [slug, addressFilter, chain.chain, silo.address]);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
@@ -2565,7 +2612,7 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
         <div className="min-w-0 space-y-6 py-8">
           <SiloDetailPanel
             addressFilter={addressFilter}
-            buildFilterShareUrl={(filter) => buildSiloPathWithFilter(chain.chain, silo.address, filter)}
+            buildFilterShareUrl={(filter) => buildSiloPathWithFilter(slug, chain.chain, silo.address, filter)}
             addressTypeFilter="all"
             addressTypes={[]}
             chain={chain}
@@ -2614,17 +2661,114 @@ function SiloNotFoundView({ address, chain }: { address: string; chain?: string 
   );
 }
 
+function categorySiloCount(category: SnapshotCategory): number {
+  if (!category.data) {
+    return 0;
+  }
+  return category.data.chains.reduce((total, chain) => total + chain.silos.length, 0);
+}
+
+function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
+  return (
+    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
+      <section className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Lender Snapshots</h1>
+          <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-semibold text-slate-400">
+            v{APP_VERSION}
+          </span>
+        </div>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+          Static, no-RPC snapshot explorer for direct holders and vault depositors across chains. Pick a snapshot to
+          browse its lenders and prepare pro-rata airdrop distributions.
+        </p>
+
+        {notFoundSlug ? (
+          <p className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium text-amber-200">
+            <WarningIcon className="h-4 w-4 shrink-0" />
+            <span>
+              Unknown snapshot <span className="font-mono">{notFoundSlug}</span>. Choose one below.
+            </span>
+          </p>
+        ) : null}
+
+        <div className="mt-8 grid gap-4 sm:grid-cols-2">
+          {SNAPSHOT_CATEGORIES.map((category) => {
+            const siloCount = categorySiloCount(category);
+            const comingSoon = !category.data;
+            const cardBody = (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-lg font-semibold text-white">{category.label}</span>
+                  {comingSoon ? (
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-400">Coming soon</span>
+                  ) : (
+                    <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
+                      →
+                    </span>
+                  )}
+                </div>
+                {comingSoon ? null : (
+                  <p className="mt-3 text-xs text-slate-400">
+                    {siloCount} silo{siloCount === 1 ? "" : "s"}
+                  </p>
+                )}
+              </>
+            );
+
+            if (comingSoon) {
+              return (
+                <div
+                  key={category.slug}
+                  aria-disabled="true"
+                  className="cursor-not-allowed rounded-3xl border border-white/10 bg-white/[0.02] p-5 opacity-60"
+                >
+                  {cardBody}
+                </div>
+              );
+            }
+
+            return (
+              <a
+                key={category.slug}
+                className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"
+                href={categoryHomePath(category.slug)}
+              >
+                {cardBody}
+              </a>
+            );
+          })}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 export default function App() {
+  const categorySlug = parseCategoryFromUrl();
+
+  // Root: landing page listing every snapshot category.
+  if (!categorySlug) {
+    return <LandingView />;
+  }
+
+  const category = findCategory(categorySlug);
+  if (!category || !category.data) {
+    return <LandingView notFoundSlug={categorySlug} />;
+  }
+
+  const active = toActiveCategory(category);
   const pathMatch = parseSiloPathFromUrl();
-  const siloMatch = pathMatch ? findSiloByAddress(pathMatch.address, pathMatch.chain) : null;
+  const siloMatch = pathMatch ? findSiloByAddress(active.chains, pathMatch.address, pathMatch.chain) : null;
 
+  let view: ReactNode;
   if (pathMatch && !siloMatch) {
-    return <SiloNotFoundView address={pathMatch.address} chain={pathMatch.chain} />;
+    view = <SiloNotFoundView address={pathMatch.address} chain={pathMatch.chain} />;
+  } else if (siloMatch) {
+    view = <SiloOnlyView chain={siloMatch.chain} silo={siloMatch.silo} />;
+  } else {
+    view = <ExplorerView />;
   }
 
-  if (siloMatch) {
-    return <SiloOnlyView chain={siloMatch.chain} silo={siloMatch.silo} />;
-  }
-
-  return <ExplorerView />;
+  return <CategoryContext.Provider value={active}>{view}</CategoryContext.Provider>;
 }

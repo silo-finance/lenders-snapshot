@@ -1,7 +1,9 @@
 const SILO_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/i;
 const CHAIN_NAME_PATTERN = /^[a-z0-9_-]+$/i;
+const CATEGORY_PATTERN = /^[a-z0-9_-]+$/i;
 
 export type SiloPathMatch = {
+  category: string;
   address: string;
   chain?: string;
 };
@@ -11,42 +13,68 @@ export function getAppBasePath(): string {
   return base.endsWith("/") ? base.slice(0, -1) : base;
 }
 
-export function parseSiloPathFromUrl(): SiloPathMatch | null {
+// Path segments after the app base path, e.g. `/lenders-snapshot/trevee-airdrop/sonic/0x..`
+// under base `/lenders-snapshot` yields ["trevee-airdrop", "sonic", "0x.."].
+function pathSegments(): string[] {
   const base = getAppBasePath();
   let pathname = window.location.pathname;
-
   if (base && pathname.startsWith(base)) {
     pathname = pathname.slice(base.length);
   }
+  return pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+}
 
-  const segments = pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+// The first path segment is the snapshot category slug (e.g. "trevee-airdrop"), or null at
+// the root (landing page). Validity against the known categories is checked by the caller.
+export function parseCategoryFromUrl(): string | null {
+  const segments = pathSegments();
   if (segments.length === 0) {
     return null;
   }
+  return CATEGORY_PATTERN.test(segments[0]) ? segments[0].toLowerCase() : null;
+}
 
-  if (segments.length >= 2 && CHAIN_NAME_PATTERN.test(segments[0]) && SILO_ADDRESS_PATTERN.test(segments[1])) {
+// A silo-only subpage: `/<category>/<chain>/<address>` (or `/<category>/<address>`).
+export function parseSiloPathFromUrl(): SiloPathMatch | null {
+  const segments = pathSegments();
+  if (segments.length < 2) {
+    return null;
+  }
+  const category = segments[0].toLowerCase();
+  const rest = segments.slice(1);
+
+  if (rest.length >= 2 && CHAIN_NAME_PATTERN.test(rest[0]) && SILO_ADDRESS_PATTERN.test(rest[1])) {
     return {
-      chain: segments[0].toLowerCase(),
-      address: segments[1],
+      category,
+      chain: rest[0].toLowerCase(),
+      address: rest[1],
     };
   }
 
-  if (segments.length === 1 && SILO_ADDRESS_PATTERN.test(segments[0])) {
-    return { address: segments[0] };
+  if (rest.length === 1 && SILO_ADDRESS_PATTERN.test(rest[0])) {
+    return { category, address: rest[0] };
   }
 
   return null;
 }
 
-export function buildSiloPath(chain: string, address: string): string {
+function withBase(path: string): string {
   const base = getAppBasePath();
-  const segment = `${chain.toLowerCase()}/${address}`;
-  return base ? `${base}/${segment}` : `/${segment}`;
+  return base ? `${base}${path}` : path;
 }
 
-export function explorerHomePath(): string {
-  const base = getAppBasePath();
-  return base ? `${base}/` : "/";
+// Root of the app: the landing page listing every category.
+export function landingHomePath(): string {
+  return withBase("/");
+}
+
+// Home (explorer) of a single category.
+export function categoryHomePath(category: string): string {
+  return withBase(`/${category.toLowerCase()}`);
+}
+
+export function buildSiloPath(category: string, chain: string, address: string): string {
+  return withBase(`/${category.toLowerCase()}/${chain.toLowerCase()}/${address}`);
 }
 
 export type ExplorerSelection = {
@@ -67,7 +95,12 @@ export function parseExplorerSelectionFromUrl(): ExplorerSelection {
   };
 }
 
-export function buildExplorerSelectionUrl(chain: string, address: string, filter?: string): string {
+export function buildExplorerSelectionUrl(
+  category: string,
+  chain: string,
+  address: string,
+  filter?: string,
+): string {
   const params = new URLSearchParams();
   params.set("chain", chain.toLowerCase());
   params.set("silo", address);
@@ -75,15 +108,20 @@ export function buildExplorerSelectionUrl(chain: string, address: string, filter
   if (trimmedFilter) {
     params.set("filter", trimmedFilter);
   }
-  return `${explorerHomePath()}?${params.toString()}`;
+  return `${categoryHomePath(category)}?${params.toString()}`;
 }
 
 export function parseFilterFromUrl(): string {
   return new URLSearchParams(window.location.search).get("filter")?.trim() || "";
 }
 
-export function buildSiloPathWithFilter(chain: string, address: string, filter?: string): string {
-  const path = buildSiloPath(chain, address);
+export function buildSiloPathWithFilter(
+  category: string,
+  chain: string,
+  address: string,
+  filter?: string,
+): string {
+  const path = buildSiloPath(category, chain, address);
   const trimmedFilter = filter?.trim();
   if (!trimmedFilter) {
     return path;
