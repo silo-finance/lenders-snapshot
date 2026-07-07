@@ -1,5 +1,3 @@
-import snapshotJson from "../scripts/lender-snapshot/distribution_snapshot.json";
-
 type RawAmount = string | number | null | undefined;
 
 type RawInputToken = {
@@ -83,7 +81,7 @@ type RawChain = {
   silos?: Record<string, RawSilo>;
 };
 
-type RawRoot = Record<string, RawChain>;
+export type RawRoot = Record<string, RawChain>;
 
 export type InputToken = {
   address: string | null;
@@ -355,7 +353,7 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
   };
 }
 
-function parseSnapshot(root: RawRoot): ChainSnapshot[] {
+export function parseSnapshot(root: RawRoot): ChainSnapshot[] {
   const chainNames = Object.keys(root).sort((a, b) => {
     const knownOrder = Object.keys(KNOWN_CHAINS);
     const aIndex = knownOrder.indexOf(a);
@@ -379,12 +377,9 @@ function parseSnapshot(root: RawRoot): ChainSnapshot[] {
   });
 }
 
-export const chains = parseSnapshot(snapshotJson as RawRoot);
-
-// Every silo in the snapshot is captured at the same block, so the first non-zero
-// value represents the global snapshot block (the "from" / state block) used across
-// the whole UI.
-export const snapshotBlock: number = (() => {
+// Every silo in a snapshot is captured at the same block, so the first non-zero
+// value represents the snapshot block (the "from" / state block) used across the UI.
+function computeSnapshotBlock(chains: ChainSnapshot[]): number {
   for (const chain of chains) {
     for (const silo of chain.silos) {
       if (silo.snapshotBlock > 0) {
@@ -393,9 +388,9 @@ export const snapshotBlock: number = (() => {
     }
   }
   return 0;
-})();
+}
 
-function maxFlowEventBlock(): number {
+function maxFlowEventBlock(chains: ChainSnapshot[]): number {
   let max = 0;
   const consider = (entries: { blockNumber: number }[]) => {
     for (const entry of entries) {
@@ -423,13 +418,13 @@ function maxFlowEventBlock(): number {
   return max;
 }
 
-// Highest block up to which post-snapshot events were scanned across the whole
-// snapshot. This is a single global value (not per-silo): prefer the maximum
+// Highest block up to which post-snapshot events were scanned across a snapshot.
+// This is a single value (not per-silo): prefer the maximum
 // `withdrawals_scanned_to_block` from the raw JSON, and fall back to the max event
 // block for backward compatibility with older snapshots that lack that field.
-export const eventsToBlock: number = (() => {
+function computeEventsToBlock(root: RawRoot, chains: ChainSnapshot[]): number {
   let max = 0;
-  for (const rawChain of Object.values(snapshotJson as RawRoot)) {
+  for (const rawChain of Object.values(root)) {
     for (const rawSilo of Object.values(rawChain?.silos ?? {})) {
       const scannedTo = toNumber(rawSilo.withdrawals_scanned_to_block, 0);
       if (scannedTo > max) {
@@ -437,8 +432,25 @@ export const eventsToBlock: number = (() => {
       }
     }
   }
-  return max > 0 ? max : maxFlowEventBlock();
-})();
+  return max > 0 ? max : maxFlowEventBlock(chains);
+}
+
+// Parsed, ready-to-render data for a single snapshot category. Built once per category
+// (see src/categories.ts) from that category's raw JSON.
+export type CategoryData = {
+  chains: ChainSnapshot[];
+  snapshotBlock: number;
+  eventsToBlock: number;
+};
+
+export function buildCategoryData(root: RawRoot): CategoryData {
+  const chains = parseSnapshot(root);
+  return {
+    chains,
+    snapshotBlock: computeSnapshotBlock(chains),
+    eventsToBlock: computeEventsToBlock(root, chains),
+  };
+}
 
 export type SiloCategory = "usdc" | "eth";
 
@@ -447,12 +459,6 @@ export const SILO_CATEGORY_ORDER: SiloCategory[] = ["usdc", "eth"];
 export const SILO_CATEGORY_LABELS: Record<SiloCategory, string> = {
   usdc: "USDC",
   eth: "ETH",
-};
-
-// Default airdrop amounts pre-filled when distribution is enabled, per category.
-export const SILO_CATEGORY_DEFAULT_AIRDROP: Record<SiloCategory, string> = {
-  usdc: "46019",
-  eth: "42.53239",
 };
 
 /**
@@ -465,6 +471,7 @@ export function siloCategory(silo: SiloSnapshot): SiloCategory {
 }
 
 export function findSiloByAddress(
+  chains: ChainSnapshot[],
   address: string,
   chainName?: string,
 ): { chain: ChainSnapshot; silo: SiloSnapshot } | null {
