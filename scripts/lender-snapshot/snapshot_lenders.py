@@ -40,11 +40,20 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # --------------------------------------------------------------------------------------
 DEFAULT_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/8wcbzcdNirQvk1ETh25wpVzb5GWs8DvugpbwrYnTCcxj"
 
+# Snapshot categories. Each category is a self-contained snapshot rendered under its own
+# path in the UI (e.g. `/lenders-snapshot/trevee`) and written to its own data file
+# (`data/<slug>.json`). Categories are intentionally HARDCODED here: adding one is a rare,
+# deliberate edit (new silo list) followed by a rerun of this script.
+#
+# Each category maps to a list of chain targets. Each chain target has:
+#   "chain" (slug), "chain_id", "subgraph_url", and a "silos" list.
 # Each entry in a chain's `silos` list supports:
 #   "address" (required), "block" (required),
 #   "type"    (optional): "silo" (default) enumerates collateral lenders via the subgraph
 #             `positions`; "silo_vault" enumerates ERC4626 depositors via `vaultPositions`.
-TARGETS: list[dict[str, Any]] = [
+CATEGORIES: dict[str, dict[str, Any]] = {
+    "trevee": {
+        "targets": [
     {
         "chain": "sonic",
         "chain_id": 146,
@@ -115,7 +124,9 @@ TARGETS: list[dict[str, Any]] = [
         # Placeholder until Ethereum silo addresses and snapshot blocks are supplied.
         "silos": [],
     },
-]
+        ],
+    },
+}
 
 BLOCK = 0
 SILO_ADDRESS = ""
@@ -131,7 +142,15 @@ SILO_TYPE_SILO = "silo"
 SILO_TYPE_VAULT = "silo_vault"
 VALID_SILO_TYPES = (SILO_TYPE_SILO, SILO_TYPE_VAULT)
 
-OUTPUT_JSON = str(SCRIPT_DIR / "distribution_snapshot.json")
+# Per-category snapshot files live under `data/<slug>.json`. This directory is also what
+# the frontend imports from (see src/categories.ts).
+DATA_DIR = SCRIPT_DIR / "data"
+
+
+def category_output_path(slug: str, category: dict[str, Any]) -> Path:
+    """Resolve the output JSON path for a category (defaults to `data/<slug>.json`)."""
+    filename = str(category.get("output") or f"{slug}.json")
+    return DATA_DIR / filename
 
 MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11"
 MULTICALL_BATCH = 300
@@ -1777,8 +1796,11 @@ def _merge_silo_entry(old_silo: Any, new_silo: dict[str, Any]) -> dict[str, Any]
     return merged
 
 
-def write_output(silo_entry: dict[str, Any], chain: str, chain_id: int, silo_address: str) -> None:
-    path = Path(OUTPUT_JSON)
+def write_output(
+    silo_entry: dict[str, Any], chain: str, chain_id: int, silo_address: str, output_path: Path
+) -> None:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     root: dict[str, Any] = {}
     if path.exists():
         # Silently resetting a corrupt/unexpected output file would wipe previously written
@@ -1808,19 +1830,27 @@ def write_output(silo_entry: dict[str, Any], chain: str, chain_id: int, silo_add
     print(f"[ok] wrote {path}")
 
 
-def main() -> int:
+def run_category(slug: str, category: dict[str, Any]) -> int:
+    """Scan every silo configured for one category and write `data/<slug>.json`.
+
+    Returns the number of silos completed for this category.
+    """
     import time
 
-    load_secrets()
-    total_silos = sum(len(target.get("silos") or []) for target in TARGETS)
-    print(f"[info] configured targets: {total_silos} silo(s) across {len(TARGETS)} chain(s)")
+    targets = category.get("targets") or []
+    output_path = category_output_path(slug, category)
+    total_silos = sum(len(target.get("silos") or []) for target in targets)
+    print(
+        f"[info] ##### category '{slug}': {total_silos} silo(s) across {len(targets)} chain(s) "
+        f"-> {output_path} #####"
+    )
     completed = 0
     silo_index = 0
     started_at = time.monotonic()
-    for target in TARGETS:
+    for target in targets:
         silos = target.get("silos") or []
         if not silos:
-            print(f"[skip] chain={target['chain']} has no configured silos")
+            print(f"[skip] category={slug} chain={target['chain']} has no configured silos")
             continue
         rpc_url = resolve_rpc_url(str(target["chain"]))
         # Resolve the chain head once per chain so every silo on this chain shares
@@ -1831,7 +1861,7 @@ def main() -> int:
             silo_index += 1
             configure_context(target, silo)
             print(
-                f"[info] ===== silo {silo_index}/{total_silos}: chain={CHAIN} "
+                f"[info] ===== [{slug}] silo {silo_index}/{total_silos}: chain={CHAIN} "
                 f"silo={SILO_ADDRESS} block={BLOCK} ====="
             )
             silo_started_at = time.monotonic()
@@ -1843,20 +1873,44 @@ def main() -> int:
                 withdrawals_block_chunk=withdrawals_block_chunk,
                 latest_block=chain_latest_block,
             )
-            write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS)
+            write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS, output_path)
             direct = len(silo_entry["direct_lenders"])
             vaults = len(silo_entry["vaults"])
             elapsed = time.monotonic() - silo_started_at
             print(
-                f"[done] silo {silo_index}/{total_silos} chain={CHAIN} silo={SILO_ADDRESS} "
+                f"[done] [{slug}] silo {silo_index}/{total_silos} chain={CHAIN} silo={SILO_ADDRESS} "
                 f"direct_lenders={direct} vaults={vaults} elapsed={elapsed:.1f}s"
             )
             completed += 1
     if completed == 0:
-        print("[done] no silos configured")
+        print(f"[done] category '{slug}': no silos configured")
     else:
         total_elapsed = time.monotonic() - started_at
-        print(f"[done] all {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
+        print(f"[done] category '{slug}': {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
+    return completed
+
+
+def main() -> int:
+    load_secrets()
+
+    # Optional positional args select which categories to scan (default: all). This is the
+    # "new silo list -> new file" workflow: `./run.sh snapshot_lenders.py <slug>`.
+    requested = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
+    unknown = [slug for slug in requested if slug not in CATEGORIES]
+    if unknown:
+        available = ", ".join(sorted(CATEGORIES)) or "(none)"
+        raise SystemExit(f"Unknown category slug(s): {', '.join(unknown)}. Available: {available}")
+    selected = requested or list(CATEGORIES)
+
+    print(f"[info] scanning {len(selected)} categor(y/ies): {', '.join(selected)}")
+    total_completed = 0
+    for slug in selected:
+        total_completed += run_category(slug, CATEGORIES[slug])
+
+    if total_completed == 0:
+        print("[done] no silos configured")
+    else:
+        print(f"[done] all categories complete: {total_completed} silo(s) total")
     return 0
 
 
