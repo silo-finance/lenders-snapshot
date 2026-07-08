@@ -120038,7 +120038,8 @@
             "status": "ok"
           }
         },
-        "withdrawals_scanned_to_block": 75078341
+        "withdrawals_scanned_to_block": 75078341,
+        "borrow_repay_silo": "0x172a687c397e315dbe56ed78ab347d7743d0d4fa"
       },
       "0xb1412442aa998950f2f652667d5eba35fe66e43f": {
         "snapshot_block": 54144258,
@@ -128359,7 +128360,8 @@
             "status": "ok"
           }
         },
-        "withdrawals_scanned_to_block": 75078341
+        "withdrawals_scanned_to_block": 75078341,
+        "borrow_repay_silo": "0x596aef68a03a0e35c4d8e624fbbdb0df0862f172"
       }
     }
   },
@@ -154597,7 +154599,8 @@
             "status": "ok"
           }
         },
-        "withdrawals_scanned_to_block": 75078341
+        "withdrawals_scanned_to_block": 75078341,
+        "borrow_repay_silo": "0xf0543d476e7906374863091034fe679a7be8ee20"
       }
     }
   },
