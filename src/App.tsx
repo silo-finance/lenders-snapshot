@@ -586,16 +586,22 @@ function AddressLink({
   address,
   showSiloPageLink = false,
   bareCopy = false,
+  tone = "emerald",
 }: {
   chain: string;
   address: string;
   showSiloPageLink?: boolean;
   bareCopy?: boolean;
+  tone?: "emerald" | "amber";
 }) {
+  const linkClass =
+    tone === "amber"
+      ? "font-mono text-amber-300 transition hover:text-amber-200"
+      : "font-mono text-emerald-200 transition hover:text-emerald-100";
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
       <a
-        className="font-mono text-emerald-200 transition hover:text-emerald-100"
+        className={linkClass}
         href={explorerAddressUrl(chain, address)}
         rel="noreferrer"
         target="_blank"
@@ -773,12 +779,16 @@ function hasFlowActivity(row: {
   totalDeposits: bigint;
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
+  totalBorrows?: bigint;
+  totalRepays?: bigint;
 }): boolean {
   return (
     row.totalWithdrawals > ZERO ||
     row.totalDeposits > ZERO ||
     row.totalTransfersIn > ZERO ||
-    row.totalTransfersOut > ZERO
+    row.totalTransfersOut > ZERO ||
+    (row.totalBorrows ?? ZERO) > ZERO ||
+    (row.totalRepays ?? ZERO) > ZERO
   );
 }
 
@@ -789,10 +799,14 @@ function PendingAssetsBreakdown({
   totalDeposits,
   totalTransfersIn,
   totalTransfersOut,
+  totalBorrows = ZERO,
+  totalRepays = ZERO,
   pendingAssets,
   withdrawals,
   deposits,
   transfers,
+  borrows = [],
+  repays = [],
   decimals,
   symbol,
 }: {
@@ -802,15 +816,21 @@ function PendingAssetsBreakdown({
   totalDeposits: bigint;
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
+  totalBorrows?: bigint;
+  totalRepays?: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
   transfers: TransferEntry[];
+  borrows?: WithdrawalEntry[];
+  repays?: WithdrawalEntry[];
   decimals: number;
   symbol: string;
 }) {
-  type FlowKind = "deposit" | "withdrawal" | "transfer-in" | "transfer-out";
-  const isCredit = (kind: FlowKind) => kind === "deposit" || kind === "transfer-in";
+  // Two-sided markets add Borrow (debit, like a withdrawal) and Repay (credit, like a
+  // deposit); all five kinds share one chronological timeline.
+  type FlowKind = "deposit" | "withdrawal" | "transfer-in" | "transfer-out" | "borrow" | "repay";
+  const isCredit = (kind: FlowKind) => kind === "deposit" || kind === "transfer-in" || kind === "repay";
   const flows: Array<{ event: WithdrawalEntry; kind: FlowKind; counterparty?: string }> = [
     ...deposits.map((event) => ({ event, kind: "deposit" as FlowKind })),
     ...withdrawals.map((event) => ({ event, kind: "withdrawal" as FlowKind })),
@@ -819,6 +839,8 @@ function PendingAssetsBreakdown({
       kind: (event.direction === "in" ? "transfer-in" : "transfer-out") as FlowKind,
       counterparty: event.counterparty,
     })),
+    ...borrows.map((event) => ({ event, kind: "borrow" as FlowKind })),
+    ...repays.map((event) => ({ event, kind: "repay" as FlowKind })),
   ].sort(
     (a, b) =>
       a.event.blockNumber - b.event.blockNumber ||
@@ -839,13 +861,17 @@ function PendingAssetsBreakdown({
   );
 
   const labelClass = (kind: FlowKind) =>
-    kind === "deposit"
+    kind === "deposit" || kind === "repay"
       ? "text-emerald-300/80"
-      : kind === "withdrawal"
+      : kind === "withdrawal" || kind === "borrow"
         ? "text-rose-300/80"
         : "text-amber-300/80";
   const amountClass = (kind: FlowKind) =>
-    kind === "deposit" ? "text-emerald-300" : kind === "withdrawal" ? undefined : "text-amber-300";
+    kind === "deposit" || kind === "repay"
+      ? "text-emerald-300"
+      : kind === "withdrawal" || kind === "borrow"
+        ? undefined
+        : "text-amber-300";
   const pendingNegative = pendingAssets < ZERO;
 
   return (
@@ -856,7 +882,12 @@ function PendingAssetsBreakdown({
       </div>
       {flows.length === 0 ? (
         <div className="mt-2 text-slate-500">
-          {totalWithdrawals > ZERO || totalDeposits > ZERO || totalTransfersIn > ZERO || totalTransfersOut > ZERO
+          {totalWithdrawals > ZERO ||
+          totalDeposits > ZERO ||
+          totalTransfersIn > ZERO ||
+          totalTransfersOut > ZERO ||
+          totalBorrows > ZERO ||
+          totalRepays > ZERO
             ? "Itemized flow events are unavailable in this snapshot payload."
             : "No deposits, withdrawals or transfers after snapshot block."}
         </div>
@@ -934,10 +965,22 @@ function PendingAssetsBreakdown({
             <span className="text-amber-300">-{formatUnitsFixed(totalTransfersOut, decimals)}</span>
           </div>
         ) : null}
+        {totalRepays > ZERO ? (
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-slate-400">total repays</span>
+            <span className="text-emerald-300">+{formatUnitsFixed(totalRepays, decimals)}</span>
+          </div>
+        ) : null}
         <div className="mt-1 flex justify-between gap-3">
           <span className="text-slate-400">total withdrawals</span>
           <span>-{formatUnitsFixed(totalWithdrawals, decimals)}</span>
         </div>
+        {totalBorrows > ZERO ? (
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-slate-400">total borrows</span>
+            <span>-{formatUnitsFixed(totalBorrows, decimals)}</span>
+          </div>
+        ) : null}
         <div className={`mt-1 flex justify-between gap-3 ${pendingNegative ? "text-rose-300" : "text-emerald-200"}`}>
           <span>= pending assets ({symbol})</span>
           <span>{formatUnitsFixed(pendingAssets, decimals)}</span>
@@ -993,7 +1036,9 @@ function HolderTable({
 
   const metaTitle = (
     <>
-      <h3 className="font-semibold text-white">Direct lenders ({rows.length})</h3>
+      <h3 className="font-semibold text-white">
+        {silo.isTwoSided ? "Direct lenders/borrowers" : "Direct lenders"} ({rows.length})
+      </h3>
       <SectionNavButtons nextId={navNextId} />
     </>
   );
@@ -1089,11 +1134,12 @@ function HolderTable({
                 tableRows.map((row) => {
                   const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
                   const hasFlows = !row.isVault && hasFlowActivity(row);
+                  const isBorrower = !row.isVault && row.totalBorrows > ZERO;
                   return (
                     <Fragment key={row.address}>
                       <tr className="hover:bg-white/[0.03]">
                         <td className="px-5 py-4">
-                          <AddressLink address={row.address} chain={chain} />
+                          <AddressLink address={row.address} chain={chain} tone={isBorrower ? "amber" : "emerald"} />
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
@@ -1139,7 +1185,11 @@ function HolderTable({
                         <td className="px-2 py-4 text-center font-mono tabular-nums">
                           {hasFlows ? (
                             <button
-                              className="font-sans text-lg font-semibold leading-none text-emerald-200 transition hover:text-emerald-100"
+                              className={`font-sans text-lg font-semibold leading-none transition ${
+                                isBorrower
+                                  ? "text-amber-300 hover:text-amber-200"
+                                  : "text-emerald-200 hover:text-emerald-100"
+                              }`}
                               title={breakdownOpen ? "Hide flow details" : "Show flow details"}
                               type="button"
                               onClick={() => toggleBreakdown(row.address)}
@@ -1174,11 +1224,15 @@ function HolderTable({
                             <PendingAssetsBreakdown
                               chain={chain}
                               baseAssets={row.totalAssets}
+                              borrows={row.borrows}
                               decimals={silo.inputToken.decimals}
                               deposits={row.deposits}
                               pendingAssets={row.pendingAssets}
+                              repays={row.repays}
                               symbol={silo.inputToken.symbol}
+                              totalBorrows={row.totalBorrows}
                               totalDeposits={row.totalDeposits}
+                              totalRepays={row.totalRepays}
                               totalTransfersIn={row.totalTransfersIn}
                               totalTransfersOut={row.totalTransfersOut}
                               totalWithdrawals={row.totalWithdrawals}
@@ -1455,6 +1509,27 @@ function SiloKindLabel({ silo }: { silo: SiloSnapshot }) {
     );
   }
   return <>Silo {silo.siloId ? `#${silo.siloId}` : "#--"}</>;
+}
+
+// Marks a two-way (borrow/repay) silo: two horizontal arrows, top pointing left and bottom
+// pointing right, in amber to match the borrower row highlight.
+function TwoWayIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={`inline-block h-3.5 w-3.5 shrink-0 text-amber-300 ${className}`}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <title>Two-way silo (lenders and borrowers)</title>
+      <path d="M20 8H4m0 0 4-4M4 8l4 4" />
+      <path d="M4 16h16m0 0-4-4m4 4-4 4" />
+    </svg>
+  );
 }
 
 function addCsvAirdrop(csvAirdrops: Map<string, bigint | null>, address: string, amount: bigint | null) {
@@ -2045,13 +2120,16 @@ function SiloDetailPanel({
         <div className={`grid gap-6 xl:items-start ${showAirdrops ? "xl:grid-cols-3" : ""}`}>
           <div className={showAirdrops ? "xl:col-span-1" : ""}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-emerald-200">
-              <span>
+              <span className="inline-flex items-center gap-1.5">
                 {silo.inputToken.symbol} / <SiloKindLabel silo={silo} />
+                {silo.isTwoSided ? <TwoWayIcon /> : null}
               </span>
               <NetworkBadge chainId={chain.chainId} />
               <AddressLink address={silo.address} chain={chain.chain} />
             </div>
-            <h2 className="mt-2 text-3xl font-semibold text-white">Silo lenders details</h2>
+            <h2 className="mt-2 text-3xl font-semibold text-white">
+              {silo.isTwoSided ? "Silo lenders/borrowers details" : "Silo lenders details"}
+            </h2>
             <p className="mt-2 text-sm">
               {eventsToBlock > snapshotBlock ? (
                 <>
@@ -2554,6 +2632,7 @@ function ExplorerView() {
                           <span className="truncate font-semibold">
                             {silo.inputToken.symbol} <SiloKindLabel silo={silo} />
                           </span>
+                          {silo.isTwoSided ? <TwoWayIcon /> : null}
                           {isSelected ? (
                             <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">
                               Selected

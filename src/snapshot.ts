@@ -15,10 +15,15 @@ type RawDirectLender = {
   total_deposits?: RawAmount;
   total_transfers_in?: RawAmount;
   total_transfers_out?: RawAmount;
+  // Two-sided markets only: Borrow debits, Repay credits, in this silo's asset units.
+  total_borrows?: RawAmount;
+  total_repays?: RawAmount;
   pending_assets?: RawAmount;
   withdrawals?: RawWithdrawalEntry[];
   deposits?: RawWithdrawalEntry[];
   transfers?: RawTransferEntry[];
+  borrows?: RawWithdrawalEntry[];
+  repays?: RawWithdrawalEntry[];
 };
 
 type RawDepositor = {
@@ -69,6 +74,7 @@ type RawSilo = {
   withdrawals_scanned_to_block?: number | string;
   silo_type?: string | null;
   silo_id?: string | number | null;
+  borrow_repay_silo?: string | null;
   input_token?: RawInputToken;
   total_assets?: RawAmount;
   collateral_total_supply?: RawAmount;
@@ -100,10 +106,15 @@ export type DirectLender = {
   totalDeposits: bigint;
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
+  // Two-sided markets only (0 otherwise): Borrow debits, Repay credits, in this silo's units.
+  totalBorrows: bigint;
+  totalRepays: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
   transfers: TransferEntry[];
+  borrows: WithdrawalEntry[];
+  repays: WithdrawalEntry[];
   isVault: boolean;
 };
 
@@ -161,6 +172,10 @@ export type SiloSnapshot = {
   snapshotBlock: number;
   siloType: SiloKind;
   siloId: string | null;
+  // Two-sided market: the paired borrow/repay silo (null for one-sided silos).
+  borrowRepaySilo: string | null;
+  // True when this silo has both lenders and borrowers (paired silo set or borrow/repay activity).
+  isTwoSided: boolean;
   inputToken: InputToken;
   collateralTotalSupply: bigint;
   totalShares: bigint;
@@ -279,6 +294,8 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
     const totalDeposits = toBigInt(entry.total_deposits);
     const totalTransfersIn = toBigInt(entry.total_transfers_in);
     const totalTransfersOut = toBigInt(entry.total_transfers_out);
+    const totalBorrows = toBigInt(entry.total_borrows);
+    const totalRepays = toBigInt(entry.total_repays);
     const pendingAssets =
       entry.pending_assets === undefined || entry.pending_assets === null || entry.pending_assets === ""
         ? totalAssets
@@ -294,10 +311,14 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       totalDeposits,
       totalTransfersIn,
       totalTransfersOut,
+      totalBorrows,
+      totalRepays,
       pendingAssets,
       withdrawals: parseFlows(entry.withdrawals),
       deposits: parseFlows(entry.deposits),
       transfers: parseTransfers(entry.transfers),
+      borrows: parseFlows(entry.borrows),
+      repays: parseFlows(entry.repays),
       isVault: entry.address_type === "silo_vault",
     };
   });
@@ -339,11 +360,21 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
   const totalAssets = toBigInt(raw.total_assets) || directLenders.reduce((sum, lender) => sum + lender.totalAssets, ZERO);
   const collateralTotalSupply = toBigInt(raw.collateral_total_supply);
 
+  const borrowRepaySilo =
+    raw.borrow_repay_silo === null || raw.borrow_repay_silo === undefined || raw.borrow_repay_silo === ""
+      ? null
+      : String(raw.borrow_repay_silo).toLowerCase();
+  const isTwoSided =
+    Boolean(borrowRepaySilo) ||
+    directLenders.some((lender) => lender.totalBorrows > ZERO || lender.totalRepays > ZERO);
+
   return {
     address,
     snapshotBlock: toNumber(raw.snapshot_block, 0),
     siloType: raw.silo_type === "silo_vault" ? "silo_vault" : "silo",
     siloId: raw.silo_id === null || raw.silo_id === undefined ? null : String(raw.silo_id),
+    borrowRepaySilo,
+    isTwoSided,
     inputToken,
     collateralTotalSupply,
     totalShares: collateralTotalSupply,

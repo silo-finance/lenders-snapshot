@@ -68,6 +68,11 @@ ETHEREUM_BLOCK_CHUNK = 10_000
 #   "address" (required),
 #   "type"    (optional): "silo" (default) enumerates collateral lenders via the subgraph
 #             `positions`; "silo_vault" enumerates ERC4626 depositors via `vaultPositions`.
+#   "borrow_repay_silo" (optional): for a two-sided market (two silos sharing one SILO_ID),
+#             the paired silo address whose asset is borrowed against this silo's collateral.
+#             Its post-snapshot Borrow (debit) and Repay (credit) events are folded into this
+#             silo's lenders' pending, converted to this silo's asset decimals. The paired
+#             silo is NOT listed as its own entry.
 CATEGORIES: dict[str, dict[str, Any]] = {
     "trevee-airdrop": {
         "targets": [
@@ -169,10 +174,16 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "block": 54144258,
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
-                    {"address": "0x172a687c397e315dbe56ed78ab347d7743d0d4fa"},  # xUSD
-                    {"address": "0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1"},  # USDC
-                    {"address": "0x596aef68a03a0e35c4d8e624fbbdb0df0862f172"},  # xUSD
-                    {"address": "0xb1412442aa998950f2f652667d5eba35fe66e43f"},  # scUSD
+                    # Two-sided markets: the stable silo is the lender silo; its paired xUSD
+                    # silo supplies Borrow/Repay (not listed as its own entry).
+                    {
+                        "address": "0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1",  # USDC, silo_id=112
+                        "borrow_repay_silo": "0x172a687c397e315dbe56ed78ab347d7743d0d4fa",  # xUSD
+                    },
+                    {
+                        "address": "0xb1412442aa998950f2f652667d5eba35fe66e43f",  # scUSD, silo_id=118
+                        "borrow_repay_silo": "0x596aef68a03a0e35c4d8e624fbbdb0df0862f172",  # xUSD
+                    },
                 ],
             },
             {
@@ -195,8 +206,11 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "block": 397731482,  # timestamp-matched to sonic block 54144258
                 "block_chunk": ARBITRUM_BLOCK_CHUNK,
                 "silos": [
-                    {"address": "0xf0543d476e7906374863091034fe679a7be8ee20"},  # xUSD
-                    {"address": "0xacb7432a4bb15402ce2afe0a7c9d5b738604f6f9"},  # USDC
+                    # Two-sided market: USDC is the lender silo; paired xUSD supplies Borrow/Repay.
+                    {
+                        "address": "0xacb7432a4bb15402ce2afe0a7c9d5b738604f6f9",  # USDC, silo_id=146
+                        "borrow_repay_silo": "0xf0543d476e7906374863091034fe679a7be8ee20",  # xUSD
+                    },
                 ],
             },
             {
@@ -215,6 +229,9 @@ CATEGORIES: dict[str, dict[str, Any]] = {
 
 BLOCK = 0
 SILO_ADDRESS = ""
+# For two-sided markets: the paired silo whose Borrow/Repay events adjust this silo's
+# lenders' pending. Empty for ordinary (one-sided) silos.
+BORROW_REPAY_SILO = ""
 # Either "silo" (collateral lenders via subgraph `positions`) or "silo_vault"
 # (ERC4626 depositors via subgraph `vaultPositions`). A SiloVault shares the Silo read
 # interface, but its holders are indexed as vault depositors, not silo positions.
@@ -285,6 +302,12 @@ TOPIC_DEPOSIT = "0x" + keccak(text="Deposit(address,address,uint256,uint256)").h
 # without a Deposit/Withdraw event. Mint (from==0x0) and burn (to==0x0) are skipped because
 # they are already accounted for by the Deposit/Withdraw scans.
 TOPIC_TRANSFER = "0x" + keccak(text="Transfer(address,address,uint256)").hex()
+# Silo Borrow(sender, receiver, owner, assets, shares): three indexed addresses like the
+# ERC4626 Withdraw, so the borrower (owner) is topics[3]. Used only for two-sided markets.
+TOPIC_BORROW = "0x" + keccak(text="Borrow(address,address,address,uint256,uint256)").hex()
+# Silo Repay(sender, owner, assets, shares): two indexed addresses, so the borrower (owner)
+# being repaid is topics[2].
+TOPIC_REPAY = "0x" + keccak(text="Repay(address,address,uint256,uint256)").hex()
 ZERO_ADDRESS = "0x" + "0" * 40
 
 
@@ -335,13 +358,15 @@ def resolve_rpc_url(chain: str) -> str:
 
 
 def configure_context(target: dict[str, Any], silo: dict[str, Any]) -> None:
-    global BLOCK, SILO_ADDRESS, SILO_TYPE, CHAIN, CHAIN_ID, SUBGRAPH_URL
+    global BLOCK, SILO_ADDRESS, SILO_TYPE, CHAIN, CHAIN_ID, SUBGRAPH_URL, BORROW_REPAY_SILO
     CHAIN = str(target["chain"]).lower()
     CHAIN_ID = int(target["chain_id"])
     SUBGRAPH_URL = str(target.get("subgraph_url") or DEFAULT_SUBGRAPH_URL)
     SILO_ADDRESS = norm(str(silo["address"]))
     # The snapshot block is defined once per chain target and shared by all its silos.
     BLOCK = int(target["block"])
+    paired = silo.get("borrow_repay_silo")
+    BORROW_REPAY_SILO = norm(str(paired)) if paired else ""
     silo_type = str(silo.get("type", SILO_TYPE_SILO)).strip().lower()
     if silo_type not in VALID_SILO_TYPES:
         raise SystemExit(
@@ -849,6 +874,24 @@ def classify_addresses(
 # --------------------------------------------------------------------------------------
 # Snapshot building
 # --------------------------------------------------------------------------------------
+def _fetch_asset_decimals(silo_address: str, mc: Multicall) -> int:
+    """Read a silo's underlying-asset ERC20 decimals.
+
+    Used to convert a paired (two-sided) silo's Borrow/Repay amounts into the main silo's
+    asset units. A revert is fatal: without decimals the conversion would be silently wrong.
+    """
+    res = mc.aggregate([(silo_address, call_asset())])
+    if not res[0][0]:
+        raise RuntimeError(f"asset() reverted for paired silo {silo_address} at block {BLOCK}")
+    asset_addr = dec_address(res[0][1])
+    if not asset_addr:
+        raise RuntimeError(f"asset() returned empty for paired silo {silo_address} at block {BLOCK}")
+    d = mc.aggregate([(asset_addr, call_decimals())])
+    if not d[0][0]:
+        raise RuntimeError(f"decimals() reverted for asset {asset_addr} of paired silo {silo_address}")
+    return dec_uint(d[0][1])
+
+
 def fetch_silo_metadata(rpc: RpcClient, mc: Multicall) -> dict[str, Any]:
     res = mc.aggregate(
         [
@@ -1106,6 +1149,52 @@ def fetch_deposit_events(
     )
 
 
+def fetch_borrow_events(
+    rpc: RpcClient,
+    contract_address: str,
+    from_block: int,
+    to_block: int,
+    block_chunk: int,
+    label: str = "",
+) -> list[dict[str, Any]]:
+    """Scan Silo Borrow logs for one silo (owner = borrower = topics[3])."""
+    return _fetch_flow_events(
+        rpc,
+        contract_address,
+        TOPIC_BORROW,
+        owner_topic_index=3,
+        min_topics=4,
+        kind="Borrow",
+        from_block=from_block,
+        to_block=to_block,
+        label=label,
+        block_chunk=block_chunk,
+    )
+
+
+def fetch_repay_events(
+    rpc: RpcClient,
+    contract_address: str,
+    from_block: int,
+    to_block: int,
+    block_chunk: int,
+    label: str = "",
+) -> list[dict[str, Any]]:
+    """Scan Silo Repay logs for one silo (owner = borrower = topics[2])."""
+    return _fetch_flow_events(
+        rpc,
+        contract_address,
+        TOPIC_REPAY,
+        owner_topic_index=2,
+        min_topics=3,
+        kind="Repay",
+        from_block=from_block,
+        to_block=to_block,
+        label=label,
+        block_chunk=block_chunk,
+    )
+
+
 def fetch_transfer_events(
     rpc: RpcClient,
     contract_address: str,
@@ -1228,6 +1317,11 @@ FLOW_FIELD_KEYS = (
     "transfers",
     "total_transfers_in",
     "total_transfers_out",
+    # Two-sided markets only (absent otherwise): Borrow debits, Repay credits.
+    "borrows",
+    "total_borrows",
+    "repays",
+    "total_repays",
     "pending_assets",
 )
 
@@ -1296,17 +1390,28 @@ def _append_transfer(
 
 
 def _finalize_pending(entry: dict[str, Any], base_assets: int) -> None:
-    """pending = base + deposits + transfers_in - withdrawals - transfers_out.
+    """pending = base + deposits + transfers_in + repays - withdrawals - transfers_out - borrows.
 
     Signed on purpose (NOT clamped to zero): a negative result surfaces unreconciled flows
     (e.g. interest accrued between snapshot and withdrawal) instead of silently hiding them.
+
+    Borrows/repays only exist for two-sided markets (converted to this silo's asset decimals
+    upstream); they default to 0 for one-sided silos.
     """
     total_deposits = int(entry.get("total_deposits", 0))
     total_withdrawals = int(entry.get("total_withdrawals", 0))
     total_transfers_in = int(entry.get("total_transfers_in", 0))
     total_transfers_out = int(entry.get("total_transfers_out", 0))
+    total_borrows = int(entry.get("total_borrows", 0))
+    total_repays = int(entry.get("total_repays", 0))
     entry["pending_assets"] = str(
-        base_assets + total_deposits + total_transfers_in - total_withdrawals - total_transfers_out
+        base_assets
+        + total_deposits
+        + total_transfers_in
+        + total_repays
+        - total_withdrawals
+        - total_transfers_out
+        - total_borrows
     )
 
 
@@ -1345,6 +1450,10 @@ def enrich_snapshot_with_flows(
     """Apply post-snapshot collateral Deposit (+) and Withdraw (-) flows to each position.
 
     Addresses that first appear via a post-snapshot deposit are added as new recipients.
+
+    For two-sided markets (when `BORROW_REPAY_SILO` is set) the paired silo's Borrow (-) and
+    Repay (+) events are also folded into this silo's direct lenders, converted to this silo's
+    asset decimals.
     """
     direct_lenders = silo_entry.get("direct_lenders")
     if not isinstance(direct_lenders, dict):
@@ -1398,6 +1507,34 @@ def enrich_snapshot_with_flows(
     def silo_shares_to_assets(shares: int) -> int:
         return (silo_total_assets * shares) // silo_total_supply if silo_total_supply else 0
 
+    # Two-sided market: fold Borrow (debit) / Repay (credit) from the paired silo into this
+    # silo's lenders. Event amounts are in the paired silo's asset units and are converted to
+    # this silo's asset decimals in place (par 1:1 value assumption), so all downstream
+    # bookkeeping stays in the main silo's units.
+    silo_borrows: list[dict[str, Any]] = []
+    silo_repays: list[dict[str, Any]] = []
+    if BORROW_REPAY_SILO:
+        main_decimals = int((silo_entry.get("input_token") or {}).get("decimals") or 0)
+        paired_decimals = _fetch_asset_decimals(BORROW_REPAY_SILO, mc)
+        print(
+            f"[info] two-sided market: scanning Borrow/Repay on paired silo {BORROW_REPAY_SILO} "
+            f"(decimals {paired_decimals} -> {main_decimals})"
+        )
+
+        def _to_main_assets(assets: int) -> int:
+            if paired_decimals == main_decimals:
+                return assets
+            return assets * (10 ** main_decimals) // (10 ** paired_decimals)
+
+        silo_borrows = fetch_borrow_events(
+            rpc, BORROW_REPAY_SILO, from_block, to_block, label=f"paired {BORROW_REPAY_SILO}", block_chunk=block_chunk
+        )
+        silo_repays = fetch_repay_events(
+            rpc, BORROW_REPAY_SILO, from_block, to_block, label=f"paired {BORROW_REPAY_SILO}", block_chunk=block_chunk
+        )
+        for event in (*silo_borrows, *silo_repays):
+            event["assets"] = _to_main_assets(event["assets"])
+
     # Add lenders that first appear via a post-snapshot flow, classified at the snapshot block.
     existing_addrs = set(direct_lenders.keys())
     candidate_new: list[str] = []
@@ -1415,6 +1552,10 @@ def enrich_snapshot_with_flows(
         # Both sides of a peer transfer are real position changes (sender loses, receiver gains).
         _consider_new(event["from"])
         _consider_new(event["to"])
+    for event in (*silo_borrows, *silo_repays):
+        # A borrower posts collateral in this silo, so it is usually already a lender; still
+        # consider it new so a borrow/repay never silently misses its account.
+        _consider_new(event["owner"])
     new_types: dict[str, str] = {}
     if candidate_new:
         print(f"[info]   [silo] classifying {len(candidate_new)} new post-snapshot address(es) ...")
@@ -1468,6 +1609,30 @@ def enrich_snapshot_with_flows(
             _append_transfer(entry, event, assets, direction, counterparty)
             matched_transfers += 1
 
+    # Borrow debits and Repay credits the borrower's position (paired-silo, two-sided market).
+    matched_borrows = 0
+    for event in silo_borrows:
+        owner = event["owner"]
+        if owner in vault_addresses:
+            skipped_rebalances += 1
+            continue
+        entry = direct_lenders.get(owner)
+        if not isinstance(entry, dict) or entry.get("address_type") == "silo_vault":
+            continue
+        _append_flow(entry, "borrows", "total_borrows", event, event["assets"])
+        matched_borrows += 1
+    matched_repays = 0
+    for event in silo_repays:
+        owner = event["owner"]
+        if owner in vault_addresses:
+            skipped_rebalances += 1
+            continue
+        entry = direct_lenders.get(owner)
+        if not isinstance(entry, dict) or entry.get("address_type") == "silo_vault":
+            continue
+        _append_flow(entry, "repays", "total_repays", event, event["assets"])
+        matched_repays += 1
+
     for entry in direct_lenders.values():
         if not isinstance(entry, dict) or entry.get("address_type") == "silo_vault":
             continue
@@ -1478,6 +1643,8 @@ def enrich_snapshot_with_flows(
         f"{matched_transfers} transfer-side(s), skipped {skipped_rebalances} vault rebalance event(s); "
         f"added {len(direct_lenders) - len(existing_addrs)} new lender(s)"
     )
+    if BORROW_REPAY_SILO:
+        print(f"[info]   [silo] matched {matched_borrows} borrow(s), {matched_repays} repay(s) from paired silo")
 
     vault_index = 0
     for vault_addr, vault in vaults.items():
@@ -1731,6 +1898,9 @@ def build_snapshot(
         "input_token": meta["input_token"],
         "total_assets": str(meta["total_assets"]) if meta["total_assets"] is not None else None,
         "collateral_total_supply": str(meta["collateral_total_supply"]),
+        # Two-sided market marker: the paired silo whose Borrow/Repay events were folded in
+        # (None for ordinary one-sided silos). Lets the UI flag lender/borrower silos.
+        "borrow_repay_silo": BORROW_REPAY_SILO or None,
         "direct_lenders": direct_lenders,
         "vaults": vaults,
     }
@@ -1798,17 +1968,25 @@ def _recompute_flow_totals(entry: dict[str, Any]) -> None:
     withdrawals = entry.get("withdrawals") or []
     deposits = entry.get("deposits") or []
     transfers = entry.get("transfers") or []
+    borrows = entry.get("borrows") or []
+    repays = entry.get("repays") or []
     total_w = sum(int(r.get("assets", 0)) for r in withdrawals if isinstance(r, dict))
     total_d = sum(int(r.get("assets", 0)) for r in deposits if isinstance(r, dict))
     total_in = sum(int(r.get("assets", 0)) for r in transfers if isinstance(r, dict) and r.get("direction") == "in")
     total_out = sum(int(r.get("assets", 0)) for r in transfers if isinstance(r, dict) and r.get("direction") == "out")
+    total_b = sum(int(r.get("assets", 0)) for r in borrows if isinstance(r, dict))
+    total_r = sum(int(r.get("assets", 0)) for r in repays if isinstance(r, dict))
     entry["total_withdrawals"] = str(total_w)
     entry["total_deposits"] = str(total_d)
     entry["total_transfers_in"] = str(total_in)
     entry["total_transfers_out"] = str(total_out)
+    if borrows or "total_borrows" in entry:
+        entry["total_borrows"] = str(total_b)
+    if repays or "total_repays" in entry:
+        entry["total_repays"] = str(total_r)
     base = _entry_base_assets(entry)
     # Same signed reconciliation as _finalize_pending (NOT clamped to zero).
-    entry["pending_assets"] = str(base + total_d + total_in - total_w - total_out)
+    entry["pending_assets"] = str(base + total_d + total_in + total_r - total_w - total_out - total_b)
 
 
 def _merge_flow_entry(old_entry: Any, new_entry: Any) -> Any:
@@ -1821,14 +1999,20 @@ def _merge_flow_entry(old_entry: Any, new_entry: Any) -> Any:
         return new_entry
     if not isinstance(new_entry, dict):
         return old_entry
-    flow_lists = ("withdrawals", "deposits", "transfers")
+    flow_lists = ("withdrawals", "deposits", "transfers", "borrows", "repays")
     has_flows = any(k in old_entry for k in flow_lists) or any(k in new_entry for k in flow_lists)
     if not has_flows:
         # e.g. a silo_vault direct-lender entry: flow fields are intentionally absent.
         return new_entry
     merged = dict(new_entry)
     for list_key in flow_lists:
-        merged[list_key] = _merge_event_list(old_entry.get(list_key), new_entry.get(list_key), list_key)
+        old_list = old_entry.get(list_key)
+        new_list = new_entry.get(list_key)
+        # borrows/repays exist only for two-sided markets; skip if neither side has them so we
+        # do not materialize empty lists on one-sided silos.
+        if old_list is None and new_list is None:
+            continue
+        merged[list_key] = _merge_event_list(old_list, new_list, list_key)
     _recompute_flow_totals(merged)
     return merged
 
@@ -1874,7 +2058,7 @@ def _merge_silo_entry(old_silo: Any, new_silo: dict[str, Any]) -> dict[str, Any]
     merged = dict(new_silo)
     # Scalar metadata are deterministic snapshot-block reads; prefer the fresh value but fall
     # back to the prior one if this run failed to resolve it (None/empty).
-    for key in ("silo_id", "input_token", "total_assets", "collateral_total_supply"):
+    for key in ("silo_id", "input_token", "total_assets", "collateral_total_supply", "borrow_repay_silo"):
         if merged.get(key) in (None, "") and old_silo.get(key) not in (None, ""):
             merged[key] = old_silo[key]
     old_scan = old_silo.get("withdrawals_scanned_to_block")
