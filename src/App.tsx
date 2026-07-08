@@ -218,6 +218,17 @@ function sumDirectShares(silo: SiloSnapshot): bigint {
   return silo.directLenders.reduce((sum, lender) => sum + lender.collateralShares, ZERO);
 }
 
+// Total pending assets across the whole silo: direct (non-vault) lenders plus every
+// vault depositor. Vault placeholders in directLenders are skipped (their pending lives
+// on the underlying depositors), matching how the per-table totals are computed.
+function sumSiloPending(silo: SiloSnapshot): bigint {
+  let pending = sumDirectLenderTotals(silo.directLenders).pending;
+  for (const vault of silo.vaults) {
+    pending += sumDepositorTotals(vault.depositors).pending;
+  }
+  return pending;
+}
+
 function ValidationBadge({
   message,
   valid,
@@ -272,28 +283,57 @@ function MetricCard({
 }
 
 function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
+  const { eventsToBlock } = useActiveCategory();
   const directSharesSum = sumDirectShares(silo);
   const sharesValid = directSharesSum === silo.collateralTotalSupply;
+  const totalPending = sumSiloPending(silo);
 
   return (
     <div className="mt-5 grid gap-4 md:grid-cols-3">
-      <MetricCard
-        className="md:col-span-2"
-        label="Total assets"
-        value={`${formatUnitsRounded(silo.totalAssets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
-        footer={
-          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-sm text-slate-200">
-            <span>
-              {silo.totalShares.toString()} <span className="text-slate-400">shares</span>
-            </span>
-            <ValidationBadge
-              inline
-              message="Total shares equals sum of direct lender shares"
-              valid={sharesValid}
-            />
-          </p>
-        }
-      />
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-emerald-950/20 md:col-span-2">
+        <div className="flex items-start justify-between gap-x-10">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+              Total assets
+              {silo.snapshotBlock > 0 ? (
+                <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
+                  at block {silo.snapshotBlock}
+                </span>
+              ) : null}
+            </p>
+            <p className="mt-2 font-mono text-xl font-semibold text-white">
+              {`${formatUnitsRounded(silo.totalAssets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
+            </p>
+          </div>
+          <div className="min-w-0 text-right">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+              Total pending assets
+              {eventsToBlock > 0 ? (
+                <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
+                  at block {eventsToBlock}
+                </span>
+              ) : null}
+            </p>
+            <p
+              className={`mt-2 font-mono text-xl font-semibold ${
+                totalPending < ZERO ? "text-rose-300" : "text-white"
+              }`}
+            >
+              {`${formatUnitsRounded(totalPending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
+            </p>
+          </div>
+        </div>
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-sm text-slate-200">
+          <span>
+            {silo.totalShares.toString()} <span className="text-slate-400">shares</span>
+          </span>
+          <ValidationBadge
+            inline
+            message="Total shares equals sum of direct lender shares"
+            valid={sharesValid}
+          />
+        </p>
+      </div>
       <MetricCard
         label="Vaults assets"
         value={`${formatUnitsRounded(
