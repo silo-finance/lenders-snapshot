@@ -260,6 +260,45 @@ function DecimalSeparatorRadio({
   );
 }
 
+// Category-wide pending-assets export. Lives between the silo list and the
+// single-silo details so it's clear the download spans the whole category
+// rather than just the selected silo.
+function ExportAllPanel({
+  chains,
+  slug,
+  categoryName,
+}: {
+  chains: ChainSnapshot[];
+  slug: string;
+  categoryName: string;
+}) {
+  const { decimal: csvDecimal, setDecimal: setCsvDecimal } = useCsvFormat();
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-slate-950/30 sm:p-5">
+      <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Export</p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+        <DecimalSeparatorRadio decimal={csvDecimal} onChange={setCsvDecimal} />
+        <button
+          className="rounded-xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200"
+          type="button"
+          onClick={() => {
+            const pairs = chains.flatMap((snapshotChain) =>
+              snapshotChain.silos.map((snapshotSilo) => ({ chain: snapshotChain, silo: snapshotSilo })),
+            );
+            downloadCsv(`${slug}-all-pending.csv`, buildPendingCsv(pairs, csvDecimal));
+          }}
+        >
+          Export all (CSV)
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        All direct lenders and vault depositors across every silo and vault in the{" "}
+        <span className="font-semibold text-slate-300">{categoryName}</span> category (all chains included).
+      </p>
+    </section>
+  );
+}
+
 function sumDirectLenderTotals(lenders: DirectLender[]): AggregateTotals {
   return lenders.reduce(
     (acc, lender) => ({
@@ -2303,8 +2342,8 @@ function SiloDetailPanel({
   forceExpanded?: boolean;
   showConnectWallet?: boolean;
 }) {
-  const { snapshotBlock, eventsToBlock, chains, slug, label: categoryName } = useActiveCategory();
-  const { decimal: csvDecimal, setDecimal: setCsvDecimal } = useCsvFormat();
+  const { snapshotBlock, eventsToBlock } = useActiveCategory();
+  const { decimal: csvDecimal } = useCsvFormat();
   const { account, connect, connecting, hasProvider } = useWallet(
     showConnectWallet ? setAddressFilter : undefined,
   );
@@ -2507,30 +2546,7 @@ function SiloDetailPanel({
                 </>
               ) : null}
             </div>
-          ) : (
-            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 xl:col-span-2">
-              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Export</p>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
-                <DecimalSeparatorRadio decimal={csvDecimal} onChange={setCsvDecimal} />
-                <button
-                  className="rounded-xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200"
-                  type="button"
-                  onClick={() => {
-                    const pairs = chains.flatMap((snapshotChain) =>
-                      snapshotChain.silos.map((snapshotSilo) => ({ chain: snapshotChain, silo: snapshotSilo })),
-                    );
-                    downloadCsv(`${slug}-all-pending.csv`, buildPendingCsv(pairs, csvDecimal));
-                  }}
-                >
-                  Export all (CSV)
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-slate-500">
-                All direct lenders and vault depositors across every silo and vault in the{" "}
-                <span className="font-semibold text-slate-300">{categoryName}</span> category (all chains included).
-              </p>
-            </div>
-          )}
+          ) : null}
         </div>
         <SiloMetrics silo={silo} />
       </div>
@@ -2700,7 +2716,7 @@ function SiloDetailPanel({
 }
 
 function ExplorerView() {
-  const { chains, slug, airdropDefaults, airdropEnabled } = useActiveCategory();
+  const { chains, slug, airdropDefaults, airdropEnabled, label: categoryName } = useActiveCategory();
 
   // Silos from every chain in this category, rendered in one uniform list. Each pair keeps
   // its chain so the network badge and category-scoped links resolve correctly.
@@ -2933,6 +2949,10 @@ function ExplorerView() {
               </div>
             </div>
           </section>
+
+          {!airdropEnabled && allPairs.length > 0 ? (
+            <ExportAllPanel chains={chains} slug={slug} categoryName={categoryName} />
+          ) : null}
 
           {selectedSilo && selectedChain ? (
             <SiloDetailPanel
