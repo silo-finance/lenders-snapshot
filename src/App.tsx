@@ -172,7 +172,7 @@ function downloadCsv(filename: string, rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
-const PENDING_CSV_HEADER = ["Network", "Silo", "Vault", "Address", "Type", "Pending assets"];
+const PENDING_CSV_HEADER = ["Network", "Silo", "Vault", "Address", "Type", "Pending assets", "Symbol"];
 
 // Excel/Sheets in comma-decimal locales (e.g. pl-PL) treat "." as a thousands
 // separator and silently drop it, turning 505857.957484 into 505857957484. The
@@ -206,6 +206,7 @@ function buildPendingCsv(
         lender.address,
         lender.addressType,
         formatPendingForCsv(lender.pendingAssets, dec, decimal),
+        silo.inputToken.symbol,
       ]);
     }
     for (const vault of silo.vaults) {
@@ -217,6 +218,7 @@ function buildPendingCsv(
           depositor.address,
           depositor.addressType,
           formatPendingForCsv(depositor.pendingAssets, dec, decimal),
+          silo.inputToken.symbol,
         ]);
       }
     }
@@ -1985,6 +1987,7 @@ function VaultCard({
                     depositor.address,
                     depositor.addressType,
                     formatPendingForCsv(depositor.pendingAssets, dec, csvDecimal),
+                    silo.inputToken.symbol,
                   ]),
                 ];
                 downloadCsv(`${chain}-${vault.address}-depositors.csv`, rows);
@@ -2635,6 +2638,7 @@ function SiloDetailPanel({
                   row.address,
                   row.addressType,
                   formatPendingForCsv(row.pendingAssets, dec, csvDecimal),
+                  silo.inputToken.symbol,
                 ]),
             ];
             downloadCsv(`${chain.chain}-${silo.address}-direct-lenders.csv`, rows);
