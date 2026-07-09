@@ -10,9 +10,9 @@ share-sum invariants against the stored total supplies, with ZERO tolerance
   - for each indexed vault with in_withdraw_queue == true:
         sum(depositors[].vault_shares) == vault_total_supply
   - for each lender/depositor (exact, signed, NOT clamped to zero):
-    pending_assets == base_assets + total_deposits + total_transfers_in + total_repays
-                      - total_withdrawals - total_transfers_out - total_borrows
-    (total_borrows/total_repays are 0 except on two-sided-market lenders)
+    pending_assets == base_assets - debt_at_snapshot + total_deposits + total_transfers_in
+                      + total_repays - total_withdrawals - total_transfers_out - total_borrows
+    (total_borrows/total_repays/debt_at_snapshot are 0 except on two-sided-market lenders)
   - for each lender/depositor:
     sum(withdrawals[].assets) == total_withdrawals
     sum(deposits[].assets) == total_deposits
@@ -20,9 +20,10 @@ share-sum invariants against the stored total supplies, with ZERO tolerance
     sum(transfers[out].assets) == total_transfers_out
     sum(borrows[].assets) == total_borrows      (two-sided markets)
     sum(repays[].assets) == total_repays        (two-sided markets)
-  - two-sided markets, chronological sanity: replaying a lender's flows in
-    (block, log_index, tx) order, cumulative net borrow never exceeds cumulative
-    collateral basis (a borrow must be backed by a prior, greater deposit).
+  - two-sided markets, chronological sanity (WARNING only): replaying a lender's flows in
+    (block, log_index, tx) order with net borrow seeded from debt_at_snapshot, cumulative
+    net borrow exceeding cumulative collateral basis is flagged (distressed/incident
+    positions can be legitimately underwater, so this warns rather than errors).
 
 Any non-zero difference in the above is an error and yields a non-zero exit code,
 with an expected/actual/diff report per contract.
@@ -215,13 +216,17 @@ def check_borrow_backing(label: str, base_assets: int, entry: dict[str, Any], re
 
     Replays this lender's deposits/withdrawals/transfers/borrows/repays in chronological
     (block_number, log_index, tx_hash) order, tracking cumulative collateral basis and
-    cumulative net borrow. At each Borrow, the net borrow so far must not exceed the collateral
-    basis so far -- otherwise a borrow was not backed by a prior (greater) deposit, which is
-    physically impossible and points to missing/misordered data. All amounts are in this
-    silo's asset units. Debt shares are irrelevant here (value-only check).
+    cumulative net borrow. Net borrow is seeded with the outstanding debt at the snapshot
+    block (maxRepay). At each Borrow, the net borrow so far must not exceed the collateral
+    basis so far. With the pre-snapshot debt baseline, distressed/incident positions can
+    legitimately be underwater (debt > collateral), so a violation is reported as a WARNING
+    (keeps the per-tx diagnostic without blocking CI). All amounts are in this silo's asset
+    units. Debt shares are irrelevant here (value-only check).
     """
+    debt_at_snapshot = to_int(entry.get("debt_at_snapshot", 0))
     borrows = entry.get("borrows")
-    if not isinstance(borrows, list) or not borrows:
+    has_borrows = isinstance(borrows, list) and bool(borrows)
+    if not has_borrows and debt_at_snapshot == 0:
         return
 
     events: list[tuple[dict[str, Any], str]] = []
@@ -252,7 +257,13 @@ def check_borrow_backing(label: str, base_assets: int, entry: dict[str, Any], re
     )
 
     basis = base_assets
-    net_borrow = 0
+    # Seed with the pre-snapshot debt: it is the borrow already outstanding when the walk starts.
+    net_borrow = debt_at_snapshot
+    if net_borrow > basis:
+        report.warn(
+            f"{label}: snapshot debt exceeds collateral basis "
+            f"(debt_at_snapshot={net_borrow} > collateral_basis={basis})"
+        )
     for row, kind in events:
         assets = to_int(row.get("assets", 0))
         if kind in ("deposit", "transfer-in"):
@@ -264,7 +275,7 @@ def check_borrow_backing(label: str, base_assets: int, entry: dict[str, Any], re
         elif kind == "borrow":
             net_borrow += assets
             if net_borrow > basis:
-                report.error(
+                report.warn(
                     f"{label}: borrow not backed by collateral at tx {row.get('tx_hash')} "
                     f"(cumulative net_borrow={net_borrow} > collateral_basis={basis})"
                 )
@@ -283,15 +294,17 @@ def check_pending(
     exception_key: tuple[str, str, str | None, str],
     total_borrows: int = 0,
     total_repays: int = 0,
+    debt_at_snapshot: int = 0,
 ) -> None:
     """Exact signed pending invariant plus the share-based negative-pending policy.
 
-    Borrows/repays are only present for two-sided markets (converted to this silo's asset
-    decimals). They are debt-side flows and deliberately do NOT enter `residual_shares`
-    (which conserves collateral shares).
+    Borrows/repays and debt_at_snapshot are only present for two-sided markets (converted to
+    this silo's asset decimals). They are debt-side quantities and deliberately do NOT enter
+    `residual_shares` (which conserves collateral shares).
     """
     expected = (
         base_assets
+        - debt_at_snapshot
         + total_deposits
         + total_transfers_in
         + total_repays
@@ -418,6 +431,7 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
         total_transfers_out = to_int(entry.get("total_transfers_out", 0))
         total_borrows = to_int(entry.get("total_borrows", 0))
         total_repays = to_int(entry.get("total_repays", 0))
+        debt_at_snapshot = to_int(entry.get("debt_at_snapshot", 0))
         pending_assets = to_int(entry.get("pending_assets", base_assets))
         residual_shares = share_residual(
             to_int(entry.get("collateral_shares", 0)),
@@ -438,6 +452,7 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
             (chain.lower(), silo_addr.lower(), None, lender_addr.lower()),
             total_borrows=total_borrows,
             total_repays=total_repays,
+            debt_at_snapshot=debt_at_snapshot,
         )
         check_flow_sum(
             f"{prefix} lender {lender_addr} withdrawals_sum vs total_withdrawals",

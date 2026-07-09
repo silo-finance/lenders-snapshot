@@ -276,6 +276,8 @@ def _sel(signature: str) -> bytes:
 
 
 SEL_BALANCE_OF = _sel("balanceOf(address)")
+# Silo.maxRepay(address) -> assets: the borrower's outstanding debt in the silo's asset units.
+SEL_MAX_REPAY = _sel("maxRepay(address)")
 SEL_TOTAL_SUPPLY = _sel("totalSupply()")
 SEL_DECIMALS = _sel("decimals()")
 SEL_SYMBOL = _sel("symbol()")
@@ -552,6 +554,10 @@ class Multicall:
 # --------------------------------------------------------------------------------------
 def call_balance_of(account: str) -> bytes:
     return SEL_BALANCE_OF + abi_encode(["address"], [cs(account)])
+
+
+def call_max_repay(account: str) -> bytes:
+    return SEL_MAX_REPAY + abi_encode(["address"], [cs(account)])
 
 
 def call_total_supply() -> bytes:
@@ -874,11 +880,12 @@ def classify_addresses(
 # --------------------------------------------------------------------------------------
 # Snapshot building
 # --------------------------------------------------------------------------------------
-def _fetch_asset_decimals(silo_address: str, mc: Multicall) -> int:
-    """Read a silo's underlying-asset ERC20 decimals.
+def _fetch_asset_meta(silo_address: str, mc: Multicall) -> tuple[int, str | None]:
+    """Read a silo's underlying-asset ERC20 decimals and symbol.
 
     Used to convert a paired (two-sided) silo's Borrow/Repay amounts into the main silo's
-    asset units. A revert is fatal: without decimals the conversion would be silently wrong.
+    asset units and to label those amounts in the UI. A decimals revert is fatal: without it
+    the conversion would be silently wrong. Symbol is best-effort (None on failure).
     """
     res = mc.aggregate([(silo_address, call_asset())])
     if not res[0][0]:
@@ -886,10 +893,17 @@ def _fetch_asset_decimals(silo_address: str, mc: Multicall) -> int:
     asset_addr = dec_address(res[0][1])
     if not asset_addr:
         raise RuntimeError(f"asset() returned empty for paired silo {silo_address} at block {BLOCK}")
-    d = mc.aggregate([(asset_addr, call_decimals())])
+    d = mc.aggregate([(asset_addr, call_decimals()), (asset_addr, call_symbol())])
     if not d[0][0]:
         raise RuntimeError(f"decimals() reverted for asset {asset_addr} of paired silo {silo_address}")
-    return dec_uint(d[0][1])
+    decimals = dec_uint(d[0][1])
+    symbol = None
+    if d[1][0]:
+        try:
+            symbol = dec_string(d[1][1])
+        except Exception:
+            symbol = None
+    return decimals, symbol
 
 
 def fetch_silo_metadata(rpc: RpcClient, mc: Multicall) -> dict[str, Any]:
@@ -1322,6 +1336,8 @@ FLOW_FIELD_KEYS = (
     "total_borrows",
     "repays",
     "total_repays",
+    # Two-sided markets only: outstanding debt at the snapshot block (maxRepay), a debit.
+    "debt_at_snapshot",
     "pending_assets",
 )
 
@@ -1390,13 +1406,13 @@ def _append_transfer(
 
 
 def _finalize_pending(entry: dict[str, Any], base_assets: int) -> None:
-    """pending = base + deposits + transfers_in + repays - withdrawals - transfers_out - borrows.
+    """pending = base - debt_at_snapshot + deposits + transfers_in + repays - withdrawals - transfers_out - borrows.
 
     Signed on purpose (NOT clamped to zero): a negative result surfaces unreconciled flows
     (e.g. interest accrued between snapshot and withdrawal) instead of silently hiding them.
 
-    Borrows/repays only exist for two-sided markets (converted to this silo's asset decimals
-    upstream); they default to 0 for one-sided silos.
+    Borrows/repays and debt_at_snapshot only exist for two-sided markets (converted to this
+    silo's asset decimals upstream); they default to 0 for one-sided silos.
     """
     total_deposits = int(entry.get("total_deposits", 0))
     total_withdrawals = int(entry.get("total_withdrawals", 0))
@@ -1404,8 +1420,10 @@ def _finalize_pending(entry: dict[str, Any], base_assets: int) -> None:
     total_transfers_out = int(entry.get("total_transfers_out", 0))
     total_borrows = int(entry.get("total_borrows", 0))
     total_repays = int(entry.get("total_repays", 0))
+    debt_at_snapshot = int(entry.get("debt_at_snapshot", 0))
     entry["pending_assets"] = str(
         base_assets
+        - debt_at_snapshot
         + total_deposits
         + total_transfers_in
         + total_repays
@@ -1515,10 +1533,12 @@ def enrich_snapshot_with_flows(
     silo_repays: list[dict[str, Any]] = []
     if BORROW_REPAY_SILO:
         main_decimals = int((silo_entry.get("input_token") or {}).get("decimals") or 0)
-        paired_decimals = _fetch_asset_decimals(BORROW_REPAY_SILO, mc)
+        paired_decimals, paired_symbol = _fetch_asset_meta(BORROW_REPAY_SILO, mc)
+        # Record the debt asset so the UI can label Borrow/Repay/DEBT amounts distinctly.
+        silo_entry["borrow_repay_token"] = {"symbol": paired_symbol, "decimals": paired_decimals}
         print(
             f"[info] two-sided market: scanning Borrow/Repay on paired silo {BORROW_REPAY_SILO} "
-            f"(decimals {paired_decimals} -> {main_decimals})"
+            f"(asset {paired_symbol}, decimals {paired_decimals} -> {main_decimals})"
         )
 
         def _to_main_assets(assets: int) -> int:
@@ -1633,6 +1653,26 @@ def enrich_snapshot_with_flows(
         _append_flow(entry, "repays", "total_repays", event, event["assets"])
         matched_repays += 1
 
+    # Initial debt at the snapshot block: maxRepay(borrower) on the paired (debt) silo gives
+    # each address's outstanding debt, which is folded into pending as a starting debit. Done
+    # for every direct lender (incl. borrowers newly discovered above) once the set is final.
+    matched_debts = 0
+    if BORROW_REPAY_SILO:
+        debt_addrs = [
+            addr
+            for addr, entry in direct_lenders.items()
+            if isinstance(entry, dict) and entry.get("address_type") != "silo_vault"
+        ]
+        if debt_addrs:
+            debt_res = mc.aggregate([(BORROW_REPAY_SILO, call_max_repay(addr)) for addr in debt_addrs])
+            for addr, (ok, data) in zip(debt_addrs, debt_res):
+                if not ok:
+                    continue
+                debt = _to_main_assets(dec_uint(data))
+                if debt > 0:
+                    direct_lenders[addr]["debt_at_snapshot"] = str(debt)
+                    matched_debts += 1
+
     for entry in direct_lenders.values():
         if not isinstance(entry, dict) or entry.get("address_type") == "silo_vault":
             continue
@@ -1644,7 +1684,10 @@ def enrich_snapshot_with_flows(
         f"added {len(direct_lenders) - len(existing_addrs)} new lender(s)"
     )
     if BORROW_REPAY_SILO:
-        print(f"[info]   [silo] matched {matched_borrows} borrow(s), {matched_repays} repay(s) from paired silo")
+        print(
+            f"[info]   [silo] matched {matched_borrows} borrow(s), {matched_repays} repay(s), "
+            f"{matched_debts} snapshot-debt position(s) from paired silo"
+        )
 
     vault_index = 0
     for vault_addr, vault in vaults.items():
@@ -1985,8 +2028,9 @@ def _recompute_flow_totals(entry: dict[str, Any]) -> None:
     if repays or "total_repays" in entry:
         entry["total_repays"] = str(total_r)
     base = _entry_base_assets(entry)
+    debt_at_snapshot = int(entry.get("debt_at_snapshot", 0))
     # Same signed reconciliation as _finalize_pending (NOT clamped to zero).
-    entry["pending_assets"] = str(base + total_d + total_in + total_r - total_w - total_out - total_b)
+    entry["pending_assets"] = str(base - debt_at_snapshot + total_d + total_in + total_r - total_w - total_out - total_b)
 
 
 def _merge_flow_entry(old_entry: Any, new_entry: Any) -> Any:
@@ -2058,7 +2102,7 @@ def _merge_silo_entry(old_silo: Any, new_silo: dict[str, Any]) -> dict[str, Any]
     merged = dict(new_silo)
     # Scalar metadata are deterministic snapshot-block reads; prefer the fresh value but fall
     # back to the prior one if this run failed to resolve it (None/empty).
-    for key in ("silo_id", "input_token", "total_assets", "collateral_total_supply", "borrow_repay_silo"):
+    for key in ("silo_id", "input_token", "total_assets", "collateral_total_supply", "borrow_repay_silo", "borrow_repay_token"):
         if merged.get(key) in (None, "") and old_silo.get(key) not in (None, ""):
             merged[key] = old_silo[key]
     old_scan = old_silo.get("withdrawals_scanned_to_block")
