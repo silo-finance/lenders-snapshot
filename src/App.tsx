@@ -289,7 +289,8 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
   const totalPending = sumSiloPending(silo);
 
   return (
-    <div className="mt-5 grid gap-4 md:grid-cols-3">
+    <>
+      <div className="mt-5 grid gap-4 md:grid-cols-3">
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-emerald-950/20 md:col-span-2">
         <div className="flex items-start justify-between gap-x-10">
           <div className="min-w-0">
@@ -343,7 +344,21 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
         )} ${silo.inputToken.symbol}`}
         hint="Sum across all vaults"
       />
-    </div>
+      </div>
+      {silo.borrowRepaySilo ? (
+        <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
+          <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            <span className="font-semibold text-amber-100">Note on negative pending assets.</span>{" "}
+            After the {silo.borrowRepayToken?.symbol || "borrowed asset"} depeg, sharply higher
+            interest rates inflated collateral values, letting positions borrow far more{" "}
+            {silo.borrowRepayToken?.symbol || "the borrowed asset"} than their snapshot-time
+            collateral was worth. This surfaces as a large negative pending — a valuation-timing
+            effect, not missing data or an under-collateralized loan.
+          </span>
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -781,6 +796,7 @@ function hasFlowActivity(row: {
   totalTransfersOut: bigint;
   totalBorrows?: bigint;
   totalRepays?: bigint;
+  debtAtSnapshot?: bigint;
 }): boolean {
   return (
     row.totalWithdrawals > ZERO ||
@@ -788,7 +804,32 @@ function hasFlowActivity(row: {
     row.totalTransfersIn > ZERO ||
     row.totalTransfersOut > ZERO ||
     (row.totalBorrows ?? ZERO) > ZERO ||
-    (row.totalRepays ?? ZERO) > ZERO
+    (row.totalRepays ?? ZERO) > ZERO ||
+    (row.debtAtSnapshot ?? ZERO) > ZERO
+  );
+}
+
+// Renders an amount with its asset symbol in a fixed-width, left-aligned column so the numeric
+// portions stay right-aligned across rows regardless of symbol length.
+function AmountWithSymbol({
+  sign,
+  value,
+  symbol,
+  className,
+}: {
+  sign?: string;
+  value: string;
+  symbol: string;
+  className?: string;
+}) {
+  return (
+    <span className={`shrink-0 tabular-nums ${className ?? ""}`}>
+      <span className="inline-block text-right">
+        {sign}
+        {value}
+      </span>
+      <span className="ml-1 inline-block w-14 text-left font-normal text-slate-500">{symbol}</span>
+    </span>
   );
 }
 
@@ -801,6 +842,8 @@ function PendingAssetsBreakdown({
   totalTransfersOut,
   totalBorrows = ZERO,
   totalRepays = ZERO,
+  debtAtSnapshot = ZERO,
+  snapshotBlock = 0,
   pendingAssets,
   withdrawals,
   deposits,
@@ -809,6 +852,7 @@ function PendingAssetsBreakdown({
   repays = [],
   decimals,
   symbol,
+  borrowRepaySymbol,
 }: {
   chain: string;
   baseAssets: bigint;
@@ -818,6 +862,8 @@ function PendingAssetsBreakdown({
   totalTransfersOut: bigint;
   totalBorrows?: bigint;
   totalRepays?: bigint;
+  debtAtSnapshot?: bigint;
+  snapshotBlock?: number;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
@@ -826,12 +872,33 @@ function PendingAssetsBreakdown({
   repays?: WithdrawalEntry[];
   decimals: number;
   symbol: string;
+  borrowRepaySymbol?: string;
 }) {
-  // Two-sided markets add Borrow (debit, like a withdrawal) and Repay (credit, like a
-  // deposit); all five kinds share one chronological timeline.
-  type FlowKind = "deposit" | "withdrawal" | "transfer-in" | "transfer-out" | "borrow" | "repay";
+  // Two-sided markets add Borrow (debit, like a withdrawal), Repay (credit, like a deposit)
+  // and an initial DEBT baseline (debit at the snapshot block); all kinds share one
+  // chronological timeline. Borrow/repay/debt are denominated in the paired (debt) asset.
+  type FlowKind = "deposit" | "withdrawal" | "transfer-in" | "transfer-out" | "borrow" | "repay" | "debt";
   const isCredit = (kind: FlowKind) => kind === "deposit" || kind === "transfer-in" || kind === "repay";
+  const pairedSymbol = borrowRepaySymbol && borrowRepaySymbol.length > 0 ? borrowRepaySymbol : symbol;
+  const symbolFor = (kind: FlowKind) =>
+    kind === "borrow" || kind === "repay" || kind === "debt" ? pairedSymbol : symbol;
   const flows: Array<{ event: WithdrawalEntry; kind: FlowKind; counterparty?: string }> = [
+    // Pre-snapshot debt sorts first (snapshotBlock <= all event blocks, logIndex -1).
+    ...(debtAtSnapshot > ZERO
+      ? [
+          {
+            event: {
+              blockNumber: snapshotBlock,
+              logIndex: -1,
+              txHash: "",
+              assets: debtAtSnapshot,
+              shares: ZERO,
+              eventAssets: debtAtSnapshot,
+            } as WithdrawalEntry,
+            kind: "debt" as FlowKind,
+          },
+        ]
+      : []),
     ...deposits.map((event) => ({ event, kind: "deposit" as FlowKind })),
     ...withdrawals.map((event) => ({ event, kind: "withdrawal" as FlowKind })),
     ...transfers.map((event) => ({
@@ -878,7 +945,7 @@ function PendingAssetsBreakdown({
     <div className="rounded-xl border border-white/10 bg-slate-950/80 p-4 font-mono text-xs text-slate-300">
       <div className="flex justify-between gap-3">
         <span className="text-slate-400">snapshot assets</span>
-        <span>{formatUnitsFixed(baseAssets, decimals)}</span>
+        <AmountWithSymbol symbol={symbol} value={formatUnitsFixed(baseAssets, decimals)} />
       </div>
       {flows.length === 0 ? (
         <div className="mt-2 text-slate-500">
@@ -887,7 +954,8 @@ function PendingAssetsBreakdown({
           totalTransfersIn > ZERO ||
           totalTransfersOut > ZERO ||
           totalBorrows > ZERO ||
-          totalRepays > ZERO
+          totalRepays > ZERO ||
+          debtAtSnapshot > ZERO
             ? "Itemized flow events are unavailable in this snapshot payload."
             : "No deposits, withdrawals or transfers after snapshot block."}
         </div>
@@ -897,6 +965,7 @@ function PendingAssetsBreakdown({
             const txUrl = explorerTxUrl(chain, event.txHash);
             const credit = isCredit(kind);
             const sign = credit ? "+" : "-";
+            const rowSymbol = symbolFor(kind);
             return (
               <div
                 key={`${kind}-${event.txHash}-${event.logIndex}-${index}`}
@@ -904,44 +973,51 @@ function PendingAssetsBreakdown({
               >
                 <div className="flex justify-between gap-3">
                   <span className={labelClass(kind)}>
-                    {sign} {kind} (block {event.blockNumber}, tx{" "}
-                    {txUrl === "#" ? (
-                      shortHash(event.txHash)
-                    ) : (
-                      <a
-                        className="text-emerald-200 transition hover:text-emerald-100"
-                        href={txUrl}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {shortHash(event.txHash)}
-                      </a>
-                    )}
-                    {counterparty ? (
+                    {kind === "debt" ? (
                       <>
-                        , {kind === "transfer-in" ? "from" : "to"}{" "}
-                        <AddressLink bareCopy address={counterparty} chain={chain} />
+                        {sign} DEBT on block {event.blockNumber}
                       </>
-                    ) : null}
-                    )
+                    ) : (
+                      <>
+                        {sign} {kind} (block {event.blockNumber}, tx{" "}
+                        {txUrl === "#" ? (
+                          shortHash(event.txHash)
+                        ) : (
+                          <a
+                            className="text-emerald-200 transition hover:text-emerald-100"
+                            href={txUrl}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            {shortHash(event.txHash)}
+                          </a>
+                        )}
+                        {counterparty ? (
+                          <>
+                            , {kind === "transfer-in" ? "from" : "to"}{" "}
+                            <AddressLink bareCopy address={counterparty} chain={chain} />
+                          </>
+                        ) : null}
+                        )
+                      </>
+                    )}
                   </span>
-                  <span className={`shrink-0 tabular-nums ${amountClass(kind)}`}>
-                    {sign}
-                    {formatUnitsFixed(event.assets, decimals)}
-                  </span>
+                  <AmountWithSymbol
+                    className={amountClass(kind)}
+                    sign={sign}
+                    symbol={rowSymbol}
+                    value={formatUnitsFixed(event.assets, decimals)}
+                  />
                 </div>
                 {event.eventAssets !== event.assets ? (
                   <div className="flex justify-between gap-3 text-[11px] text-slate-500">
                     <span>on-chain {credit ? "received" : "moved"}</span>
-                    <span className="shrink-0 tabular-nums">
-                      {sign}
-                      {formatUnitsFixed(event.eventAssets, decimals)}
-                    </span>
+                    <AmountWithSymbol sign={sign} symbol={rowSymbol} value={formatUnitsFixed(event.eventAssets, decimals)} />
                   </div>
                 ) : null}
                 <div className="flex justify-between gap-3 text-[11px] text-slate-500">
                   <span>running</span>
-                  <span className="shrink-0 tabular-nums">{formatUnitsFixed(next, decimals)}</span>
+                  <AmountWithSymbol symbol={symbol} value={formatUnitsFixed(next, decimals)} />
                 </div>
               </div>
             );
@@ -949,41 +1025,47 @@ function PendingAssetsBreakdown({
         </div>
       )}
       <div className="mt-3 border-t border-dashed border-white/10 pt-3">
+        {debtAtSnapshot > ZERO ? (
+          <div className="mb-1 flex justify-between gap-3">
+            <span className="text-slate-400">total initial debt</span>
+            <AmountWithSymbol className="text-amber-300" sign="-" symbol={pairedSymbol} value={formatUnitsFixed(debtAtSnapshot, decimals)} />
+          </div>
+        ) : null}
         <div className="flex justify-between gap-3">
           <span className="text-slate-400">total deposits</span>
-          <span className="text-emerald-300">+{formatUnitsFixed(totalDeposits, decimals)}</span>
+          <AmountWithSymbol className="text-emerald-300" sign="+" symbol={symbol} value={formatUnitsFixed(totalDeposits, decimals)} />
         </div>
         {totalTransfersIn > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total share transfers in</span>
-            <span className="text-amber-300">+{formatUnitsFixed(totalTransfersIn, decimals)}</span>
+            <AmountWithSymbol className="text-amber-300" sign="+" symbol={symbol} value={formatUnitsFixed(totalTransfersIn, decimals)} />
           </div>
         ) : null}
         {totalTransfersOut > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total share transfers out</span>
-            <span className="text-amber-300">-{formatUnitsFixed(totalTransfersOut, decimals)}</span>
+            <AmountWithSymbol className="text-amber-300" sign="-" symbol={symbol} value={formatUnitsFixed(totalTransfersOut, decimals)} />
           </div>
         ) : null}
         {totalRepays > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total repays</span>
-            <span className="text-emerald-300">+{formatUnitsFixed(totalRepays, decimals)}</span>
+            <AmountWithSymbol className="text-emerald-300" sign="+" symbol={pairedSymbol} value={formatUnitsFixed(totalRepays, decimals)} />
           </div>
         ) : null}
         <div className="mt-1 flex justify-between gap-3">
           <span className="text-slate-400">total withdrawals</span>
-          <span>-{formatUnitsFixed(totalWithdrawals, decimals)}</span>
+          <AmountWithSymbol sign="-" symbol={symbol} value={formatUnitsFixed(totalWithdrawals, decimals)} />
         </div>
         {totalBorrows > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total borrows</span>
-            <span>-{formatUnitsFixed(totalBorrows, decimals)}</span>
+            <AmountWithSymbol sign="-" symbol={pairedSymbol} value={formatUnitsFixed(totalBorrows, decimals)} />
           </div>
         ) : null}
         <div className={`mt-1 flex justify-between gap-3 ${pendingNegative ? "text-rose-300" : "text-emerald-200"}`}>
-          <span>= pending assets ({symbol})</span>
-          <span>{formatUnitsFixed(pendingAssets, decimals)}</span>
+          <span>= pending assets</span>
+          <AmountWithSymbol symbol={symbol} value={formatUnitsFixed(pendingAssets, decimals)} />
         </div>
       </div>
     </div>
@@ -1134,7 +1216,7 @@ function HolderTable({
                 tableRows.map((row) => {
                   const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
                   const hasFlows = !row.isVault && hasFlowActivity(row);
-                  const isBorrower = !row.isVault && row.totalBorrows > ZERO;
+                  const isBorrower = !row.isVault && (row.totalBorrows > ZERO || row.debtAtSnapshot > ZERO);
                   return (
                     <Fragment key={row.address}>
                       <tr className="hover:bg-white/[0.03]">
@@ -1224,11 +1306,14 @@ function HolderTable({
                             <PendingAssetsBreakdown
                               chain={chain}
                               baseAssets={row.totalAssets}
+                              borrowRepaySymbol={silo.borrowRepayToken?.symbol}
                               borrows={row.borrows}
+                              debtAtSnapshot={row.debtAtSnapshot}
                               decimals={silo.inputToken.decimals}
                               deposits={row.deposits}
                               pendingAssets={row.pendingAssets}
                               repays={row.repays}
+                              snapshotBlock={silo.snapshotBlock}
                               symbol={silo.inputToken.symbol}
                               totalBorrows={row.totalBorrows}
                               totalDeposits={row.totalDeposits}
