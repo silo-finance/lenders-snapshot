@@ -927,18 +927,43 @@ function PendingAssetsBreakdown({
     [],
   );
 
-  const labelClass = (kind: FlowKind) =>
-    kind === "deposit" || kind === "repay"
-      ? "text-emerald-300/80"
-      : kind === "withdrawal" || kind === "borrow"
-        ? "text-rose-300/80"
-        : "text-amber-300/80";
-  const amountClass = (kind: FlowKind) =>
-    kind === "deposit" || kind === "repay"
-      ? "text-emerald-300"
-      : kind === "withdrawal" || kind === "borrow"
-        ? undefined
-        : "text-amber-300";
+  // One distinct hue per operation so they never blend visually. The amount uses the full
+  // -300 shade and the label a dimmer -300/80 (the amount reads slightly brighter than its
+  // label). Static class strings on purpose so Tailwind can detect and keep them.
+  const labelClass = (kind: FlowKind): string => {
+    switch (kind) {
+      case "deposit":
+        return "text-emerald-300/80";
+      case "repay":
+        return "text-teal-300/80";
+      case "transfer-in":
+        return "text-sky-300/80";
+      case "withdrawal":
+        return "text-rose-300/80";
+      case "transfer-out":
+        return "text-violet-300/80";
+      case "borrow":
+      case "debt":
+        return "text-amber-300/80";
+    }
+  };
+  const amountClass = (kind: FlowKind): string => {
+    switch (kind) {
+      case "deposit":
+        return "text-emerald-300";
+      case "repay":
+        return "text-teal-300";
+      case "transfer-in":
+        return "text-sky-300";
+      case "withdrawal":
+        return "text-rose-300";
+      case "transfer-out":
+        return "text-violet-300";
+      case "borrow":
+      case "debt":
+        return "text-amber-300";
+    }
+  };
   const pendingNegative = pendingAssets < ZERO;
 
   return (
@@ -1038,29 +1063,29 @@ function PendingAssetsBreakdown({
         {totalTransfersIn > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total share transfers in</span>
-            <AmountWithSymbol className="text-amber-300" sign="+" symbol={symbol} value={formatUnitsFixed(totalTransfersIn, decimals)} />
+            <AmountWithSymbol className="text-sky-300" sign="+" symbol={symbol} value={formatUnitsFixed(totalTransfersIn, decimals)} />
           </div>
         ) : null}
         {totalTransfersOut > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total share transfers out</span>
-            <AmountWithSymbol className="text-amber-300" sign="-" symbol={symbol} value={formatUnitsFixed(totalTransfersOut, decimals)} />
+            <AmountWithSymbol className="text-violet-300" sign="-" symbol={symbol} value={formatUnitsFixed(totalTransfersOut, decimals)} />
           </div>
         ) : null}
         {totalRepays > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total repays</span>
-            <AmountWithSymbol className="text-emerald-300" sign="+" symbol={pairedSymbol} value={formatUnitsFixed(totalRepays, decimals)} />
+            <AmountWithSymbol className="text-teal-300" sign="+" symbol={pairedSymbol} value={formatUnitsFixed(totalRepays, decimals)} />
           </div>
         ) : null}
         <div className="mt-1 flex justify-between gap-3">
           <span className="text-slate-400">total withdrawals</span>
-          <AmountWithSymbol sign="-" symbol={symbol} value={formatUnitsFixed(totalWithdrawals, decimals)} />
+          <AmountWithSymbol className="text-rose-300" sign="-" symbol={symbol} value={formatUnitsFixed(totalWithdrawals, decimals)} />
         </div>
         {totalBorrows > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total borrows</span>
-            <AmountWithSymbol sign="-" symbol={pairedSymbol} value={formatUnitsFixed(totalBorrows, decimals)} />
+            <AmountWithSymbol className="text-amber-300" sign="-" symbol={pairedSymbol} value={formatUnitsFixed(totalBorrows, decimals)} />
           </div>
         ) : null}
         <div className={`mt-1 flex justify-between gap-3 ${pendingNegative ? "text-rose-300" : "text-emerald-200"}`}>
