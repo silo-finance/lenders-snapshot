@@ -64,6 +64,21 @@ function useActiveCategory(): ActiveCategory {
   return value;
 }
 
+// User-selectable decimal separator for CSV number cells. Comma-decimal locales
+// (e.g. pl-PL) need "," so spreadsheets don't mistake the "." for a thousands
+// separator; anglophone tooling usually expects ".".
+type CsvDecimal = "." | ",";
+
+const CsvFormatContext = createContext<{ decimal: CsvDecimal; setDecimal: (value: CsvDecimal) => void } | null>(null);
+
+function useCsvFormat(): { decimal: CsvDecimal; setDecimal: (value: CsvDecimal) => void } {
+  const value = useContext(CsvFormatContext);
+  if (!value) {
+    throw new Error("useCsvFormat must be used within a CsvFormatContext provider");
+  }
+  return value;
+}
+
 function toActiveCategory(category: SnapshotCategory): ActiveCategory {
   if (!category.data) {
     throw new Error(`snapshot category '${category.slug}' has no data`);
@@ -155,6 +170,92 @@ function downloadCsv(filename: string, rows: string[][]) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+const PENDING_CSV_HEADER = ["Network", "Silo", "Vault", "Address", "Type", "Pending assets"];
+
+// Excel/Sheets in comma-decimal locales (e.g. pl-PL) treat "." as a thousands
+// separator and silently drop it, turning 505857.957484 into 505857957484. The
+// CSV field delimiter is ";", so a decimal comma is unambiguous there; the
+// separator is user-selectable via the export panel radio.
+function formatPendingForCsv(value: bigint, decimals: number, decimal: CsvDecimal): string {
+  const plain = formatUnitsPlain(value, decimals);
+  return decimal === "," ? plain.replace(".", ",") : plain;
+}
+
+// One row-emitter reused by every pending-assets export. `pairs` are the (chain, silo) scopes
+// to dump; each silo contributes its non-vault direct lenders plus every vault depositor.
+// Pending is stored in the silo's underlying-asset units, so it is always formatted with
+// `silo.inputToken.decimals` (never the vault share-token decimals).
+function buildPendingCsv(
+  pairs: { chain: ChainSnapshot; silo: SiloSnapshot }[],
+  decimal: CsvDecimal,
+): string[][] {
+  const rows: string[][] = [PENDING_CSV_HEADER];
+  for (const { chain, silo } of pairs) {
+    const dec = silo.inputToken.decimals;
+    for (const lender of silo.directLenders) {
+      // Vault placeholder rows are expanded through their depositors below.
+      if (lender.isVault) {
+        continue;
+      }
+      rows.push([
+        chain.label,
+        silo.address,
+        "",
+        lender.address,
+        lender.addressType,
+        formatPendingForCsv(lender.pendingAssets, dec, decimal),
+      ]);
+    }
+    for (const vault of silo.vaults) {
+      for (const depositor of vault.depositors) {
+        rows.push([
+          chain.label,
+          silo.address,
+          vault.address,
+          depositor.address,
+          depositor.addressType,
+          formatPendingForCsv(depositor.pendingAssets, dec, decimal),
+        ]);
+      }
+    }
+  }
+  return rows;
+}
+
+// Lets the user pick the decimal separator used for "Pending assets" cells so
+// the CSV opens cleanly in both period- and comma-decimal spreadsheet locales.
+function DecimalSeparatorRadio({
+  decimal,
+  onChange,
+}: {
+  decimal: CsvDecimal;
+  onChange: (value: CsvDecimal) => void;
+}) {
+  const options: { value: CsvDecimal; label: string }[] = [
+    { value: ".", label: "Period (1234.56)" },
+    { value: ",", label: "Comma (1234,56)" },
+  ];
+  return (
+    <fieldset>
+      <legend className="text-[0.7rem] uppercase tracking-[0.18em] text-slate-500">Decimal separator</legend>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        {options.map((option) => (
+          <label key={option.value} className="inline-flex cursor-pointer items-center gap-2 text-xs text-slate-300">
+            <input
+              type="radio"
+              name="csv-decimal-separator"
+              className="h-3.5 w-3.5 accent-emerald-300"
+              checked={decimal === option.value}
+              onChange={() => onChange(option.value)}
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
 }
 
 function sumDirectLenderTotals(lenders: DirectLender[]): AggregateTotals {
@@ -1813,6 +1914,7 @@ function buildAirdropPlan(
 
 function VaultCard({
   chain,
+  networkLabel,
   vault,
   silo,
   expanded,
@@ -1828,6 +1930,7 @@ function VaultCard({
   navNextId,
 }: {
   chain: string;
+  networkLabel: string;
   vault: VaultSnapshot;
   silo: SiloSnapshot;
   expanded: boolean;
@@ -1842,6 +1945,7 @@ function VaultCard({
   navPrevId?: string;
   navNextId?: string;
 }) {
+  const { decimal: csvDecimal } = useCsvFormat();
   const [depositorSort, setDepositorSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const hasWarning = isVaultWarning(vault);
   const isExpanded = forceExpanded || expanded;
@@ -1866,6 +1970,29 @@ function VaultCard({
           <SectionNavButtons nextId={navNextId} prevId={navPrevId} />
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {!hasWarning && vault.depositors.length > 0 ? (
+            <button
+              className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10"
+              type="button"
+              onClick={() => {
+                const dec = silo.inputToken.decimals;
+                const rows = [
+                  PENDING_CSV_HEADER,
+                  ...vault.depositors.map((depositor) => [
+                    networkLabel,
+                    silo.address,
+                    vault.address,
+                    depositor.address,
+                    depositor.addressType,
+                    formatPendingForCsv(depositor.pendingAssets, dec, csvDecimal),
+                  ]),
+                ];
+                downloadCsv(`${chain}-${vault.address}-depositors.csv`, rows);
+              }}
+            >
+              Export CSV
+            </button>
+          ) : null}
           {hasWarning ? (
             <span className="rounded-full bg-amber-300/20 px-3 py-1 text-sm text-amber-100">{warningLabel(vault)}</span>
           ) : forceExpanded ? null : (
@@ -2173,7 +2300,8 @@ function SiloDetailPanel({
   forceExpanded?: boolean;
   showConnectWallet?: boolean;
 }) {
-  const { snapshotBlock, eventsToBlock } = useActiveCategory();
+  const { snapshotBlock, eventsToBlock, chains, slug, label: categoryName } = useActiveCategory();
+  const { decimal: csvDecimal, setDecimal: setCsvDecimal } = useCsvFormat();
   const { account, connect, connecting, hasProvider } = useWallet(
     showConnectWallet ? setAddressFilter : undefined,
   );
@@ -2227,8 +2355,8 @@ function SiloDetailPanel({
   return (
     <section className="min-w-0 space-y-6">
       <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-slate-950/40">
-        <div className={`grid gap-6 xl:items-start ${showAirdrops ? "xl:grid-cols-3" : ""}`}>
-          <div className={showAirdrops ? "xl:col-span-1" : ""}>
+        <div className="grid gap-6 xl:grid-cols-3 xl:items-start">
+          <div className="xl:col-span-1">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-emerald-200">
               <span className="inline-flex items-center gap-1.5">
                 {silo.inputToken.symbol} / <SiloKindLabel silo={silo} />
@@ -2376,7 +2504,30 @@ function SiloDetailPanel({
                 </>
               ) : null}
             </div>
-          ) : null}
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 xl:col-span-2">
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Export</p>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+                <DecimalSeparatorRadio decimal={csvDecimal} onChange={setCsvDecimal} />
+                <button
+                  className="rounded-xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200"
+                  type="button"
+                  onClick={() => {
+                    const pairs = chains.flatMap((snapshotChain) =>
+                      snapshotChain.silos.map((snapshotSilo) => ({ chain: snapshotChain, silo: snapshotSilo })),
+                    );
+                    downloadCsv(`${slug}-all-pending.csv`, buildPendingCsv(pairs, csvDecimal));
+                  }}
+                >
+                  Export all (CSV)
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                All direct lenders and vault depositors across every silo and vault in the{" "}
+                <span className="font-semibold text-slate-300">{categoryName}</span> category (all chains included).
+              </p>
+            </div>
+          )}
         </div>
         <SiloMetrics silo={silo} />
       </div>
@@ -2472,16 +2623,21 @@ function SiloDetailPanel({
           tableTotals={directTableTotals}
           onJumpToVault={jumpToVault}
           onExport={() => {
-            downloadCsv(`${chain.chain}-${silo.address}-direct-lenders.csv`, [
-              ["Address", "Type", "Assets", "Withdrawals", "Pending assets"],
-              ...visibleLenders.map((row) => [
-                row.address,
-                row.addressType,
-                formatUnitsPlain(row.totalAssets, silo.inputToken.decimals),
-                row.isVault ? "N/A" : formatUnitsPlain(row.totalWithdrawals, silo.inputToken.decimals),
-                row.isVault ? "N/A" : formatUnitsPlain(row.pendingAssets, silo.inputToken.decimals),
-              ]),
-            ]);
+            const dec = silo.inputToken.decimals;
+            const rows = [
+              PENDING_CSV_HEADER,
+              ...silo.directLenders
+                .filter((row) => !row.isVault)
+                .map((row) => [
+                  chain.label,
+                  silo.address,
+                  "",
+                  row.address,
+                  row.addressType,
+                  formatPendingForCsv(row.pendingAssets, dec, csvDecimal),
+                ]),
+            ];
+            downloadCsv(`${chain.chain}-${silo.address}-direct-lenders.csv`, rows);
           }}
           onSort={(key) => setDirectSort((current) => nextSortState(current, key))}
           onToggle={() => setDirectExpanded((current) => !current)}
@@ -2509,6 +2665,7 @@ function SiloDetailPanel({
                 addressFilter={addressFilter}
                 addressTypeFilter={addressTypeFilter}
                 chain={chain.chain}
+                networkLabel={chain.label}
                 expanded={forceExpanded || (expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT)}
                 forceExpanded={forceExpanded}
                 hideTypeFilter={!showTypeFilter}
@@ -2980,6 +3137,9 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
 
 export default function App() {
   const categorySlug = parseCategoryFromUrl();
+  // Comma-decimal is the default because the CSV field delimiter is ";", so
+  // "," reads back as a real number in pl-PL-style spreadsheet locales.
+  const [csvDecimal, setCsvDecimal] = useState<CsvDecimal>(",");
 
   // Root: landing page listing every snapshot category.
   if (!categorySlug) {
@@ -3004,5 +3164,11 @@ export default function App() {
     view = <ExplorerView />;
   }
 
-  return <CategoryContext.Provider value={active}>{view}</CategoryContext.Provider>;
+  return (
+    <CategoryContext.Provider value={active}>
+      <CsvFormatContext.Provider value={{ decimal: csvDecimal, setDecimal: setCsvDecimal }}>
+        {view}
+      </CsvFormatContext.Provider>
+    </CategoryContext.Provider>
+  );
 }
