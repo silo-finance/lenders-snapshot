@@ -25,7 +25,7 @@ For vault depositors, each `withdrawals[]` entry also keeps the raw on-chain amo
 
 - `snapshot_lenders.py` – main script that produces one `data/<category>.json` per category.
 - `qa_check.py` – pure-JSON validator (no RPC/graph) that asserts share-sum invariants against the stored total supplies.
-- `data/` – generated per-category snapshot files (e.g. `data/trevee-airdrop.json`), imported by the UI.
+- `data/` – generated per-category snapshot files (e.g. `data/stream.json`), imported by the UI.
 - `requirements.txt` – Python dependencies (`web3`).
 - `.env.example` – template for the required secrets.
 
@@ -33,7 +33,7 @@ For vault depositors, each `withdrawals[]` entry also keeps the raw on-chain amo
 
 Non-secret parameters are hardcoded near the top of `snapshot_lenders.py` in the `CATEGORIES`
 dict. Each **category** is a self-contained snapshot rendered under its own path in the UI
-(e.g. `/lenders-snapshot/trevee-airdrop`) and written to its own `data/<slug>.json` file. Categories
+(e.g. `/lenders-snapshot/stream`) and written to its own `data/<slug>.json` file. Categories
 are intentionally hardcoded: adding one is a rare, deliberate edit.
 
 Each category maps to a list of chain `targets`:
@@ -50,8 +50,7 @@ A category may also set an explicit `output` filename (defaults to `<slug>.json`
 `MULTICALL3` address / `MULTICALL_BATCH` and the per-category output directory (`data/`) are
 also defined near the top of the script.
 
-The `trevee-airdrop` category currently holds the Sonic silos/blocks. Its `ethereum` target is present
-as a placeholder with `silos: []` until Ethereum silo addresses and snapshot blocks are supplied.
+The `trevee`, `pendle`, and `stream` categories currently hold the Sonic silos/blocks.
 
 Secrets are read **only** from the environment (or a local, gitignored `.env`):
 
@@ -74,16 +73,16 @@ python3 -m pip install -r scripts/lender-snapshot/requirements.txt
 
 # Produce / refresh a snapshot for one category (a category slug is REQUIRED;
 # writes data/<slug>.json). Scanning is per-category, never implicitly all:
-python3 scripts/lender-snapshot/snapshot_lenders.py trevee-airdrop
+python3 scripts/lender-snapshot/snapshot_lenders.py stream
 
 # You can pass several slugs to scan more than one category in a single run:
-python3 scripts/lender-snapshot/snapshot_lenders.py trevee-airdrop another-slug
+python3 scripts/lender-snapshot/snapshot_lenders.py stream pendle
 
 # Validate the JSON invariants for all data/*.json (zero tolerance, exact wei equality):
 python3 scripts/lender-snapshot/qa_check.py
 
 # Validate a specific file:
-python3 scripts/lender-snapshot/qa_check.py --json scripts/lender-snapshot/data/trevee-airdrop.json
+python3 scripts/lender-snapshot/qa_check.py --json scripts/lender-snapshot/data/stream.json
 
 # Optionally re-confirm stored total supplies against the chain:
 python3 scripts/lender-snapshot/qa_check.py --verify-onchain

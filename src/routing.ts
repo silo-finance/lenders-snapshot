@@ -13,8 +13,8 @@ export function getAppBasePath(): string {
   return base.endsWith("/") ? base.slice(0, -1) : base;
 }
 
-// Path segments after the app base path, e.g. `/lenders-snapshot/trevee-airdrop/sonic/0x..`
-// under base `/lenders-snapshot` yields ["trevee-airdrop", "sonic", "0x.."].
+// Path segments after the app base path, e.g. `/lenders-snapshot/stream/sonic/0x..`
+// under base `/lenders-snapshot` yields ["stream", "sonic", "0x.."].
 function pathSegments(): string[] {
   const base = getAppBasePath();
   let pathname = window.location.pathname;
@@ -24,7 +24,7 @@ function pathSegments(): string[] {
   return pathname.replace(/^\/+/, "").split("/").filter(Boolean);
 }
 
-// The first path segment is the snapshot category slug (e.g. "trevee-airdrop"), or null at
+// The first path segment is the snapshot category slug (e.g. "stream"), or null at
 // the root (landing page). Validity against the known categories is checked by the caller.
 export function parseCategoryFromUrl(): string | null {
   const segments = pathSegments();
