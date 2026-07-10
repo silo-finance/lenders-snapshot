@@ -2570,6 +2570,70 @@ function categorySiloCount(category: SnapshotCategory): number {
   return category.data.chains.reduce((total, chain) => total + chain.silos.length, 0);
 }
 
+function LandingCategoryCard({ category }: { category: SnapshotCategory }) {
+  const siloCount = categorySiloCount(category);
+  const isExternal = Boolean(category.externalUrl);
+  const comingSoon = !category.data && !isExternal;
+  const cardBody = (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-lg font-semibold text-white">{category.label}</span>
+        {comingSoon ? (
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-400">Coming soon</span>
+        ) : isExternal ? (
+          <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
+            ↗
+          </span>
+        ) : (
+          <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
+            →
+          </span>
+        )}
+      </div>
+      {isExternal ? (
+        <p className="mt-3 text-xs text-slate-400">Opens the separate snapshot deployment</p>
+      ) : comingSoon ? null : (
+        <p className="mt-3 text-xs text-slate-400">
+          {siloCount} silo{siloCount === 1 ? "" : "s"}
+        </p>
+      )}
+    </>
+  );
+
+  if (isExternal) {
+    return (
+      <a
+        className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"
+        href={category.externalUrl}
+        rel="noopener noreferrer"
+        target="_blank"
+      >
+        {cardBody}
+      </a>
+    );
+  }
+
+  if (comingSoon) {
+    return (
+      <div
+        aria-disabled="true"
+        className="cursor-not-allowed rounded-3xl border border-white/10 bg-white/[0.02] p-5 opacity-60"
+      >
+        {cardBody}
+      </div>
+    );
+  }
+
+  return (
+    <a
+      className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"
+      href={categoryHomePath(category.slug)}
+    >
+      {cardBody}
+    </a>
+  );
+}
+
 function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
@@ -2580,11 +2644,6 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
             v{APP_VERSION}
           </span>
         </div>
-        <p className="mt-2 text-lg font-medium text-slate-200">Defaulted Loan Claims Explorer</p>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-          Look up your historical lending balances across Stream, Trevee, and Pendle-related markets. These balances
-          will be used to prepare and submit recovery claims for unpaid loans.
-        </p>
 
         {notFoundSlug ? (
           <p className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium text-amber-200">
@@ -2595,73 +2654,31 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
           </p>
         ) : null}
 
-        <div className="mt-8 flex flex-col gap-4">
-          {SNAPSHOT_CATEGORIES.map((category) => {
-            const siloCount = categorySiloCount(category);
-            const isExternal = Boolean(category.externalUrl);
-            const comingSoon = !category.data && !isExternal;
-            const cardBody = (
-              <>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-lg font-semibold text-white">{category.label}</span>
-                  {comingSoon ? (
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-400">Coming soon</span>
-                  ) : isExternal ? (
-                    <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
-                      ↗
-                    </span>
-                  ) : (
-                    <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
-                      →
-                    </span>
-                  )}
-                </div>
-                {isExternal ? (
-                  <p className="mt-3 text-xs text-slate-400">Opens the separate snapshot deployment</p>
-                ) : comingSoon ? null : (
-                  <p className="mt-3 text-xs text-slate-400">
-                    {siloCount} silo{siloCount === 1 ? "" : "s"}
-                  </p>
-                )}
-              </>
-            );
+        <div className="mt-10 space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold text-white">Defaulted Loan Claims Explorer</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+              Look up your historical lending balances across Stream, Trevee, and Pendle-related markets. These balances
+              will be used to prepare and submit recovery claims for unpaid loans.
+            </p>
+          </div>
+          <div className="flex flex-col gap-4">
+            {SNAPSHOT_CATEGORIES.map((category) => (
+              <LandingCategoryCard key={category.slug} category={category} />
+            ))}
+          </div>
+        </div>
 
-            if (isExternal) {
-              return (
-                <a
-                  key={category.slug}
-                  className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"
-                  href={category.externalUrl}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  {cardBody}
-                </a>
-              );
-            }
-
-            if (comingSoon) {
-              return (
-                <div
-                  key={category.slug}
-                  aria-disabled="true"
-                  className="cursor-not-allowed rounded-3xl border border-white/10 bg-white/[0.02] p-5 opacity-60"
-                >
-                  {cardBody}
-                </div>
-              );
-            }
-
-            return (
-              <a
-                key={category.slug}
-                className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"
-                href={categoryHomePath(category.slug)}
-              >
-                {cardBody}
-              </a>
-            );
-          })}
+        <div className="mt-12 space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold text-white">Completed Distributions</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+              Finished recovery payouts and distribution records will appear here once they are completed.
+            </p>
+          </div>
+          <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] px-5 py-8 text-center text-sm text-slate-500">
+            No completed distributions yet.
+          </div>
         </div>
       </section>
     </main>
