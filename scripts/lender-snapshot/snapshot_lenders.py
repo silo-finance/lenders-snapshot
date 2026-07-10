@@ -47,12 +47,17 @@ AVALANCHE_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/6NLL9Wmj
 ARBITRUM_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/DK5qWsSJSqkeW2GHDQQCB7xHnHwVN3K1LPpP6CYNXMh8"
 ETHEREUM_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/2z5Mn4WW7K4yR1iH9KdignREkTq9EM1S4GX3yLaztRFg"
 
-# eth_getLogs block range per call, hardcoded per chain (RPC providers cap the range
-# differently). Referenced by "block_chunk" in CATEGORIES.
+# eth_getLogs block range per call, hardcoded per chain. Our provider (dRPC) enforces no
+# hard block-range cap on eth_getLogs -- the binding limits are 10,000 results and a 10s
+# query duration (identical on Sonic/Avalanche/Arbitrum/Ethereum). Since every scan filters
+# by a single silo address + event topics, per-chunk log density is tiny and the queries are
+# served from the node's log index, so large ranges stay well within both limits. Referenced
+# by "block_chunk" in CATEGORIES. The scanner auto-halves the range on any RPC rejection, so
+# these are safe upper bounds rather than exact caps.
 SONIC_BLOCK_CHUNK = 500_000
-AVALANCHE_BLOCK_CHUNK = 2_048
-ARBITRUM_BLOCK_CHUNK = 10_000
-ETHEREUM_BLOCK_CHUNK = 10_000
+AVALANCHE_BLOCK_CHUNK = 500_000
+ARBITRUM_BLOCK_CHUNK = 500_000
+ETHEREUM_BLOCK_CHUNK = 100_000
 
 # Snapshot categories. Each category is a self-contained snapshot rendered under its own
 # path in the UI (e.g. `/lenders-snapshot/trevee-airdrop`) and written to its own data file
