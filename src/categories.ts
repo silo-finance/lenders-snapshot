@@ -10,17 +10,29 @@ import streamData from "../scripts/lender-snapshot/data/stream.json";
  * Python scanner, run it to produce `data/<slug>.json`, then add an entry below).
  *
  * `data` is `null` for categories that are announced but not yet generated
- * ("coming soon" on the landing page).
+ * ("coming soon" on the landing page) or that link out via `externalUrl`.
  */
 export type SnapshotCategory = {
   slug: string;
   label: string;
   title: string;
   description: string[];
+  // When set, the landing card links out to this URL instead of an in-app snapshot.
+  externalUrl?: string;
   data: CategoryData | null;
 };
 
 export const SNAPSHOT_CATEGORIES: SnapshotCategory[] = [
+  {
+    slug: "trevee-airdrop",
+    label: "Trevee Airdrop",
+    title: "Lender Snapshot for Trevee Airdrop",
+    description: [
+      "The Trevee Airdrop snapshot lives in its own deployment.",
+    ],
+    externalUrl: "https://silo-finance.github.io/trevee-lenders-snapshot",
+    data: null,
+  },
   {
     slug: "trevee",
     label: "Trevee",
