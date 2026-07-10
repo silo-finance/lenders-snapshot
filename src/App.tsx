@@ -14,26 +14,20 @@ import {
 import {
   type ChainSnapshot,
   type DirectLender,
-  type SiloCategory,
   type SiloSnapshot,
   type TransferEntry,
   type VaultDepositor,
   type VaultSnapshot,
   type WithdrawalEntry,
-  SILO_CATEGORY_LABELS,
-  SILO_CATEGORY_ORDER,
   compareBigIntAsc,
   compareBigIntDesc,
   explorerAddressUrl,
   explorerTxUrl,
   findSiloByAddress,
-  formatUnits,
   formatUnitsFixed,
   formatUnitsPlain,
   formatUnitsRounded,
-  parseUnits,
   shortAddress,
-  siloCategory,
 } from "./snapshot";
 import { SNAPSHOT_CATEGORIES, findCategory, type SnapshotCategory } from "./categories";
 import { getBlockExplorerUrl, getNetworkIconPath, getNetworkName } from "./networks";
@@ -47,8 +41,6 @@ type ActiveCategory = {
   label: string;
   title: string;
   description: string[];
-  airdropEnabled: boolean;
-  airdropDefaults: Partial<Record<SiloCategory, string>>;
   chains: ChainSnapshot[];
   snapshotBlock: number;
   eventsToBlock: number;
@@ -88,8 +80,6 @@ function toActiveCategory(category: SnapshotCategory): ActiveCategory {
     label: category.label,
     title: category.title,
     description: category.description,
-    airdropEnabled: category.airdropEnabled,
-    airdropDefaults: category.airdropDefaults,
     chains: category.data.chains,
     snapshotBlock: category.data.snapshotBlock,
     eventsToBlock: category.data.eventsToBlock,
@@ -113,46 +103,7 @@ type AggregateTotals = {
 const DEFAULT_EXPANDED_LIMIT = 2;
 const APP_VERSION = packageJson.version;
 
-type AirdropPlan = {
-  airdropRaw: bigint;
-  byLeafKey: Map<string, bigint>;
-  csvAirdrops: Map<string, bigint | null>;
-  excludedLeafKeys: Set<string>;
-  totalPendingAssets: bigint;
-  distributed: bigint;
-  undistributed: bigint;
-  nonAttributableAssets: bigint;
-  // Number of distinct addresses that received a strictly positive raw allocation
-  // (counted on the true smallest-unit value, so even a 1-wei recipient counts).
-  recipientCount: number;
-};
-
 const ZERO = 0n;
-const OTHER_CONTRACT_TYPE = "contract_other";
-
-function directLeafKey(siloAddress: string, address: string): string {
-  return `direct:${siloAddress}:${address}`;
-}
-
-function vaultLeafKey(siloAddress: string, vaultAddress: string, depositorAddress: string): string {
-  return `vault:${siloAddress}:${vaultAddress}:${depositorAddress}`;
-}
-
-function siloDistributedTotal(silo: SiloSnapshot, airdropPlan: AirdropPlan): bigint {
-  let total = ZERO;
-  for (const lender of silo.directLenders) {
-    if (lender.isVault) {
-      continue;
-    }
-    total += airdropPlan.byLeafKey.get(directLeafKey(silo.address, lender.address)) ?? ZERO;
-  }
-  for (const vault of silo.vaults) {
-    for (const depositor of vault.depositors) {
-      total += airdropPlan.byLeafKey.get(vaultLeafKey(silo.address, vault.address, depositor.address)) ?? ZERO;
-    }
-  }
-  return total;
-}
 
 function csvEscape(value: string): string {
   if (/[";\n\r]/.test(value)) {
@@ -1266,9 +1217,6 @@ function HolderTable({
   rows,
   silo,
   expanded,
-  airdropPlan,
-  showAirdropColumn,
-  airdropSymbol,
   sortState,
   tableTotals,
   onSort,
@@ -1282,9 +1230,6 @@ function HolderTable({
   rows: DirectLender[];
   silo: SiloSnapshot;
   expanded: boolean;
-  airdropPlan: AirdropPlan | null;
-  showAirdropColumn: boolean;
-  airdropSymbol: string;
   sortState: TableSortState;
   tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
@@ -1389,13 +1334,12 @@ function HolderTable({
                     />
                   </div>
                 </th>
-                {showAirdropColumn ? <th className="px-5 py-3 text-right font-medium">Airdrop</th> : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 text-slate-200">
               {tableRows.length === 0 ? (
                 <tr>
-                  <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={showAirdropColumn ? 7 : 6}>
+                  <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={6}>
                     {showOnlyPlusMinus
                       ? "No direct lenders with plus/minus match the current filters."
                       : "No direct lenders match the current address filter."}
@@ -1470,28 +1414,10 @@ function HolderTable({
                             </button>
                           ) : null}
                         </td>
-                        {showAirdropColumn ? (
-                          <td
-                            className={
-                              row.isVault
-                                ? "px-5 py-4 text-right font-mono tabular-nums text-slate-500"
-                                : "px-5 py-4 text-right font-mono tabular-nums"
-                            }
-                          >
-                            {row.isVault
-                              ? "N/A"
-                              : formatAirdropCell(
-                                  airdropPlan,
-                                  directLeafKey(silo.address, row.address),
-                                  silo.inputToken.decimals,
-                                  airdropSymbol,
-                                )}
-                          </td>
-                        ) : null}
                       </tr>
                       {breakdownOpen && hasFlows && !row.isVault ? (
                         <tr className="bg-slate-950/40">
-                          <td className="px-5 pb-4" colSpan={showAirdropColumn ? 7 : 6}>
+                          <td className="px-5 pb-4" colSpan={6}>
                             <PendingAssetsBreakdown
                               chain={chain}
                               baseAssets={row.totalAssets}
@@ -1553,13 +1479,9 @@ function DepositorTable({
   chain,
   rows,
   silo,
-  vaultAddress,
   sortState,
   addressFilter,
   addressTypeFilter,
-  airdropPlan,
-  showAirdropColumn,
-  airdropSymbol,
   tableTotals,
   onSort,
   hideTypeFilter = false,
@@ -1567,13 +1489,9 @@ function DepositorTable({
   chain: string;
   rows: VaultDepositor[];
   silo: SiloSnapshot;
-  vaultAddress: string;
   sortState: TableSortState;
   addressFilter: string;
   addressTypeFilter: string;
-  airdropPlan: AirdropPlan | null;
-  showAirdropColumn: boolean;
-  airdropSymbol: string;
   tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
   hideTypeFilter?: boolean;
@@ -1643,13 +1561,12 @@ function DepositorTable({
                   />
                 </div>
               </th>
-              {showAirdropColumn ? <th className="px-5 py-3 text-right font-medium">Airdrop</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10 text-slate-200">
             {filteredRows.length === 0 ? (
               <tr>
-                <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={showAirdropColumn ? 7 : 6}>
+                <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={6}>
                   {showOnlyPlusMinus
                     ? "No vault depositors with plus/minus match the current filters."
                     : "No vault depositors match the current address filter."}
@@ -1695,22 +1612,10 @@ function DepositorTable({
                           </button>
                         ) : null}
                       </td>
-                      {showAirdropColumn ? (
-                        <td className="px-5 py-4 text-right font-mono tabular-nums">
-                          {airdropPlan
-                            ? formatAirdropCell(
-                                airdropPlan,
-                                vaultLeafKey(silo.address, vaultAddress, row.address),
-                                silo.inputToken.decimals,
-                                airdropSymbol,
-                              )
-                            : "--"}
-                        </td>
-                      ) : null}
                     </tr>
                     {breakdownOpen && hasFlows ? (
                       <tr className="bg-slate-950/40">
-                        <td className="px-5 pb-4" colSpan={showAirdropColumn ? 7 : 6}>
+                        <td className="px-5 pb-4" colSpan={6}>
                           <PendingAssetsBreakdown
                             chain={chain}
                             baseAssets={row.attributedSiloAssets}
@@ -1806,175 +1711,6 @@ function TwoWayIcon({ className = "" }: { className?: string }) {
   );
 }
 
-function addCsvAirdrop(csvAirdrops: Map<string, bigint | null>, address: string, amount: bigint | null) {
-  const current = csvAirdrops.get(address);
-  if (amount === null) {
-    if (current === undefined) {
-      csvAirdrops.set(address, null);
-    }
-    return;
-  }
-  csvAirdrops.set(address, (current ?? ZERO) + amount);
-}
-
-function isAirdropEligible(addressType: string, includeOtherContracts: boolean): boolean {
-  return includeOtherContracts || addressType !== OTHER_CONTRACT_TYPE;
-}
-
-// Distinct addresses whose aggregated allocation is strictly greater than zero in
-// raw smallest units (not rounded for display), so a 1-wei recipient still counts.
-function countPositiveRecipients(csvAirdrops: Map<string, bigint | null>): number {
-  let count = 0;
-  for (const amount of csvAirdrops.values()) {
-    if (amount !== null && amount > ZERO) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-function formatAirdropCell(airdropPlan: AirdropPlan | null, leafKey: string, decimals: number, symbol: string): string {
-  if (!airdropPlan) {
-    return "--";
-  }
-  if (airdropPlan.excludedLeafKeys.has(leafKey)) {
-    return "Not available";
-  }
-  return `${formatUnits(airdropPlan.byLeafKey.get(leafKey) ?? ZERO, decimals, 6)} ${symbol}`;
-}
-
-type AirdropLeaf = { key: string; address: string; pending: bigint };
-
-function buildAirdropPlan(
-  allSilos: SiloSnapshot[],
-  airdropRaw: bigint,
-  includeOtherContracts: boolean,
-): AirdropPlan {
-  const byLeafKey = new Map<string, bigint>();
-  const csvAirdrops = new Map<string, bigint | null>();
-  const excludedLeafKeys = new Set<string>();
-
-  // Collect every recipient we will pay (eligible leaves) plus the assets we cannot
-  // attribute to anyone (warning-vault assets). Excluded `contract_other` pending is
-  // intentionally left out of every denominator so its share is redistributed to
-  // eligible recipients.
-  const eligibleLeaves: AirdropLeaf[] = [];
-  let eligiblePending = ZERO;
-  let nonAttributableAssets = ZERO;
-
-  for (const silo of allSilos) {
-    for (const lender of silo.directLenders) {
-      if (lender.isVault) {
-        continue;
-      }
-      const leafKey = directLeafKey(silo.address, lender.address);
-      if (!isAirdropEligible(lender.addressType, includeOtherContracts)) {
-        excludedLeafKeys.add(leafKey);
-        addCsvAirdrop(csvAirdrops, lender.address, null);
-        continue;
-      }
-      // Clamp negative pending (unreconciled interest/transfers) to zero so it neither
-      // shrinks the denominator nor produces a negative allocation.
-      const pending = lender.pendingAssets > ZERO ? lender.pendingAssets : ZERO;
-      eligibleLeaves.push({ key: leafKey, address: lender.address, pending });
-      eligiblePending += pending;
-    }
-
-    for (const vault of silo.vaults) {
-      if (isVaultWarning(vault)) {
-        nonAttributableAssets += vault.vaultSiloAssets;
-        continue;
-      }
-      for (const depositor of vault.depositors) {
-        const leafKey = vaultLeafKey(silo.address, vault.address, depositor.address);
-        if (!isAirdropEligible(depositor.addressType, includeOtherContracts)) {
-          excludedLeafKeys.add(leafKey);
-          addCsvAirdrop(csvAirdrops, depositor.address, null);
-          continue;
-        }
-        const pending = depositor.pendingAssets > ZERO ? depositor.pendingAssets : ZERO;
-        eligibleLeaves.push({ key: leafKey, address: depositor.address, pending });
-        eligiblePending += pending;
-      }
-    }
-  }
-
-  // The airdrop rate is taken over eligible pending plus non-attributable assets, so the
-  // slice that "belongs" to warning vaults is held back rather than over-paid to others.
-  const rateBase = eligiblePending + nonAttributableAssets;
-
-  if (airdropRaw === ZERO || rateBase === ZERO || eligiblePending === ZERO) {
-    for (const leaf of eligibleLeaves) {
-      byLeafKey.set(leaf.key, ZERO);
-      addCsvAirdrop(csvAirdrops, leaf.address, ZERO);
-    }
-    return {
-      airdropRaw,
-      byLeafKey,
-      csvAirdrops,
-      excludedLeafKeys,
-      totalPendingAssets: rateBase,
-      distributed: ZERO,
-      undistributed: airdropRaw,
-      nonAttributableAssets,
-      recipientCount: 0,
-    };
-  }
-
-  // Amount actually payable to eligible recipients (full smallest-unit precision).
-  const distributable = (airdropRaw * eligiblePending) / rateBase;
-
-  // Largest-remainder apportionment: floor each share, then hand the leftover smallest
-  // units to the recipients with the biggest fractional remainders. This distributes
-  // `distributable` exactly, with no precision loss beyond what is mathematically owed.
-  const allocations = eligibleLeaves.map((leaf) => {
-    const numerator = distributable * leaf.pending;
-    return {
-      leaf,
-      airdrop: numerator / eligiblePending,
-      remainder: numerator % eligiblePending,
-    };
-  });
-
-  const allocated = allocations.reduce((sum, item) => sum + item.airdrop, ZERO);
-  let leftover = distributable - allocated;
-
-  if (leftover > ZERO) {
-    const ranked = [...allocations].sort((a, b) => {
-      if (a.remainder !== b.remainder) {
-        return a.remainder > b.remainder ? -1 : 1;
-      }
-      if (a.leaf.pending !== b.leaf.pending) {
-        return a.leaf.pending > b.leaf.pending ? -1 : 1;
-      }
-      return a.leaf.key < b.leaf.key ? -1 : 1;
-    });
-    for (let index = 0; index < ranked.length && leftover > ZERO; index += 1) {
-      ranked[index].airdrop += 1n;
-      leftover -= 1n;
-    }
-  }
-
-  let distributed = ZERO;
-  for (const { leaf, airdrop } of allocations) {
-    byLeafKey.set(leaf.key, airdrop);
-    addCsvAirdrop(csvAirdrops, leaf.address, airdrop);
-    distributed += airdrop;
-  }
-
-  return {
-    airdropRaw,
-    byLeafKey,
-    csvAirdrops,
-    excludedLeafKeys,
-    totalPendingAssets: rateBase,
-    distributed,
-    undistributed: airdropRaw > distributed ? airdropRaw - distributed : ZERO,
-    nonAttributableAssets,
-    recipientCount: countPositiveRecipients(csvAirdrops),
-  };
-}
-
 function VaultCard({
   chain,
   networkLabel,
@@ -1984,9 +1720,6 @@ function VaultCard({
   onToggle,
   addressFilter,
   addressTypeFilter,
-  airdropPlan,
-  showAirdropColumn,
-  airdropSymbol,
   forceExpanded = false,
   hideTypeFilter = false,
   navPrevId,
@@ -2000,9 +1733,6 @@ function VaultCard({
   onToggle: () => void;
   addressFilter: string;
   addressTypeFilter: string;
-  airdropPlan: AirdropPlan | null;
-  showAirdropColumn: boolean;
-  airdropSymbol: string;
   forceExpanded?: boolean;
   hideTypeFilter?: boolean;
   navPrevId?: string;
@@ -2015,10 +1745,6 @@ function VaultCard({
   const depositorTotals = sumDepositorTotals(vault.depositors);
   const vaultSharesValid =
     vault.vaultTotalSupply !== null && depositorTotals.shares === vault.vaultTotalSupply && vault.status === "ok";
-  const unavailableAirdrop =
-    hasWarning && airdropPlan && airdropPlan.totalPendingAssets > ZERO
-      ? (airdropPlan.airdropRaw * vault.vaultSiloAssets) / airdropPlan.totalPendingAssets
-      : ZERO;
 
   // Vault metadata (name + address + nav + assets/shares summary). Rendered at the
   // top of the card and repeated at the bottom so long depositor tables stay labelled.
@@ -2119,15 +1845,9 @@ function VaultCard({
       {hasWarning ? (
         <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
           <p>
-            Depositors cannot be enumerated for this vault. Its assets are shown here so airdrop calculations can surface
-            the non-attributable amount.
+            Depositors cannot be enumerated for this vault. Its assets are shown here so the non-attributable amount is
+            still surfaced.
           </p>
-          {unavailableAirdrop > ZERO ? (
-            <p className="font-semibold text-amber-100">
-              Undistributed from this vault: {formatUnits(unavailableAirdrop, silo.inputToken.decimals)}{" "}
-              {airdropSymbol}
-            </p>
-          ) : null}
         </div>
       ) : isExpanded ? (
         <div className="mt-4">
@@ -2136,14 +1856,10 @@ function VaultCard({
             addressTypeFilter={addressTypeFilter}
             chain={chain}
             hideTypeFilter={hideTypeFilter}
-            airdropPlan={airdropPlan}
-            airdropSymbol={airdropSymbol}
             rows={vault.depositors}
-            showAirdropColumn={showAirdropColumn}
             silo={silo}
             sortState={depositorSort}
             tableTotals={depositorTotals}
-            vaultAddress={vault.address}
             onSort={(key) => setDepositorSort((current) => nextSortState(current, key))}
           />
           <div
@@ -2270,31 +1986,10 @@ function getInitialExplorerSelection(chains: ChainSnapshot[]): { chainName: stri
   return { chainName: match.chain.chain, siloAddress: match.silo.address };
 }
 
-function getInitialCategory(chains: ChainSnapshot[]): SiloCategory {
-  const selection = getInitialExplorerSelection(chains);
-  const match = findSiloByAddress(chains, selection.siloAddress, selection.chainName);
-  return match ? siloCategory(match.silo) : "usdc";
-}
-
 // Every (chain, silo) pair across the category, so silos from different chains render in a
 // single uniform list (each tagged with its network).
 function flattenSilos(chains: ChainSnapshot[]): { chain: ChainSnapshot; silo: SiloSnapshot }[] {
   return chains.flatMap((chain) => chain.silos.map((silo) => ({ chain, silo })));
-}
-
-function availableCategories(silos: SiloSnapshot[]): SiloCategory[] {
-  const present = new Set(silos.map(siloCategory));
-  return SILO_CATEGORY_ORDER.filter((category) => present.has(category));
-}
-
-function resetAirdropsState(
-  setDistributeAirdropsEnabled: (value: boolean) => void,
-  setAirdropInput: (value: string) => void,
-  setIncludeOtherContracts: (value: boolean) => void,
-) {
-  setDistributeAirdropsEnabled(false);
-  setAirdropInput("");
-  setIncludeOtherContracts(false);
 }
 
 function SiloDetailPanel({
@@ -2312,19 +2007,6 @@ function SiloDetailPanel({
   setDirectExpanded,
   expandedVaults,
   setExpandedVaults,
-  distributeAirdropsEnabled,
-  setDistributeAirdropsEnabled,
-  airdropInput,
-  setAirdropInput,
-  includeOtherContracts,
-  setIncludeOtherContracts,
-  airdropPlan,
-  airdropInputInvalid,
-  showAirdropColumn,
-  categoryLabel,
-  airdropSiloCount = 0,
-  defaultAirdropAmount = "",
-  showAirdrops = true,
   showTypeFilter = true,
   showExpandControls = true,
   forceExpanded = false,
@@ -2346,19 +2028,6 @@ function SiloDetailPanel({
   setDirectExpanded: (value: boolean | ((current: boolean) => boolean)) => void;
   expandedVaults: Record<string, boolean>;
   setExpandedVaults: (value: Record<string, boolean> | ((current: Record<string, boolean>) => Record<string, boolean>)) => void;
-  distributeAirdropsEnabled: boolean;
-  setDistributeAirdropsEnabled: (value: boolean) => void;
-  airdropInput: string;
-  setAirdropInput: (value: string) => void;
-  includeOtherContracts: boolean;
-  setIncludeOtherContracts: (value: boolean) => void;
-  airdropPlan: AirdropPlan | null;
-  airdropInputInvalid: boolean;
-  showAirdropColumn: boolean;
-  categoryLabel?: string;
-  airdropSiloCount?: number;
-  defaultAirdropAmount?: string;
-  showAirdrops?: boolean;
   showTypeFilter?: boolean;
   showExpandControls?: boolean;
   forceExpanded?: boolean;
@@ -2372,9 +2041,6 @@ function SiloDetailPanel({
     showConnectWallet ? setAddressFilter : undefined,
   );
 
-  // Airdrops are paid in the category token, so airdrop amounts are labeled with the
-  // category (USDC / ETH) rather than the individual silo's token symbol.
-  const airdropSymbol = categoryLabel ?? silo.inputToken.symbol;
   const lenderNeedle = addressFilter.trim().toLowerCase();
   const typeMatches = (addressType: string) =>
     !showTypeFilter || addressTypeFilter === "all" || addressType === addressTypeFilter;
@@ -2421,8 +2087,8 @@ function SiloDetailPanel({
   return (
     <section className="min-w-0 space-y-6">
       <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-slate-950/40">
-        <div className="grid gap-6 xl:grid-cols-3 xl:items-start">
-          <div className="xl:col-span-1">
+        <div>
+          <div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-emerald-200">
               <span className="inline-flex items-center gap-1.5">
                 {silo.inputToken.symbol} / <SiloKindLabel silo={silo} />
@@ -2456,127 +2122,6 @@ function SiloDetailPanel({
               )}
             </p>
           </div>
-          {showAirdrops ? (
-            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 xl:col-span-2">
-              <label className="flex items-start gap-3 text-sm text-slate-300">
-                <input
-                  className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
-                  type="checkbox"
-                  checked={distributeAirdropsEnabled}
-                  onChange={(event) => {
-                    const enabled = event.target.checked;
-                    setDistributeAirdropsEnabled(enabled);
-                    if (enabled) {
-                      // Pre-fill the per-category default so the airdrop is computed
-                      // immediately on enable.
-                      if (defaultAirdropAmount && !airdropInput.trim()) {
-                        setAirdropInput(defaultAirdropAmount);
-                        setDirectExpanded(true);
-                        setExpandedVaults(Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])));
-                      }
-                    } else {
-                      setAirdropInput("");
-                      setIncludeOtherContracts(false);
-                    }
-                  }}
-                />
-                <span>
-                  Distribute airdrops{categoryLabel ? ` (${categoryLabel})` : ""}
-                  {airdropSiloCount > 0 ? (
-                    <span className="text-slate-500">
-                      {" "}
-                      to {airdropSiloCount} {airdropSiloCount === 1 ? "silo" : "silos"}
-                    </span>
-                  ) : null}
-                </span>
-              </label>
-              {distributeAirdropsEnabled ? (
-                <>
-                  <p className="mt-4 text-xs uppercase tracking-[0.22em] text-slate-500">
-                    {categoryLabel ? `${categoryLabel} airdrop amount` : "Airdrop amount"}
-                  </p>
-                  <div className="mt-3 flex gap-3">
-                    <input
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-slate-300 outline-none placeholder:text-slate-600"
-                      placeholder={`0.00 ${airdropSymbol}`}
-                      value={airdropInput}
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setAirdropInput(nextValue);
-                        if (nextValue.trim()) {
-                          setDirectExpanded(true);
-                          setExpandedVaults(Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])));
-                        }
-                      }}
-                    />
-                    <button
-                      className="rounded-xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
-                      disabled={!airdropPlan || airdropPlan.airdropRaw === ZERO || airdropInputInvalid}
-                      type="button"
-                      onClick={() => {
-                        if (!airdropPlan) {
-                          return;
-                        }
-                        const rows = [["address", "raw_amount", "assets"]];
-                        for (const [address, airdrop] of [...airdropPlan.csvAirdrops.entries()].sort(([a], [b]) =>
-                          a.localeCompare(b),
-                        )) {
-                          rows.push([
-                            address,
-                            airdrop === null ? "" : airdrop.toString(),
-                            airdrop === null ? "" : formatUnitsFixed(airdrop, silo.inputToken.decimals),
-                          ]);
-                        }
-                        const csvLabel = (categoryLabel ?? silo.inputToken.symbol).toLowerCase();
-                        downloadCsv(`${csvLabel}-snapshot-airdrops.csv`, rows);
-                      }}
-                    >
-                      Download CSV
-                    </button>
-                  </div>
-                  <label className="mt-3 flex items-start gap-3 text-xs leading-5 text-slate-300">
-                    <input
-                      className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
-                      type="checkbox"
-                      checked={includeOtherContracts}
-                      onChange={(event) => setIncludeOtherContracts(event.target.checked)}
-                    />
-                    <span>
-                      Distribute to unrecognized contracts (`contract_other`). When disabled, these addresses stay in the
-                      CSV with empty airdrop fields and their pending assets are redistributed to eligible recipients.
-                    </span>
-                  </label>
-                  {airdropInputInvalid ? (
-                    <p className="mt-3 text-xs text-amber-200">
-                      Enter a non-negative amount with at most {silo.inputToken.decimals} decimals.
-                    </p>
-                  ) : airdropPlan && airdropPlan.airdropRaw > ZERO ? (
-                    <div className="mt-3 space-y-1 text-xs text-slate-400">
-                      <p>
-                        {categoryLabel ? `${categoryLabel} distributed` : "Distributed"}:{" "}
-                        {formatUnits(airdropPlan.distributed, silo.inputToken.decimals)} {airdropSymbol} to{" "}
-                        {new Intl.NumberFormat("en-US").format(airdropPlan.recipientCount)}{" "}
-                        {airdropPlan.recipientCount === 1 ? "user" : "users"}
-                      </p>
-                      {airdropPlan.undistributed > ZERO ? (
-                        <p className="text-amber-200">
-                          Undistributed: {formatUnits(airdropPlan.undistributed, silo.inputToken.decimals)}{" "}
-                          {airdropSymbol}
-                          {airdropPlan.nonAttributableAssets > ZERO
-                            ? " because some vault assets have no enumerable depositors."
-                            : " due to integer rounding."}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-xs text-slate-500">
-                      Enter an amount to compute pro-rata airdrops across pending assets.
-                    </p>
-                  )}
-                </>
-              ) : null}
-            </div>
-          ) : null}
         </div>
         <SiloMetrics silo={silo} />
       </div>
@@ -2664,10 +2209,7 @@ function SiloDetailPanel({
           forceExpanded={forceExpanded}
           navNextId={tableSectionIds.length > 1 ? tableSectionIds[1] : undefined}
           rows={visibleLenders}
-          showAirdropColumn={showAirdropColumn}
-          airdropSymbol={airdropSymbol}
           silo={silo}
-          airdropPlan={airdropPlan}
           sortState={directSort}
           tableTotals={directTableTotals}
           onJumpToVault={jumpToVault}
@@ -2721,9 +2263,6 @@ function SiloDetailPanel({
                 hideTypeFilter={!showTypeFilter}
                 navNextId={index + 2 < tableSectionIds.length ? tableSectionIds[index + 2] : undefined}
                 navPrevId={tableSectionIds[index]}
-                airdropPlan={airdropPlan}
-                airdropSymbol={airdropSymbol}
-                showAirdropColumn={showAirdropColumn}
                 silo={silo}
                 vault={vault}
                 onToggle={() =>
@@ -2746,46 +2285,31 @@ function SiloDetailPanel({
 }
 
 function ExplorerView() {
-  const { chains, slug, airdropDefaults, airdropEnabled, label: categoryName } = useActiveCategory();
+  const { chains, slug, label: categoryName } = useActiveCategory();
 
   // Silos from every chain in this category, rendered in one uniform list. Each pair keeps
   // its chain so the network badge and category-scoped links resolve correctly.
   const allPairs = flattenSilos(chains);
-  const allSilos = allPairs.map((pair) => pair.silo);
 
   const [selectedChainName, setSelectedChainName] = useState(() => getInitialExplorerSelection(chains).chainName);
   const [selectedSiloAddress, setSelectedSiloAddress] = useState(() => getInitialExplorerSelection(chains).siloAddress);
-  const [selectedCategory, setSelectedCategory] = useState<SiloCategory>(() => getInitialCategory(chains));
   const [addressFilter, setAddressFilter] = useState(() => parseFilterFromUrl());
   const [addressTypeFilter, setAddressTypeFilter] = useState("all");
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>({});
-  const [distributeAirdropsEnabled, setDistributeAirdropsEnabled] = useState(false);
-  const [airdropInput, setAirdropInput] = useState("");
-  const [includeOtherContracts, setIncludeOtherContracts] = useState(false);
 
-  const assetCategories = availableCategories(allSilos);
-  const activeCategory = assetCategories.includes(selectedCategory) ? selectedCategory : (assetCategories[0] ?? "usdc");
-  // Bucketing by token category (USDC/ETH) only exists to scope an airdrop. Without an
-  // airdrop we drop the split entirely: show every silo (all categories) at once and hide
-  // the switcher.
-  const categoryPairs = airdropEnabled
-    ? allPairs.filter(({ silo }) => siloCategory(silo) === activeCategory)
-    : allPairs;
-  const categoryLenderCount = countLenders(categoryPairs.map((pair) => pair.silo));
+  const categoryLenderCount = countLenders(allPairs.map((pair) => pair.silo));
   const addressNeedle = addressFilter.trim().toLowerCase();
   const matchedPairs = addressNeedle
-    ? categoryPairs.filter(({ silo }) => siloMatchesAddress(silo, addressNeedle))
-    : categoryPairs;
+    ? allPairs.filter(({ silo }) => siloMatchesAddress(silo, addressNeedle))
+    : allPairs;
   const selectedPair =
     matchedPairs.find((pair) => pair.silo.address === selectedSiloAddress && pair.chain.chain === selectedChainName) ??
     matchedPairs[0] ??
-    categoryPairs[0];
+    allPairs[0];
   const selectedSilo = selectedPair?.silo;
   const selectedChain = selectedPair?.chain;
-  // Airdrops are distributed across every silo in the active asset category (across all chains).
-  const airdropSilos = allPairs.filter(({ silo }) => siloCategory(silo) === activeCategory).map((pair) => pair.silo);
   const addressTypes = selectedSilo
     ? Array.from(
         new Set([
@@ -2794,14 +2318,6 @@ function ExplorerView() {
         ]),
       ).sort((a, b) => a.localeCompare(b))
     : [];
-  const airdropRaw = selectedSilo ? parseUnits(airdropInput, selectedSilo.inputToken.decimals) : null;
-  const airdropInputInvalid = airdropInput.trim() !== "" && airdropRaw === null;
-  const airdropPlan =
-    selectedSilo && airdropRaw !== null
-      ? buildAirdropPlan(airdropSilos, airdropRaw, includeOtherContracts)
-      : null;
-  const showAirdropColumn =
-    airdropEnabled && distributeAirdropsEnabled && airdropRaw !== null && airdropRaw > ZERO;
 
   function syncSelectionUrl(chainName: string, siloAddress: string, replace = false) {
     if (!siloAddress) {
@@ -2845,26 +2361,7 @@ function ExplorerView() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [chains]);
 
-  function selectCategory(category: SiloCategory) {
-    if (category === activeCategory) {
-      return;
-    }
-    const nextPair = allPairs.find(({ silo }) => siloCategory(silo) === category);
-    const nextChainName = nextPair?.chain.chain ?? "";
-    const nextSiloAddress = nextPair?.silo.address ?? "";
-    setSelectedCategory(category);
-    setSelectedChainName(nextChainName);
-    setSelectedSiloAddress(nextSiloAddress);
-    setAddressTypeFilter("all");
-    setDirectExpanded(true);
-    setExpandedVaults({});
-    resetAirdropsState(setDistributeAirdropsEnabled, setAirdropInput, setIncludeOtherContracts);
-    syncSelectionUrl(nextChainName, nextSiloAddress);
-  }
-
   function selectSilo(chainName: string, siloAddress: string) {
-    // Switching silos within the same token keeps the active distribution so the
-    // airdrops panel and airdrop column stay visible.
     setSelectedChainName(chainName);
     setSelectedSiloAddress(siloAddress);
     setAddressTypeFilter("all");
@@ -2884,25 +2381,6 @@ function ExplorerView() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Silos</p>
-                  {airdropEnabled && assetCategories.length > 0 ? (
-                    <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] p-0.5">
-                      {assetCategories.map((category) => (
-                        <button
-                          key={category}
-                          aria-pressed={activeCategory === category}
-                          className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                            activeCategory === category
-                              ? "bg-emerald-300 text-slate-950 shadow-sm shadow-emerald-500/20"
-                              : "text-slate-300 hover:text-emerald-200"
-                          }`}
-                          type="button"
-                          onClick={() => selectCategory(category)}
-                        >
-                          {SILO_CATEGORY_LABELS[category]}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
                   <span className="text-xs uppercase tracking-[0.22em] text-slate-500">
                     Total lenders{" "}
                     <span className="font-mono text-sm normal-case tracking-normal text-slate-200">
@@ -2915,7 +2393,7 @@ function ExplorerView() {
                 </span>
               </div>
               <div className="mt-3 flex min-w-0 flex-wrap gap-3">
-                {categoryPairs.length === 0 ? (
+                {allPairs.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-slate-500">
                     No silos are currently bundled for this snapshot.
                   </div>
@@ -2960,18 +2438,6 @@ function ExplorerView() {
                           <NetworkBadge chainId={chain.chainId} />
                           <AddressLink address={silo.address} chain={chain.chain} showSiloPageLink />
                         </div>
-                        {showAirdropColumn && airdropPlan ? (
-                          <div className="mt-1 text-xs text-slate-400">
-                            Airdrop:{" "}
-                            <span className="font-mono text-slate-200">
-                              {formatUnits(
-                                siloDistributedTotal(silo, airdropPlan),
-                                selectedSilo?.inputToken.decimals ?? silo.inputToken.decimals,
-                              )}{" "}
-                              {SILO_CATEGORY_LABELS[activeCategory]}
-                            </span>
-                          </div>
-                        ) : null}
                       </div>
                     );
                   })
@@ -2980,7 +2446,7 @@ function ExplorerView() {
             </div>
           </section>
 
-          {!airdropEnabled && allPairs.length > 0 ? (
+          {allPairs.length > 0 ? (
             <ExportAllPanel chains={chains} slug={slug} categoryName={categoryName} />
           ) : null}
 
@@ -2992,28 +2458,15 @@ function ExplorerView() {
               }
               addressTypeFilter={addressTypeFilter}
               addressTypes={addressTypes}
-              airdropSiloCount={airdropSilos.length}
-              categoryLabel={airdropEnabled ? SILO_CATEGORY_LABELS[activeCategory] : undefined}
               chain={selectedChain}
-              defaultAirdropAmount={airdropDefaults[activeCategory] ?? ""}
               directExpanded={directExpanded}
               directSort={directSort}
-              distributeAirdropsEnabled={distributeAirdropsEnabled}
               expandedVaults={expandedVaults}
-              includeOtherContracts={includeOtherContracts}
-              airdropInput={airdropInput}
-              airdropInputInvalid={airdropInputInvalid}
-              airdropPlan={airdropPlan}
               setAddressFilter={setAddressFilter}
               setAddressTypeFilter={setAddressTypeFilter}
               setDirectExpanded={setDirectExpanded}
               setDirectSort={setDirectSort}
-              setDistributeAirdropsEnabled={setDistributeAirdropsEnabled}
               setExpandedVaults={setExpandedVaults}
-              setIncludeOtherContracts={setIncludeOtherContracts}
-              setAirdropInput={setAirdropInput}
-              showAirdrops={airdropEnabled}
-              showAirdropColumn={showAirdropColumn}
               silo={selectedSilo}
             />
           ) : (
@@ -3063,25 +2516,15 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
             chain={chain}
             directExpanded={directExpanded}
             directSort={directSort}
-            distributeAirdropsEnabled={false}
             expandedVaults={expandedVaults}
             forceExpanded
-            includeOtherContracts={false}
-            airdropInput=""
-            airdropInputInvalid={false}
-            airdropPlan={null}
             setAddressFilter={setAddressFilter}
             setAddressTypeFilter={() => undefined}
             setDirectExpanded={setDirectExpanded}
             setDirectSort={setDirectSort}
-            setDistributeAirdropsEnabled={() => undefined}
             setExpandedVaults={setExpandedVaults}
-            setIncludeOtherContracts={() => undefined}
-            setAirdropInput={() => undefined}
             showConnectWallet
             showExpandControls={false}
-            showAirdropColumn={false}
-            showAirdrops={false}
             showTypeFilter={false}
             silo={silo}
           />
@@ -3125,7 +2568,7 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
         </div>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
           Static, no-RPC snapshot explorer for direct holders and vault depositors across chains. Pick a snapshot to
-          browse its lenders and prepare pro-rata airdrop distributions.
+          browse its lenders.
         </p>
 
         {notFoundSlug ? (
@@ -3140,26 +2583,47 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           {SNAPSHOT_CATEGORIES.map((category) => {
             const siloCount = categorySiloCount(category);
-            const comingSoon = !category.data;
+            const isExternal = Boolean(category.externalUrl);
+            const comingSoon = !category.data && !isExternal;
             const cardBody = (
               <>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-lg font-semibold text-white">{category.label}</span>
                   {comingSoon ? (
                     <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-400">Coming soon</span>
+                  ) : isExternal ? (
+                    <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
+                      ↗
+                    </span>
                   ) : (
                     <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
                       →
                     </span>
                   )}
                 </div>
-                {comingSoon ? null : (
+                {isExternal ? (
+                  <p className="mt-3 text-xs text-slate-400">Opens the separate snapshot deployment</p>
+                ) : comingSoon ? null : (
                   <p className="mt-3 text-xs text-slate-400">
                     {siloCount} silo{siloCount === 1 ? "" : "s"}
                   </p>
                 )}
               </>
             );
+
+            if (isExternal) {
+              return (
+                <a
+                  key={category.slug}
+                  className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"
+                  href={category.externalUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  {cardBody}
+                </a>
+              );
+            }
 
             if (comingSoon) {
               return (

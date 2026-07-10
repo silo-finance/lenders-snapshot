@@ -83,7 +83,7 @@ SHARE_DUST = int(os.environ.get("QA_SHARE_DUST", "0"))
 # Known, accepted fee-mint unreconciled-share residuals: protocol fee shares minted straight
 # to a recipient (Transfer from 0x0) with no paired Deposit, so the flow scan does not credit
 # them. Deliberately NOT fixed upstream -- only 4 addresses, fee-only, and the amounts are
-# immaterial to the airdrop distribution. Each exception is pinned to the exact identity
+# immaterial to the reported positions. Each exception is pinned to the exact identity
 # (chain, silo, vault-or-None, account, all lowercase) AND the exact share_residual, so any
 # change (different silo/account, or a different share amount after regeneration) fails to
 # match and the hard error returns.
