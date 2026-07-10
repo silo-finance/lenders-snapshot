@@ -2580,9 +2580,10 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
             v{APP_VERSION}
           </span>
         </div>
+        <p className="mt-2 text-lg font-medium text-slate-200">Defaulted Loan Claims Explorer</p>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-          Static, no-RPC snapshot explorer for direct holders and vault depositors across chains. Pick a snapshot to
-          browse its lenders.
+          Look up your historical lending balances across Stream, Trevee, and Pendle-related markets. These balances
+          will be used to prepare and submit recovery claims for unpaid loans.
         </p>
 
         {notFoundSlug ? (
@@ -2594,7 +2595,7 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
           </p>
         ) : null}
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <div className="mt-8 flex flex-col gap-4">
           {SNAPSHOT_CATEGORIES.map((category) => {
             const siloCount = categorySiloCount(category);
             const isExternal = Boolean(category.externalUrl);

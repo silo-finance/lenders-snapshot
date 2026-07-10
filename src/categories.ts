@@ -24,18 +24,18 @@ export type SnapshotCategory = {
 
 export const SNAPSHOT_CATEGORIES: SnapshotCategory[] = [
   {
-    slug: "trevee-airdrop",
-    label: "Trevee Airdrop",
-    title: "Lender Snapshot for Trevee Airdrop",
+    slug: "stream",
+    label: "Stream Claims",
+    title: "Lender Snapshot for Stream",
     description: [
-      "The Trevee Airdrop snapshot lives in its own deployment.",
+      "This snapshot lists the lenders of the Stream markets on Silo, captured at a fixed block.",
+      "Use it to review each lender\u2019s position across the tracked Stream silos and vaults.",
     ],
-    externalUrl: "https://silo-finance.github.io/trevee-lenders-snapshot",
-    data: null,
+    data: buildCategoryData(streamData as unknown as RawRoot),
   },
   {
     slug: "trevee",
-    label: "Trevee",
+    label: "Trevee Claims",
     title: "Lender Snapshot for Trevee",
     description: [
       "This snapshot lists the lenders of the Trevee markets on Silo, captured at a fixed block.",
@@ -45,23 +45,13 @@ export const SNAPSHOT_CATEGORIES: SnapshotCategory[] = [
   },
   {
     slug: "pendle",
-    label: "Pendle",
+    label: "Pendle Claims",
     title: "Lender Snapshot for Pendle",
     description: [
       "This snapshot lists the lenders of the Pendle markets on Silo, captured at a fixed block.",
       "Use it to review each lender\u2019s position across the tracked Pendle silos and vaults.",
     ],
     data: buildCategoryData(pendleData as unknown as RawRoot),
-  },
-  {
-    slug: "stream",
-    label: "Stream",
-    title: "Lender Snapshot for Stream",
-    description: [
-      "This snapshot lists the lenders of the Stream markets on Silo, captured at a fixed block.",
-      "Use it to review each lender\u2019s position across the tracked Stream silos and vaults.",
-    ],
-    data: buildCategoryData(streamData as unknown as RawRoot),
   },
 ];
 
