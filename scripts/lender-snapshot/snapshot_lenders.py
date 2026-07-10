@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -206,6 +207,8 @@ SILO_TYPE_SILO = "silo"
 SILO_TYPE_VAULT = "silo_vault"
 VALID_SILO_TYPES = (SILO_TYPE_SILO, SILO_TYPE_VAULT)
 
+_PROGRESS: "ProgressTracker | None" = None
+
 # Per-category snapshot files live under `data/<slug>.json`. This directory is also what
 # the frontend imports from (see src/categories.ts).
 DATA_DIR = SCRIPT_DIR / "data"
@@ -215,6 +218,109 @@ def category_output_path(slug: str, category: dict[str, Any]) -> Path:
     """Resolve the output JSON path for a category (defaults to `data/<slug>.json`)."""
     filename = str(category.get("output") or f"{slug}.json")
     return DATA_DIR / filename
+
+
+# --------------------------------------------------------------------------------------
+# Run-wide progress (total %, elapsed, ETA)
+# --------------------------------------------------------------------------------------
+def format_duration(seconds: float | None) -> str:
+    """Format a duration for display: seconds, then minutes+seconds, then hours+minutes+seconds."""
+    if seconds is None:
+        return "—"
+    total_secs = max(0, int(seconds))
+    if total_secs < 60:
+        return f"{total_secs}s"
+    hours, rem = divmod(total_secs, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours > 0:
+        return f"{hours}h {minutes}m {secs}s"
+    return f"{minutes}m {secs}s"
+
+
+class ProgressTracker:
+    """Tracks total work units across the whole script run for global progress and ETA."""
+
+    _SETUP_STEPS = 6
+
+    def __init__(self, total_units: float = 0) -> None:
+        self.started_at = time.monotonic()
+        self.total_units = total_units
+        self.completed_units = 0.0
+        self._silo_setup_units = 0.0
+        self._silo_setup_remaining = 0.0
+
+    def add_planned_work(self, units: float) -> None:
+        self.total_units += units
+
+    def begin_silo(self, block_range: int) -> None:
+        setup_units = max(500, block_range // 500)
+        self._silo_setup_units = float(setup_units)
+        self._silo_setup_remaining = float(setup_units)
+
+    def tick_setup(self) -> None:
+        if self._silo_setup_remaining <= 0:
+            return
+        step = self._silo_setup_units / self._SETUP_STEPS
+        if self._silo_setup_remaining <= step:
+            self.completed_units += self._silo_setup_remaining
+            self._silo_setup_remaining = 0.0
+        else:
+            self.completed_units += step
+            self._silo_setup_remaining -= step
+
+    def complete_blocks(self, n: int) -> None:
+        if n > 0:
+            self.completed_units += n
+
+    def total_percent(self) -> int:
+        if self.total_units <= 0:
+            return 0
+        return min(100, int(self.completed_units * 100 / self.total_units))
+
+    def elapsed_seconds(self) -> float:
+        return time.monotonic() - self.started_at
+
+    def eta_seconds(self) -> float | None:
+        if self.total_units <= 0 or self.completed_units <= 0:
+            return None
+        if self.completed_units < self.total_units * 0.01:
+            return None
+        elapsed = self.elapsed_seconds()
+        rate = self.completed_units / elapsed
+        if rate <= 0:
+            return None
+        remaining = self.total_units - self.completed_units
+        if remaining <= 0:
+            return 0.0
+        return remaining / rate
+
+    def status_suffix(self) -> str:
+        if self.total_units <= 0:
+            return ""
+        pct = self.total_percent()
+        elapsed = format_duration(self.elapsed_seconds())
+        eta_secs = self.eta_seconds()
+        eta = format_duration(eta_secs) if eta_secs is not None else "—"
+        return f" | total: {pct}% | elapsed: {elapsed} | ETA: {eta}"
+
+
+def _scan_display_tag(tag: str) -> str:
+    """Prefix the scan label with the current chain inside the bracket group."""
+    if CHAIN:
+        return f"{CHAIN}][{tag}"
+    return tag
+
+
+def _print_scan_progress(
+    tag: str, end: int, done_blocks: int, total_blocks: int, events_count: int
+) -> None:
+    pct = (done_blocks * 100) // total_blocks if total_blocks else 0
+    suffix = _PROGRESS.status_suffix() if _PROGRESS else ""
+    print(
+        f"[info]   [{_scan_display_tag(tag)}] progress: block {end} "
+        f"({done_blocks}/{total_blocks} = {pct}%), events so far: {events_count}{suffix}"
+    )
+
 
 MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11"
 MULTICALL_BATCH = 300
@@ -1030,7 +1136,10 @@ def _fetch_flow_events(
     events: list[dict[str, Any]] = []
     start = from_block
     chunk = block_chunk
-    print(f"[info]   [{tag}] scanning {kind} logs in blocks {from_block}..{to_block} ({total_blocks} blocks) ...")
+    print(
+        f"[info]   [{_scan_display_tag(tag)}] scanning {kind} logs in blocks "
+        f"{from_block}..{to_block} ({total_blocks} blocks) ..."
+    )
     while start <= to_block:
         end = min(start + chunk - 1, to_block)
         try:
@@ -1045,13 +1154,13 @@ def _fetch_flow_events(
             )
             continue
 
+        chunk_blocks = end - start + 1
+        if _PROGRESS:
+            _PROGRESS.complete_blocks(chunk_blocks)
+
         if end >= next_progress_at or end == to_block:
             done_blocks = end - from_block + 1
-            pct = (done_blocks * 100) // total_blocks
-            print(
-                f"[info]   [{tag}] progress: block {end} ({done_blocks}/{total_blocks} = {pct}%), "
-                f"events so far: {len(events) + len(logs)}"
-            )
+            _print_scan_progress(tag, end, done_blocks, total_blocks, len(events) + len(logs))
             next_progress_at = end + progress_step
 
         for log in logs:
@@ -1077,7 +1186,7 @@ def _fetch_flow_events(
         start = end + 1
 
     events.sort(key=lambda item: (item["block_number"], item["log_index"], item["tx_hash"]))
-    print(f"[info]   [{tag}] done: {len(events)} {kind} event(s) found")
+    print(f"[info]   [{_scan_display_tag(tag)}] done: {len(events)} {kind} event(s) found")
     return events
 
 
@@ -1196,7 +1305,10 @@ def fetch_transfer_events(
     events: list[dict[str, Any]] = []
     start = from_block
     chunk = block_chunk
-    print(f"[info]   [{tag}] scanning Transfer logs in blocks {from_block}..{to_block} ({total_blocks} blocks) ...")
+    print(
+        f"[info]   [{_scan_display_tag(tag)}] scanning Transfer logs in blocks "
+        f"{from_block}..{to_block} ({total_blocks} blocks) ..."
+    )
     while start <= to_block:
         end = min(start + chunk - 1, to_block)
         try:
@@ -1211,13 +1323,13 @@ def fetch_transfer_events(
             )
             continue
 
+        chunk_blocks = end - start + 1
+        if _PROGRESS:
+            _PROGRESS.complete_blocks(chunk_blocks)
+
         if end >= next_progress_at or end == to_block:
             done_blocks = end - from_block + 1
-            pct = (done_blocks * 100) // total_blocks
-            print(
-                f"[info]   [{tag}] progress: block {end} ({done_blocks}/{total_blocks} = {pct}%), "
-                f"events so far: {len(events) + len(logs)}"
-            )
+            _print_scan_progress(tag, end, done_blocks, total_blocks, len(events) + len(logs))
             next_progress_at = end + progress_step
 
         for log in logs:
@@ -1248,7 +1360,7 @@ def fetch_transfer_events(
         start = end + 1
 
     events.sort(key=lambda item: (item["block_number"], item["log_index"], item["tx_hash"]))
-    print(f"[info]   [{tag}] done: {len(events)} peer Transfer event(s) found")
+    print(f"[info]   [{_scan_display_tag(tag)}] done: {len(events)} peer Transfer event(s) found")
     return events
 
 
@@ -1270,6 +1382,35 @@ def resolve_events_to_block(target: dict[str, Any]) -> int:
     if value < 0:
         raise ValueError("events_to_block must be non-negative")
     return value
+
+
+def compute_block_range(target: dict[str, Any], latest_block: int) -> int:
+    """Blocks scanned per contract for one silo on this chain target."""
+    scan_from = int(target["block"]) + 1
+    scan_to = min(resolve_events_to_block(target), latest_block)
+    if scan_to < scan_from:
+        return 0
+    return scan_to - scan_from + 1
+
+
+def compute_run_budget(categories: dict[str, dict[str, Any]]) -> float:
+    """Pre-compute work units for all silos in the selected categories."""
+    chain_latest: dict[str, int] = {}
+    total = 0.0
+    for category in categories.values():
+        for target in category.get("targets") or []:
+            chain = str(target["chain"]).lower()
+            if chain not in chain_latest:
+                rpc_url = resolve_rpc_url(chain)
+                chain_latest[chain] = RpcClient(rpc_url, 0).eth_block_number()
+            block_range = compute_block_range(target, chain_latest[chain])
+            for silo in target.get("silos") or []:
+                base_scans = 3
+                if silo.get("borrow_repay_silo"):
+                    base_scans += 2
+                total += block_range * base_scans
+                total += max(500, block_range // 500)
+    return total
 
 
 def resolve_block_chunk(target: dict[str, Any]) -> int:
@@ -1474,6 +1615,9 @@ def enrich_snapshot_with_flows(
         for vault_addr, vault in vaults.items()
         if isinstance(vault, dict) and vault.get("status") == "ok" and isinstance(vault.get("depositors"), dict)
     ]
+    block_range = max(0, to_block - from_block + 1) if to_block >= from_block else 0
+    if _PROGRESS and scannable_vaults and block_range > 0:
+        _PROGRESS.add_planned_work(len(scannable_vaults) * block_range * 3)
     print(f"[info] flow scan plan: 1 silo contract + {len(scannable_vaults)} vault contract(s)")
 
     silo_withdraws = fetch_withdraw_events(
@@ -1854,20 +1998,30 @@ def build_snapshot(
         print(f"[info] fetching vault depositors for silo_vault {SILO_ADDRESS} at block {BLOCK} ...")
         accounts = fetch_vault_depositors(SILO_ADDRESS)
         print(f"[info] {len(accounts)} unique vault depositor accounts")
+        if _PROGRESS:
+            _PROGRESS.tick_setup()
         print("[info] fetching vault metadata + total supplies ...")
         meta = fetch_vault_metadata(rpc, mc)
     else:
         print(f"[info] fetching lenders for silo {SILO_ADDRESS} at block {BLOCK} ...")
         accounts = fetch_lenders(SILO_ADDRESS)
         print(f"[info] {len(accounts)} unique collateral lender accounts")
+        if _PROGRESS:
+            _PROGRESS.tick_setup()
         print("[info] fetching silo metadata + total supplies ...")
         meta = fetch_silo_metadata(rpc, mc)
+    if _PROGRESS:
+        _PROGRESS.tick_setup()
 
     print("[info] classifying lender addresses ...")
     types, _incentives = classify_addresses(accounts, rpc, mc)
+    if _PROGRESS:
+        _PROGRESS.tick_setup()
 
     print("[info] reading direct lender share balances ...")
     shares_by_addr = fetch_direct_lender_shares(accounts, mc)
+    if _PROGRESS:
+        _PROGRESS.tick_setup()
 
     ordered = accounts
     shares = [shares_by_addr[a] for a in ordered]
@@ -1877,6 +2031,8 @@ def build_snapshot(
     else:
         print("[info] computing previewRedeem assets for direct lenders ...")
         assets = preview_redeem_collateral(shares, mc)
+    if _PROGRESS:
+        _PROGRESS.tick_setup()
 
     direct_lenders: dict[str, Any] = {}
     for addr, collateral_shares, assets_collateral in zip(ordered, shares, assets):
@@ -1901,6 +2057,8 @@ def build_snapshot(
             vault_assets = assets_by_addr[vault]
             print(f"[info]   vault {vault} ...")
             vaults[vault] = expand_vault(vault, vault_shares, vault_assets, rpc, mc)
+    if _PROGRESS:
+        _PROGRESS.tick_setup()
 
     silo_entry: dict[str, Any] = {
         "snapshot_block": BLOCK,
@@ -2123,8 +2281,6 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
 
     Returns the number of silos completed for this category.
     """
-    import time
-
     targets = category.get("targets") or []
     output_path = category_output_path(slug, category)
     total_silos = sum(len(target.get("silos") or []) for target in targets)
@@ -2159,6 +2315,9 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
                 f"silo={SILO_ADDRESS} block={BLOCK} ====="
             )
             silo_started_at = time.monotonic()
+            block_range = compute_block_range(target, chain_latest_block)
+            if _PROGRESS:
+                _PROGRESS.begin_silo(block_range)
             withdrawals_to_block = chain_events_to_block
             withdrawals_block_chunk = chain_block_chunk
             silo_entry = build_snapshot(
@@ -2199,7 +2358,12 @@ def main() -> int:
         raise SystemExit(f"Unknown category slug(s): {', '.join(unknown)}. Available: {available}")
     selected = requested
 
+    global _PROGRESS
+    selected_categories = {slug: CATEGORIES[slug] for slug in selected}
+    budget = compute_run_budget(selected_categories)
+    _PROGRESS = ProgressTracker(budget)
     print(f"[info] scanning {len(selected)} categor(y/ies): {', '.join(selected)}")
+    print(f"[info] planned work: {budget:.0f} units across run")
     total_completed = 0
     for slug in selected:
         total_completed += run_category(slug, CATEGORIES[slug])
