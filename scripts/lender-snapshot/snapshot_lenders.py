@@ -127,26 +127,6 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     "stream": {
         "targets": [
             {
-                "chain": "sonic",
-                "chain_id": 146,
-                "subgraph_url": DEFAULT_SUBGRAPH_URL,
-                "block": 54144258,
-                "events_to_block": 75700045,
-                "block_chunk": SONIC_BLOCK_CHUNK,
-                "silos": [
-                    # Two-sided markets: the stable silo is the lender silo; its paired xUSD
-                    # silo supplies Borrow/Repay (not listed as its own entry).
-                    {
-                        "address": "0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1",  # USDC, silo_id=112
-                        "borrow_repay_silo": "0x172a687c397e315dbe56ed78ab347d7743d0d4fa",  # xUSD
-                    },
-                    {
-                        "address": "0xb1412442aa998950f2f652667d5eba35fe66e43f",  # scUSD, silo_id=118
-                        "borrow_repay_silo": "0x596aef68a03a0e35c4d8e624fbbdb0df0862f172",  # xUSD
-                    },
-                ],
-            },
-            {
                 "chain": "avalanche",
                 "chain_id": 43114,
                 "subgraph_url": AVALANCHE_SUBGRAPH_URL,
@@ -184,6 +164,26 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "block_chunk": ETHEREUM_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x1de3ba67da79a81bc0c3922689c98550e4bd9bc2"},  # USDC
+                ],
+            },
+            {
+                "chain": "sonic",
+                "chain_id": 146,
+                "subgraph_url": DEFAULT_SUBGRAPH_URL,
+                "block": 54144258,
+                "events_to_block": 75700045,
+                "block_chunk": SONIC_BLOCK_CHUNK,
+                "silos": [
+                    # Two-sided markets: the stable silo is the lender silo; its paired xUSD
+                    # silo supplies Borrow/Repay (not listed as its own entry).
+                    {
+                        "address": "0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1",  # USDC, silo_id=112
+                        "borrow_repay_silo": "0x172a687c397e315dbe56ed78ab347d7743d0d4fa",  # xUSD
+                    },
+                    {
+                        "address": "0xb1412442aa998950f2f652667d5eba35fe66e43f",  # scUSD, silo_id=118
+                        "borrow_repay_silo": "0x596aef68a03a0e35c4d8e624fbbdb0df0862f172",  # xUSD
+                    },
                 ],
             },
         ],
