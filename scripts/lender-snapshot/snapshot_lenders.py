@@ -91,7 +91,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 # Single snapshot block shared by every silo on this chain.
                 "block": 54144258,
                 # Single block up to which post-snapshot events are scanned on this chain.
-                "events_to_block": 75078341,
+                "events_to_block": 75700045,
                 # eth_getLogs range per call for this chain (required, per-chain).
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
@@ -146,7 +146,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 146,
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 "block": 54144258,
-                "events_to_block": 75078341,
+                "events_to_block": 75700045,
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2"},  # WETH
@@ -167,7 +167,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 146,
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 "block": 54144258,
-                "events_to_block": 75078341,
+                "events_to_block": 75700045,
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x219656f33c58488d09d518badf50aa8cdcaca2aa"},  # WETH
@@ -184,7 +184,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 146,
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 "block": 54144258,
-                "events_to_block": 75078341,
+                "events_to_block": 75700045,
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
                     # Two-sided markets: the stable silo is the lender silo; its paired xUSD
@@ -204,7 +204,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 43114,
                 "subgraph_url": AVALANCHE_SUBGRAPH_URL,
                 "block": 71568801,  # timestamp-matched to sonic block 54144258
-                "events_to_block": 89138067,  # timestamp-matched to sonic block 75078341
+                "events_to_block": 89947428,  # timestamp-matched to sonic block 75700045
                 "block_chunk": AVALANCHE_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x7437ac81457fa98ffb2d0c8f9943ecfe4813e2f1"},  # BTC.b
@@ -218,7 +218,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 42161,
                 "subgraph_url": ARBITRUM_SUBGRAPH_URL,
                 "block": 397731482,  # timestamp-matched to sonic block 54144258
-                "events_to_block": 478965392,  # timestamp-matched to sonic block 75078341
+                "events_to_block": 482328398,  # timestamp-matched to sonic block 75700045
                 "block_chunk": ARBITRUM_BLOCK_CHUNK,
                 "silos": [
                     # Two-sided market: USDC is the lender silo; paired xUSD supplies Borrow/Repay.
@@ -233,7 +233,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 1,
                 "subgraph_url": ETHEREUM_SUBGRAPH_URL,
                 "block": 23747116,  # timestamp-matched to sonic block 54144258
-                "events_to_block": 25431358,  # timestamp-matched to sonic block 75078341
+                "events_to_block": 25501084,  # timestamp-matched to sonic block 75700045
                 "block_chunk": ETHEREUM_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x1de3ba67da79a81bc0c3922689c98550e4bd9bc2"},  # USDC
