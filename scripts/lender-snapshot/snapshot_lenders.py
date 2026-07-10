@@ -60,7 +60,7 @@ ARBITRUM_BLOCK_CHUNK = 500_000
 ETHEREUM_BLOCK_CHUNK = 100_000
 
 # Snapshot categories. Each category is a self-contained snapshot rendered under its own
-# path in the UI (e.g. `/lenders-snapshot/trevee-airdrop`) and written to its own data file
+# path in the UI (e.g. `/lenders-snapshot/stream`) and written to its own data file
 # (`data/<slug>.json`). Categories are intentionally HARDCODED here: adding one is a rare,
 # deliberate edit (new silo list) followed by a rerun of this script.
 #
@@ -82,60 +82,6 @@ ETHEREUM_BLOCK_CHUNK = 100_000
 #             silo's lenders' pending, converted to this silo's asset decimals. The paired
 #             silo is NOT listed as its own entry.
 CATEGORIES: dict[str, dict[str, Any]] = {
-    "trevee-airdrop": {
-        "targets": [
-            {
-                "chain": "sonic",
-                "chain_id": 146,
-                "subgraph_url": DEFAULT_SUBGRAPH_URL,
-                # Single snapshot block shared by every silo on this chain.
-                "block": 54144258,
-                # Single block up to which post-snapshot events are scanned on this chain.
-                "events_to_block": 75078341,
-                # eth_getLogs range per call for this chain (required, per-chain).
-                "block_chunk": SONIC_BLOCK_CHUNK,
-                "silos": [
-                    {"address": "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de"},
-                    {"address": "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64"},
-                    {"address": "0x4935fadb17df859667cc4f7bfe6a8cb24f86f8d0"},
-                    {"address": "0x4f55e28d36b30a638c3aa1d5cbf9c4ccb3831506"},
-                    {"address": "0xc3a18f1efa66234e7d233c8ad00d597f6e585f2b"},
-                    {"address": "0x24c74b30d1a4261608e84bf5a618693032681dac"},
-                    {"address": "0x219656f33c58488d09d518badf50aa8cdcaca2aa"},
-                    {"address": "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2"},
-                    {"address": "0x08c320a84a59c6f533e0dca655cf497594bca1f9"},
-                    # --- SiloVaults added manually ---------------------------------------------
-                    # These addresses are SiloVaults that were NOT auto-discovered as silo_vault
-                    # lenders of the silos above (e.g. they do not lend into any tracked silo, or
-                    # were not indexed). A SiloVault exposes the same read interface as a Silo, but
-                    # its holders are indexed as vault depositors, so they are tagged
-                    # type="silo_vault" to enumerate positions via the subgraph `vaultPositions`.
-                    {"address": "0x94e84f3a18a9f318a2915058d4f49c3565bc935e", "type": "silo_vault"},
-                    {"address": "0x3710b212b39477df2deaadcf16ef56c384a3d142", "type": "silo_vault"},
-                    {"address": "0x17271da949bbd4713c7c599759e2bf30604fc8da", "type": "silo_vault"},
-                    {"address": "0x5b63bd1574d40d98c6967047f0323cc5d4895775", "type": "silo_vault"},
-                    {"address": "0xb47cb414aab743c977dfd1fdb758f971907e810e", "type": "silo_vault"},
-                    {"address": "0x1320382143d98a80a0b247148a42dd2aa33d9c2d", "type": "silo_vault"},
-                    {"address": "0xffa4f67d4facff62e53e6ac4f76a1e049673876b", "type": "silo_vault"},
-                    {"address": "0x3e11288c2e1ec2a5200e407d1eebd416dbe43656", "type": "silo_vault"},
-                    {"address": "0x271a367898fbf1f70045ad413f2a072ff0b907d5", "type": "silo_vault"},
-                    {"address": "0x92ebf5a1fb4061b45222a6d76accf4698bde4b95", "type": "silo_vault"},
-                    {"address": "0x61e175f91f017987c421e0731d6baa0594eca6eb", "type": "silo_vault"},
-                    {"address": "0x391b3f70e254d582588b27e97e48d1cfcdf0be7e", "type": "silo_vault"},
-                    {"address": "0x592d1e187729c76efacc6dffb9355bd7bf47b2a7", "type": "silo_vault"},
-                    {"address": "0xb6a23cb29e512df41876b28d7a848bd831f9c5ba", "type": "silo_vault"},
-                ],
-            },
-            {
-                "chain": "ethereum",
-                "chain_id": 1,
-                "subgraph_url": DEFAULT_SUBGRAPH_URL,
-                # Placeholder until Ethereum silo addresses are supplied; set the target-level
-                # "block" here (shared by all silos) once they are configured.
-                "silos": [],
-            },
-        ],
-    },
     # The following three categories were classified from on-chain liquidation thresholds:
     # only the borrowable/lending side of each market is kept. Non-sonic chains use their
     # own Silo subgraph deployment and require the matching {CHAIN}_RPC_URL env var.
@@ -146,7 +92,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 146,
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 "block": 54144258,
-                "events_to_block": 75078341,
+                "events_to_block": 75700045,
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2"},  # WETH
@@ -167,7 +113,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 146,
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 "block": 54144258,
-                "events_to_block": 75078341,
+                "events_to_block": 75700045,
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x219656f33c58488d09d518badf50aa8cdcaca2aa"},  # WETH
@@ -184,7 +130,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 146,
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 "block": 54144258,
-                "events_to_block": 75078341,
+                "events_to_block": 75700045,
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
                     # Two-sided markets: the stable silo is the lender silo; its paired xUSD
@@ -204,7 +150,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 43114,
                 "subgraph_url": AVALANCHE_SUBGRAPH_URL,
                 "block": 71568801,  # timestamp-matched to sonic block 54144258
-                "events_to_block": 89138067,  # timestamp-matched to sonic block 75078341
+                "events_to_block": 89947428,  # timestamp-matched to sonic block 75700045
                 "block_chunk": AVALANCHE_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x7437ac81457fa98ffb2d0c8f9943ecfe4813e2f1"},  # BTC.b
@@ -218,7 +164,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 42161,
                 "subgraph_url": ARBITRUM_SUBGRAPH_URL,
                 "block": 397731482,  # timestamp-matched to sonic block 54144258
-                "events_to_block": 478965392,  # timestamp-matched to sonic block 75078341
+                "events_to_block": 482328398,  # timestamp-matched to sonic block 75700045
                 "block_chunk": ARBITRUM_BLOCK_CHUNK,
                 "silos": [
                     # Two-sided market: USDC is the lender silo; paired xUSD supplies Borrow/Repay.
@@ -233,7 +179,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 1,
                 "subgraph_url": ETHEREUM_SUBGRAPH_URL,
                 "block": 23747116,  # timestamp-matched to sonic block 54144258
-                "events_to_block": 25431358,  # timestamp-matched to sonic block 75078341
+                "events_to_block": 25501084,  # timestamp-matched to sonic block 75700045
                 "block_chunk": ETHEREUM_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x1de3ba67da79a81bc0c3922689c98550e4bd9bc2"},  # USDC

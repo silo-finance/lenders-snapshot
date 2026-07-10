@@ -83,26 +83,11 @@ SHARE_DUST = int(os.environ.get("QA_SHARE_DUST", "0"))
 # Known, accepted fee-mint unreconciled-share residuals: protocol fee shares minted straight
 # to a recipient (Transfer from 0x0) with no paired Deposit, so the flow scan does not credit
 # them. Deliberately NOT fixed upstream -- only 4 addresses, fee-only, and the amounts are
-# immaterial to the airdrop distribution. Each exception is pinned to the exact identity
+# immaterial to the reported positions. Each exception is pinned to the exact identity
 # (chain, silo, vault-or-None, account, all lowercase) AND the exact share_residual, so any
 # change (different silo/account, or a different share amount after regeneration) fails to
 # match and the hard error returns.
-KNOWN_FEE_MINT_RESIDUALS: dict[tuple[str, str, str | None, str], int] = {
-    ("sonic", "0x17271da949bbd4713c7c599759e2bf30604fc8da", None,
-     "0x1b35727072435bb97fbe8cc378eb6973c98faab3"): -10078672106470,
-    ("sonic", "0x271a367898fbf1f70045ad413f2a072ff0b907d5", None,
-     "0xd132631a63af5c616e60606025c8e5871addf76f"): -164420816078489351706481306,
-    ("sonic", "0x61e175f91f017987c421e0731d6baa0594eca6eb", None,
-     "0x1b35727072435bb97fbe8cc378eb6973c98faab3"): -23205876274247,
-    ("sonic", "0x592d1e187729c76efacc6dffb9355bd7bf47b2a7", None,
-     "0x93db2e90f8b2b073010b425f9350202330bd923e"): -5896436179744690916838791,
-    # Balancer Vault hub contract (very high transfer volume, 4368+ Transfer logs in this silo).
-    # A portion of its inflow Transfers is permanently truncated by the RPC provider: repeated
-    # union-on-write runs no longer recover any new logs for it, so the residual has stabilised at
-    # this value. Not a real lender position (infrastructure hub); accepted as a known gap.
-    ("sonic", "0x92ebf5a1fb4061b45222a6d76accf4698bde4b95", None,
-     "0xba1333333333a1ba1108e8412f11850a5c319ba9"): -21548230279612218208239545,
-}
+KNOWN_FEE_MINT_RESIDUALS: dict[tuple[str, str, str | None, str], int] = {}
 
 # Filled in as exceptions are matched, so a stale (no-longer-present) exception can be flagged.
 _matched_fee_mint_keys: set[tuple[str, str, str | None, str]] = set()

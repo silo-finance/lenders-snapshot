@@ -541,24 +541,6 @@ export function buildCategoryData(root: RawRoot): CategoryData {
   };
 }
 
-export type SiloCategory = "usdc" | "eth";
-
-export const SILO_CATEGORY_ORDER: SiloCategory[] = ["usdc", "eth"];
-
-export const SILO_CATEGORY_LABELS: Record<SiloCategory, string> = {
-  usdc: "USDC",
-  eth: "ETH",
-};
-
-/**
- * Bucket a silo by its input token. Any USD-denominated token (USDC, scUSD, ...)
- * is treated as the "USDC" group; everything else (WETH, scETH, ...) is "IF" (ETH).
- * Centralized here so the heuristic is easy to adjust.
- */
-export function siloCategory(silo: SiloSnapshot): SiloCategory {
-  return silo.inputToken.symbol.toUpperCase().includes("USD") ? "usdc" : "eth";
-}
-
 export function findSiloByAddress(
   chains: ChainSnapshot[],
   address: string,
@@ -680,25 +662,6 @@ export function formatUnitsFixed(value: bigint, decimals: number): string {
   }
 
   return `${negative ? "-" : ""}${whole.toString()}.${fraction.toString().padStart(decimals, "0")}`;
-}
-
-export function parseUnits(value: string, decimals: number): bigint | null {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (!/^\d+(\.\d*)?$/.test(trimmed)) {
-    return null;
-  }
-
-  const [whole, fraction = ""] = trimmed.split(".");
-  if (fraction.length > decimals) {
-    return null;
-  }
-
-  const wholeRaw = BigInt(whole) * 10n ** BigInt(decimals);
-  const fractionRaw = fraction ? BigInt(fraction.padEnd(decimals, "0")) : ZERO;
-  return wholeRaw + fractionRaw;
 }
 
 export function formatCompactUnits(value: bigint, decimals: number): string {
