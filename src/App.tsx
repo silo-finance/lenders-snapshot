@@ -948,6 +948,14 @@ function AmountWithSymbol({
   );
 }
 
+function formatDaysSinceSnapshot(eventTs: number, snapshotTs: number): string | null {
+  if (eventTs <= 0 || snapshotTs <= 0) {
+    return null;
+  }
+  const days = Math.floor((eventTs - snapshotTs) / 86_400);
+  return days === 1 ? "+1 day" : `+${days} days`;
+}
+
 function PendingAssetsBreakdown({
   chain,
   baseAssets,
@@ -959,6 +967,7 @@ function PendingAssetsBreakdown({
   totalRepays = ZERO,
   debtAtSnapshot = ZERO,
   snapshotBlock = 0,
+  snapshotBlockTimestamp = 0,
   pendingAssets,
   withdrawals,
   deposits,
@@ -979,6 +988,7 @@ function PendingAssetsBreakdown({
   totalRepays?: bigint;
   debtAtSnapshot?: bigint;
   snapshotBlock?: number;
+  snapshotBlockTimestamp?: number;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
@@ -1004,6 +1014,7 @@ function PendingAssetsBreakdown({
           {
             event: {
               blockNumber: snapshotBlock,
+              blockTimestamp: snapshotBlockTimestamp,
               logIndex: -1,
               txHash: "",
               assets: debtAtSnapshot,
@@ -1106,6 +1117,7 @@ function PendingAssetsBreakdown({
             const credit = isCredit(kind);
             const sign = credit ? "+" : "-";
             const rowSymbol = symbolFor(kind);
+            const daysLabel = formatDaysSinceSnapshot(event.blockTimestamp, snapshotBlockTimestamp);
             return (
               <div
                 key={`${kind}-${event.txHash}-${event.logIndex}-${index}`}
@@ -1116,6 +1128,7 @@ function PendingAssetsBreakdown({
                     {kind === "debt" ? (
                       <>
                         {sign} DEBT on block {event.blockNumber}
+                        {daysLabel ? <span className="text-slate-500"> {daysLabel}</span> : null}
                       </>
                     ) : (
                       <>
@@ -1138,7 +1151,7 @@ function PendingAssetsBreakdown({
                             <AddressLink bareCopy address={counterparty} chain={chain} />
                           </>
                         ) : null}
-                        )
+                        ){daysLabel ? <span className="text-slate-500"> {daysLabel}</span> : null}
                       </>
                     )}
                   </span>
@@ -1429,6 +1442,7 @@ function HolderTable({
                               pendingAssets={row.pendingAssets}
                               repays={row.repays}
                               snapshotBlock={silo.snapshotBlock}
+                              snapshotBlockTimestamp={silo.snapshotBlockTimestamp}
                               symbol={silo.inputToken.symbol}
                               totalBorrows={row.totalBorrows}
                               totalDeposits={row.totalDeposits}
@@ -1622,6 +1636,8 @@ function DepositorTable({
                             decimals={silo.inputToken.decimals}
                             deposits={row.deposits}
                             pendingAssets={row.pendingAssets}
+                            snapshotBlock={silo.snapshotBlock}
+                            snapshotBlockTimestamp={silo.snapshotBlockTimestamp}
                             symbol={silo.inputToken.symbol}
                             totalDeposits={row.totalDeposits}
                             totalTransfersIn={row.totalTransfersIn}

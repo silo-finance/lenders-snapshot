@@ -45,6 +45,7 @@ type RawDepositor = {
 
 type RawWithdrawalEntry = {
   block_number?: number | string;
+  block_timestamp?: number | string;
   tx_hash?: string;
   log_index?: number | string;
   assets?: RawAmount;
@@ -73,6 +74,7 @@ type RawVault = {
 
 type RawSilo = {
   snapshot_block?: number | string;
+  snapshot_block_timestamp?: number | string;
   withdrawals_scanned_to_block?: number | string;
   silo_type?: string | null;
   silo_id?: string | number | null;
@@ -141,6 +143,7 @@ export type VaultDepositor = {
 
 export type WithdrawalEntry = {
   blockNumber: number;
+  blockTimestamp: number;
   txHash: string;
   logIndex: number;
   assets: bigint;
@@ -178,6 +181,7 @@ export type SiloSnapshot = {
   chainId: number;
   chain: string;
   snapshotBlock: number;
+  snapshotBlockTimestamp: number;
   // Highest block this silo's post-snapshot events were scanned to. Per-silo (and thus
   // per-chain), unlike the category-wide aggregate, since chains have different blocks.
   eventsToBlock: number;
@@ -268,6 +272,7 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
             : toBigInt(rawEventAssets);
         return {
           blockNumber: toNumber(entry.block_number, 0),
+          blockTimestamp: toNumber(entry.block_timestamp, 0),
           txHash: (entry.tx_hash ?? "").toLowerCase(),
           logIndex: toNumber(entry.log_index, 0),
           assets,
@@ -287,6 +292,7 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
         const assets = toBigInt(entry.assets);
         return {
           blockNumber: toNumber(entry.block_number, 0),
+          blockTimestamp: toNumber(entry.block_timestamp, 0),
           txHash: (entry.tx_hash ?? "").toLowerCase(),
           logIndex: toNumber(entry.log_index, 0),
           assets,
@@ -425,6 +431,7 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
     chainId,
     chain,
     snapshotBlock: toNumber(raw.snapshot_block, 0),
+    snapshotBlockTimestamp: toNumber(raw.snapshot_block_timestamp, 0),
     eventsToBlock: scannedToBlock > 0 ? scannedToBlock : siloMaxEventBlock,
     siloType: raw.silo_type === "silo_vault" ? "silo_vault" : "silo",
     siloId: raw.silo_id === null || raw.silo_id === undefined ? null : String(raw.silo_id),

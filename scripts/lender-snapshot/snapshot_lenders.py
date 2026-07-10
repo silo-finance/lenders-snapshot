@@ -528,6 +528,22 @@ class RpcClient:
             raise RuntimeError(f"eth_blockNumber error: {res['error']}")
         return int(res["result"], 16)
 
+    def eth_get_block_timestamp(self, block_number: int) -> int:
+        """Return the block's Unix timestamp (seconds). Immutable once finalized."""
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._next_id(),
+            "method": "eth_getBlockByNumber",
+            "params": [hex(block_number), False],
+        }
+        res = _http_post_json(self.url, payload, self._headers)
+        if "error" in res and res["error"]:
+            raise RuntimeError(f"eth_getBlockByNumber error for block {block_number}: {res['error']}")
+        result = res.get("result")
+        if not isinstance(result, dict) or "timestamp" not in result:
+            raise RuntimeError(f"eth_getBlockByNumber missing timestamp for block {block_number}: {result!r}")
+        return int(result["timestamp"], 16)
+
     def eth_get_logs(self, address: str, topics: list[str], from_block: int, to_block: int) -> list[dict[str, Any]]:
         payload = {
             "jsonrpc": "2.0",
@@ -1450,6 +1466,111 @@ FLOW_FIELD_KEYS = (
     "pending_assets",
 )
 
+# Flow event lists that carry a block_number (used for timestamp stamping).
+FLOW_LIST_KEYS = ("withdrawals", "deposits", "transfers", "borrows", "repays")
+
+
+def _flow_block_numbers_in_entry(entry: dict[str, Any]) -> set[int]:
+    blocks: set[int] = set()
+    for key in FLOW_LIST_KEYS:
+        for row in entry.get(key) or []:
+            if not isinstance(row, dict):
+                continue
+            block_number = int(row.get("block_number", 0) or 0)
+            if block_number > 0:
+                blocks.add(block_number)
+    return blocks
+
+
+def fetch_block_timestamp_cache(
+    rpc: RpcClient,
+    blocks: set[int],
+    cache: dict[int, int] | None = None,
+) -> dict[int, int]:
+    """Fetch eth_getBlockByNumber.timestamp once per unique block; merge into cache."""
+    out = dict(cache) if cache else {}
+    needed = sorted(block for block in blocks if block > 0 and block not in out)
+    if not needed:
+        return out
+    print(f"[info] fetching block timestamps for {len(needed)} unique block(s) ...")
+    for index, block in enumerate(needed):
+        if index == 0 or index == len(needed) - 1 or (index + 1) % 500 == 0:
+            print(f"[info]   block timestamp progress: {index + 1}/{len(needed)}")
+        out[block] = rpc.eth_get_block_timestamp(block)
+    return out
+
+
+def stamp_flow_timestamps_on_entry(entry: dict[str, Any], cache: dict[int, int]) -> int:
+    """Set block_timestamp on every flow row whose block is in cache. Returns rows stamped."""
+    stamped = 0
+    for key in FLOW_LIST_KEYS:
+        for row in entry.get(key) or []:
+            if not isinstance(row, dict):
+                continue
+            block_number = int(row.get("block_number", 0) or 0)
+            if block_number > 0 and block_number in cache:
+                row["block_timestamp"] = cache[block_number]
+                stamped += 1
+    return stamped
+
+
+def stamp_silo_flow_timestamps(
+    silo_entry: dict[str, Any],
+    rpc: RpcClient,
+    snapshot_block: int,
+    cache: dict[int, int] | None = None,
+) -> dict[int, int]:
+    """Stamp block_timestamp on all flow rows and snapshot_block_timestamp on the silo.
+
+    Must run after all direct lenders and vault depositors are final (including addresses
+    discovered mid-scan via post-snapshot events).
+    """
+    blocks: set[int] = set()
+    if snapshot_block > 0:
+        blocks.add(snapshot_block)
+    direct_lenders = silo_entry.get("direct_lenders")
+    if isinstance(direct_lenders, dict):
+        for entry in direct_lenders.values():
+            if isinstance(entry, dict):
+                blocks |= _flow_block_numbers_in_entry(entry)
+    vaults = silo_entry.get("vaults")
+    if isinstance(vaults, dict):
+        for vault in vaults.values():
+            if not isinstance(vault, dict):
+                continue
+            depositors = vault.get("depositors")
+            if not isinstance(depositors, dict):
+                continue
+            for depositor in depositors.values():
+                if isinstance(depositor, dict):
+                    blocks |= _flow_block_numbers_in_entry(depositor)
+
+    ts_cache = fetch_block_timestamp_cache(rpc, blocks, cache)
+    stamped = 0
+    if isinstance(direct_lenders, dict):
+        for entry in direct_lenders.values():
+            if isinstance(entry, dict):
+                stamped += stamp_flow_timestamps_on_entry(entry, ts_cache)
+    if isinstance(vaults, dict):
+        for vault in vaults.values():
+            if not isinstance(vault, dict):
+                continue
+            depositors = vault.get("depositors")
+            if not isinstance(depositors, dict):
+                continue
+            for depositor in depositors.values():
+                if isinstance(depositor, dict):
+                    stamped += stamp_flow_timestamps_on_entry(depositor, ts_cache)
+
+    if snapshot_block > 0 and snapshot_block in ts_cache:
+        silo_entry["snapshot_block_timestamp"] = ts_cache[snapshot_block]
+    print(
+        f"[info]   stamped block_timestamp on {stamped} flow row(s) "
+        f"({len(blocks)} unique block(s)); "
+        f"snapshot_block_timestamp={silo_entry.get('snapshot_block_timestamp')}"
+    )
+    return ts_cache
+
 
 def _init_flow_fields(entry: dict[str, Any], base_assets: int) -> None:
     entry["withdrawals"] = []
@@ -1909,6 +2030,10 @@ def enrich_snapshot_with_flows(
             f"added {len(depositors) - len(existing_depositors)} new depositor(s)"
         )
 
+    # eth_getLogs has no block timestamp; fetch once per unique block after every lender and
+    # depositor is final (incl. mid-scan discoveries).
+    stamp_silo_flow_timestamps(silo_entry, rpc, BLOCK)
+
 
 def expand_vault(
     vault: str,
@@ -2228,7 +2353,15 @@ def _merge_silo_entry(old_silo: Any, new_silo: dict[str, Any]) -> dict[str, Any]
     merged = dict(new_silo)
     # Scalar metadata are deterministic snapshot-block reads; prefer the fresh value but fall
     # back to the prior one if this run failed to resolve it (None/empty).
-    for key in ("silo_id", "input_token", "total_assets", "collateral_total_supply", "borrow_repay_silo", "borrow_repay_token"):
+    for key in (
+        "silo_id",
+        "input_token",
+        "total_assets",
+        "collateral_total_supply",
+        "borrow_repay_silo",
+        "borrow_repay_token",
+        "snapshot_block_timestamp",
+    ):
         if merged.get(key) in (None, "") and old_silo.get(key) not in (None, ""):
             merged[key] = old_silo[key]
     old_scan = old_silo.get("withdrawals_scanned_to_block")
