@@ -2581,26 +2581,47 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           {SNAPSHOT_CATEGORIES.map((category) => {
             const siloCount = categorySiloCount(category);
-            const comingSoon = !category.data;
+            const isExternal = Boolean(category.externalUrl);
+            const comingSoon = !category.data && !isExternal;
             const cardBody = (
               <>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-lg font-semibold text-white">{category.label}</span>
                   {comingSoon ? (
                     <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-400">Coming soon</span>
+                  ) : isExternal ? (
+                    <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
+                      ↗
+                    </span>
                   ) : (
                     <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
                       →
                     </span>
                   )}
                 </div>
-                {comingSoon ? null : (
+                {isExternal ? (
+                  <p className="mt-3 text-xs text-slate-400">Opens the separate snapshot deployment</p>
+                ) : comingSoon ? null : (
                   <p className="mt-3 text-xs text-slate-400">
                     {siloCount} silo{siloCount === 1 ? "" : "s"}
                   </p>
                 )}
               </>
             );
+
+            if (isExternal) {
+              return (
+                <a
+                  key={category.slug}
+                  className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"
+                  href={category.externalUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  {cardBody}
+                </a>
+              );
+            }
 
             if (comingSoon) {
               return (
