@@ -664,25 +664,6 @@ export function formatUnitsFixed(value: bigint, decimals: number): string {
   return `${negative ? "-" : ""}${whole.toString()}.${fraction.toString().padStart(decimals, "0")}`;
 }
 
-export function parseUnits(value: string, decimals: number): bigint | null {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (!/^\d+(\.\d*)?$/.test(trimmed)) {
-    return null;
-  }
-
-  const [whole, fraction = ""] = trimmed.split(".");
-  if (fraction.length > decimals) {
-    return null;
-  }
-
-  const wholeRaw = BigInt(whole) * 10n ** BigInt(decimals);
-  const fractionRaw = fraction ? BigInt(fraction.padEnd(decimals, "0")) : ZERO;
-  return wholeRaw + fractionRaw;
-}
-
 export function formatCompactUnits(value: bigint, decimals: number): string {
   const asNumber = Number(value) / 10 ** decimals;
   if (!Number.isFinite(asNumber)) {
