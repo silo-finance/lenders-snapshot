@@ -767,7 +767,7 @@ function AddressFilterInput({
     <div className="relative mt-3">
       <input
         id={id}
-        className={`w-full rounded-2xl border border-white/10 bg-slate-950/80 py-3 pl-4 font-mono text-sm text-slate-300 outline-none placeholder:text-slate-600 ${
+        className={`w-full rounded-2xl border border-white/22 bg-white/[0.10] py-3 pl-4 font-mono text-sm text-slate-200 outline-none ${
           hasTrailingControls ? "pr-28" : "pr-4"
         }`}
         placeholder="Search by address substring"
@@ -2141,7 +2141,7 @@ function SiloDetailPanel({
       </div>
 
       <div
-        className={`grid gap-4 rounded-3xl border border-white/10 bg-white/[0.04] p-5 ${
+        className={`grid gap-4 rounded-3xl border border-white/20 bg-white/[0.13] p-5 ${
           showTypeFilter && showExpandControls
             ? "lg:grid-cols-[minmax(0,1.5fr)_minmax(12rem,0.7fr)_auto] lg:items-end"
             : showConnectWallet
@@ -2171,7 +2171,7 @@ function SiloDetailPanel({
             </label>
             <select
               id="type-filter"
-              className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-slate-300 outline-none"
+              className="mt-3 w-full rounded-2xl border border-white/22 bg-white/[0.10] px-4 py-3 text-sm text-slate-300 outline-none"
               value={addressTypeFilter}
               onChange={(event) => setAddressTypeFilter(event.target.value)}
             >
@@ -2194,7 +2194,7 @@ function SiloDetailPanel({
               Expand all
             </button>
             <button
-              className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
+              className="rounded-2xl border border-white/22 bg-white/[0.10] px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/[0.14]"
               type="button"
               onClick={collapseAll}
             >
