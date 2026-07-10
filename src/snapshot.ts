@@ -15,10 +15,17 @@ type RawDirectLender = {
   total_deposits?: RawAmount;
   total_transfers_in?: RawAmount;
   total_transfers_out?: RawAmount;
+  // Two-sided markets only: Borrow debits, Repay credits, in this silo's asset units.
+  total_borrows?: RawAmount;
+  total_repays?: RawAmount;
+  // Two-sided markets only: outstanding debt at the snapshot block (maxRepay), a debit.
+  debt_at_snapshot?: RawAmount;
   pending_assets?: RawAmount;
   withdrawals?: RawWithdrawalEntry[];
   deposits?: RawWithdrawalEntry[];
   transfers?: RawTransferEntry[];
+  borrows?: RawWithdrawalEntry[];
+  repays?: RawWithdrawalEntry[];
 };
 
 type RawDepositor = {
@@ -69,6 +76,8 @@ type RawSilo = {
   withdrawals_scanned_to_block?: number | string;
   silo_type?: string | null;
   silo_id?: string | number | null;
+  borrow_repay_silo?: string | null;
+  borrow_repay_token?: { symbol?: string | null; decimals?: number | null } | null;
   input_token?: RawInputToken;
   total_assets?: RawAmount;
   collateral_total_supply?: RawAmount;
@@ -100,10 +109,17 @@ export type DirectLender = {
   totalDeposits: bigint;
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
+  // Two-sided markets only (0 otherwise): Borrow debits, Repay credits, in this silo's units.
+  totalBorrows: bigint;
+  totalRepays: bigint;
+  // Two-sided markets only (0 otherwise): outstanding debt at the snapshot block (maxRepay).
+  debtAtSnapshot: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
   transfers: TransferEntry[];
+  borrows: WithdrawalEntry[];
+  repays: WithdrawalEntry[];
   isVault: boolean;
 };
 
@@ -158,9 +174,21 @@ export type SiloKind = "silo" | "silo_vault";
 
 export type SiloSnapshot = {
   address: string;
+  // Chain this silo lives on. Needed to build per-chain block-explorer links.
+  chainId: number;
+  chain: string;
   snapshotBlock: number;
+  // Highest block this silo's post-snapshot events were scanned to. Per-silo (and thus
+  // per-chain), unlike the category-wide aggregate, since chains have different blocks.
+  eventsToBlock: number;
   siloType: SiloKind;
   siloId: string | null;
+  // Two-sided market: the paired borrow/repay silo (null for one-sided silos).
+  borrowRepaySilo: string | null;
+  // Two-sided market: the paired (debt) asset, used to label Borrow/Repay/DEBT amounts.
+  borrowRepayToken: { symbol: string; decimals: number } | null;
+  // True when this silo has both lenders and borrowers (paired silo set or borrow/repay activity).
+  isTwoSided: boolean;
   inputToken: InputToken;
   collateralTotalSupply: bigint;
   totalShares: bigint;
@@ -215,7 +243,7 @@ function prettifyChain(chain: string): string {
   });
 }
 
-function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
+function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string): SiloSnapshot {
   const inputToken: InputToken = {
     address: raw.input_token?.address ?? null,
     decimals: toNumber(raw.input_token?.decimals, 18),
@@ -279,6 +307,9 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
     const totalDeposits = toBigInt(entry.total_deposits);
     const totalTransfersIn = toBigInt(entry.total_transfers_in);
     const totalTransfersOut = toBigInt(entry.total_transfers_out);
+    const totalBorrows = toBigInt(entry.total_borrows);
+    const totalRepays = toBigInt(entry.total_repays);
+    const debtAtSnapshot = toBigInt(entry.debt_at_snapshot);
     const pendingAssets =
       entry.pending_assets === undefined || entry.pending_assets === null || entry.pending_assets === ""
         ? totalAssets
@@ -294,10 +325,15 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
       totalDeposits,
       totalTransfersIn,
       totalTransfersOut,
+      totalBorrows,
+      totalRepays,
+      debtAtSnapshot,
       pendingAssets,
       withdrawals: parseFlows(entry.withdrawals),
       deposits: parseFlows(entry.deposits),
       transfers: parseTransfers(entry.transfers),
+      borrows: parseFlows(entry.borrows),
+      repays: parseFlows(entry.repays),
       isVault: entry.address_type === "silo_vault",
     };
   });
@@ -339,11 +375,62 @@ function parseSilo(address: string, raw: RawSilo): SiloSnapshot {
   const totalAssets = toBigInt(raw.total_assets) || directLenders.reduce((sum, lender) => sum + lender.totalAssets, ZERO);
   const collateralTotalSupply = toBigInt(raw.collateral_total_supply);
 
+  const borrowRepaySilo =
+    raw.borrow_repay_silo === null || raw.borrow_repay_silo === undefined || raw.borrow_repay_silo === ""
+      ? null
+      : String(raw.borrow_repay_silo).toLowerCase();
+  const isTwoSided =
+    Boolean(borrowRepaySilo) ||
+    directLenders.some(
+      (lender) => lender.totalBorrows > ZERO || lender.totalRepays > ZERO || lender.debtAtSnapshot > ZERO,
+    );
+
+  const rawBorrowRepayToken = raw.borrow_repay_token;
+  const borrowRepayToken =
+    rawBorrowRepayToken && (rawBorrowRepayToken.symbol || rawBorrowRepayToken.decimals != null)
+      ? {
+          symbol: rawBorrowRepayToken.symbol ? String(rawBorrowRepayToken.symbol) : "",
+          decimals: toNumber(rawBorrowRepayToken.decimals, 0),
+        }
+      : null;
+
+  // Prefer the explicit scan boundary; fall back to this silo's highest event block for
+  // older payloads that predate withdrawals_scanned_to_block.
+  let siloMaxEventBlock = 0;
+  const considerBlocks = (entries: { blockNumber: number }[]) => {
+    for (const entry of entries) {
+      if (entry.blockNumber > siloMaxEventBlock) {
+        siloMaxEventBlock = entry.blockNumber;
+      }
+    }
+  };
+  for (const lender of directLenders) {
+    considerBlocks(lender.withdrawals);
+    considerBlocks(lender.deposits);
+    considerBlocks(lender.transfers);
+    considerBlocks(lender.borrows);
+    considerBlocks(lender.repays);
+  }
+  for (const vault of vaults) {
+    for (const depositor of vault.depositors) {
+      considerBlocks(depositor.withdrawals);
+      considerBlocks(depositor.deposits);
+      considerBlocks(depositor.transfers);
+    }
+  }
+  const scannedToBlock = toNumber(raw.withdrawals_scanned_to_block, 0);
+
   return {
     address,
+    chainId,
+    chain,
     snapshotBlock: toNumber(raw.snapshot_block, 0),
+    eventsToBlock: scannedToBlock > 0 ? scannedToBlock : siloMaxEventBlock,
     siloType: raw.silo_type === "silo_vault" ? "silo_vault" : "silo",
     siloId: raw.silo_id === null || raw.silo_id === undefined ? null : String(raw.silo_id),
+    borrowRepaySilo,
+    borrowRepayToken,
+    isTwoSided,
     inputToken,
     collateralTotalSupply,
     totalShares: collateralTotalSupply,
@@ -367,7 +454,9 @@ export function parseSnapshot(root: RawRoot): ChainSnapshot[] {
   return chainNames.map((chain) => {
     const rawChain = root[chain];
     const chainId = rawChain?.chain_id ?? KNOWN_CHAINS[chain]?.chainId ?? 0;
-    const silos = Object.entries(rawChain?.silos ?? {}).map(([address, rawSilo]) => parseSilo(address, rawSilo));
+    const silos = Object.entries(rawChain?.silos ?? {}).map(([address, rawSilo]) =>
+      parseSilo(address, rawSilo, chainId, chain),
+    );
     return {
       chain,
       label: prettifyChain(chain),

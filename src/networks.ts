@@ -137,3 +137,13 @@ export function getNetworkIconPath(chainId: number | string): string | null {
 export function isChainSupported(chainId: number | string): boolean {
   return NETWORK_CONFIG_MAP.has(toChainId(chainId));
 }
+
+// Block-explorer URL for a specific block on the given chain, or null when the chain
+// (or block) is unknown so callers can render plain text instead of a dead link.
+export function getBlockExplorerUrl(chainId: number | string, block: number): string | null {
+  const config = getNetworkConfig(chainId);
+  if (!config || block <= 0) {
+    return null;
+  }
+  return `${config.explorerBaseUrl}/block/${block}`;
+}

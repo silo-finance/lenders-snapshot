@@ -36,7 +36,7 @@ import {
   siloCategory,
 } from "./snapshot";
 import { SNAPSHOT_CATEGORIES, findCategory, type SnapshotCategory } from "./categories";
-import { getNetworkIconPath, getNetworkName } from "./networks";
+import { getBlockExplorerUrl, getNetworkIconPath, getNetworkName } from "./networks";
 import { useWallet } from "./useWallet";
 
 // Active snapshot category (resolved from the URL) shared with the whole view tree so
@@ -60,6 +60,21 @@ function useActiveCategory(): ActiveCategory {
   const value = useContext(CategoryContext);
   if (!value) {
     throw new Error("useActiveCategory must be used within a CategoryContext provider");
+  }
+  return value;
+}
+
+// User-selectable decimal separator for CSV number cells. Comma-decimal locales
+// (e.g. pl-PL) need "," so spreadsheets don't mistake the "." for a thousands
+// separator; anglophone tooling usually expects ".".
+type CsvDecimal = "." | ",";
+
+const CsvFormatContext = createContext<{ decimal: CsvDecimal; setDecimal: (value: CsvDecimal) => void } | null>(null);
+
+function useCsvFormat(): { decimal: CsvDecimal; setDecimal: (value: CsvDecimal) => void } {
+  const value = useContext(CsvFormatContext);
+  if (!value) {
+    throw new Error("useCsvFormat must be used within a CsvFormatContext provider");
   }
   return value;
 }
@@ -155,6 +170,133 @@ function downloadCsv(filename: string, rows: string[][]) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+const PENDING_CSV_HEADER = ["Network", "Silo", "Vault", "Address", "Type", "Pending assets", "Symbol"];
+
+// Excel/Sheets in comma-decimal locales (e.g. pl-PL) treat "." as a thousands
+// separator and silently drop it, turning 505857.957484 into 505857957484. The
+// CSV field delimiter is ";", so a decimal comma is unambiguous there; the
+// separator is user-selectable via the export panel radio.
+function formatPendingForCsv(value: bigint, decimals: number, decimal: CsvDecimal): string {
+  const plain = formatUnitsPlain(value, decimals);
+  return decimal === "," ? plain.replace(".", ",") : plain;
+}
+
+// One row-emitter reused by every pending-assets export. `pairs` are the (chain, silo) scopes
+// to dump; each silo contributes its non-vault direct lenders plus every vault depositor.
+// Pending is stored in the silo's underlying-asset units, so it is always formatted with
+// `silo.inputToken.decimals` (never the vault share-token decimals).
+function buildPendingCsv(
+  pairs: { chain: ChainSnapshot; silo: SiloSnapshot }[],
+  decimal: CsvDecimal,
+): string[][] {
+  const rows: string[][] = [PENDING_CSV_HEADER];
+  for (const { chain, silo } of pairs) {
+    const dec = silo.inputToken.decimals;
+    for (const lender of silo.directLenders) {
+      // Vault placeholder rows are expanded through their depositors below.
+      if (lender.isVault) {
+        continue;
+      }
+      rows.push([
+        chain.label,
+        silo.address,
+        "",
+        lender.address,
+        lender.addressType,
+        formatPendingForCsv(lender.pendingAssets, dec, decimal),
+        silo.inputToken.symbol,
+      ]);
+    }
+    for (const vault of silo.vaults) {
+      for (const depositor of vault.depositors) {
+        rows.push([
+          chain.label,
+          silo.address,
+          vault.address,
+          depositor.address,
+          depositor.addressType,
+          formatPendingForCsv(depositor.pendingAssets, dec, decimal),
+          silo.inputToken.symbol,
+        ]);
+      }
+    }
+  }
+  return rows;
+}
+
+// Lets the user pick the decimal separator used for "Pending assets" cells so
+// the CSV opens cleanly in both period- and comma-decimal spreadsheet locales.
+function DecimalSeparatorRadio({
+  decimal,
+  onChange,
+}: {
+  decimal: CsvDecimal;
+  onChange: (value: CsvDecimal) => void;
+}) {
+  const options: { value: CsvDecimal; label: string }[] = [
+    { value: ".", label: "Period (1234.56)" },
+    { value: ",", label: "Comma (1234,56)" },
+  ];
+  return (
+    <fieldset>
+      <legend className="text-[0.7rem] uppercase tracking-[0.18em] text-slate-500">Decimal separator</legend>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        {options.map((option) => (
+          <label key={option.value} className="inline-flex cursor-pointer items-center gap-2 text-xs text-slate-300">
+            <input
+              type="radio"
+              name="csv-decimal-separator"
+              className="h-3.5 w-3.5 accent-emerald-300"
+              checked={decimal === option.value}
+              onChange={() => onChange(option.value)}
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+// Category-wide pending-assets export. Lives between the silo list and the
+// single-silo details so it's clear the download spans the whole category
+// rather than just the selected silo.
+function ExportAllPanel({
+  chains,
+  slug,
+  categoryName,
+}: {
+  chains: ChainSnapshot[];
+  slug: string;
+  categoryName: string;
+}) {
+  const { decimal: csvDecimal, setDecimal: setCsvDecimal } = useCsvFormat();
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-slate-950/30 sm:p-5">
+      <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Export</p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+        <DecimalSeparatorRadio decimal={csvDecimal} onChange={setCsvDecimal} />
+        <button
+          className="rounded-xl bg-emerald-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200"
+          type="button"
+          onClick={() => {
+            const pairs = chains.flatMap((snapshotChain) =>
+              snapshotChain.silos.map((snapshotSilo) => ({ chain: snapshotChain, silo: snapshotSilo })),
+            );
+            downloadCsv(`${slug}-all-pending.csv`, buildPendingCsv(pairs, csvDecimal));
+          }}
+        >
+          Export all (CSV)
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        All direct lenders and vault depositors across every silo and vault in the{" "}
+        <span className="font-semibold text-slate-300">{categoryName}</span> category (all chains included).
+      </p>
+    </section>
+  );
 }
 
 function sumDirectLenderTotals(lenders: DirectLender[]): AggregateTotals {
@@ -283,13 +425,15 @@ function MetricCard({
 }
 
 function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
-  const { eventsToBlock } = useActiveCategory();
+  // Per-silo (per-chain) scan boundary, not the category-wide aggregate.
+  const eventsToBlock = silo.eventsToBlock;
   const directSharesSum = sumDirectShares(silo);
   const sharesValid = directSharesSum === silo.collateralTotalSupply;
   const totalPending = sumSiloPending(silo);
 
   return (
-    <div className="mt-5 grid gap-4 md:grid-cols-3">
+    <>
+      <div className="mt-5 grid gap-4 md:grid-cols-3">
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-emerald-950/20 md:col-span-2">
         <div className="flex items-start justify-between gap-x-10">
           <div className="min-w-0">
@@ -297,7 +441,7 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
               Total assets
               {silo.snapshotBlock > 0 ? (
                 <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
-                  at block {silo.snapshotBlock}
+                  at block <BlockLink block={silo.snapshotBlock} chainId={silo.chainId} />
                 </span>
               ) : null}
             </p>
@@ -310,7 +454,7 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
               Total pending assets
               {eventsToBlock > 0 ? (
                 <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
-                  at block {eventsToBlock}
+                  at block <BlockLink block={eventsToBlock} chainId={silo.chainId} />
                 </span>
               ) : null}
             </p>
@@ -343,7 +487,21 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
         )} ${silo.inputToken.symbol}`}
         hint="Sum across all vaults"
       />
-    </div>
+      </div>
+      {silo.borrowRepaySilo ? (
+        <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
+          <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            <span className="font-semibold text-amber-100">Note on negative pending assets.</span>{" "}
+            After the {silo.borrowRepayToken?.symbol || "borrowed asset"} depeg, sharply higher
+            interest rates inflated collateral values, letting positions borrow far more{" "}
+            {silo.borrowRepayToken?.symbol || "the borrowed asset"} than their snapshot-time
+            collateral was worth. This surfaces as a large negative pending — a valuation-timing
+            effect, not missing data or an under-collateralized loan.
+          </span>
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -586,16 +744,22 @@ function AddressLink({
   address,
   showSiloPageLink = false,
   bareCopy = false,
+  tone = "emerald",
 }: {
   chain: string;
   address: string;
   showSiloPageLink?: boolean;
   bareCopy?: boolean;
+  tone?: "emerald" | "amber";
 }) {
+  const linkClass =
+    tone === "amber"
+      ? "font-mono text-amber-300 transition hover:text-amber-200"
+      : "font-mono text-emerald-200 transition hover:text-emerald-100";
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
       <a
-        className="font-mono text-emerald-200 transition hover:text-emerald-100"
+        className={linkClass}
         href={explorerAddressUrl(chain, address)}
         rel="noreferrer"
         target="_blank"
@@ -607,6 +771,27 @@ function AddressLink({
       <CopyAddressButton address={address} bare={bareCopy} />
       {showSiloPageLink ? <SiloPageLinkButton address={address} chain={chain} /> : null}
     </span>
+  );
+}
+
+// A block number that links to the chain's block explorer when the chain is known,
+// falling back to plain text otherwise. Styling is inherited so callers control color.
+function BlockLink({ chainId, block }: { chainId: number; block: number }) {
+  const href = getBlockExplorerUrl(chainId, block);
+  if (!href) {
+    return <>{block.toString()}</>;
+  }
+  return (
+    <a
+      className="underline decoration-dotted underline-offset-2 transition hover:text-emerald-200"
+      href={href}
+      rel="noreferrer"
+      target="_blank"
+      title={`View block ${block} on explorer`}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {block.toString()}
+    </a>
   );
 }
 
@@ -773,12 +958,42 @@ function hasFlowActivity(row: {
   totalDeposits: bigint;
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
+  totalBorrows?: bigint;
+  totalRepays?: bigint;
+  debtAtSnapshot?: bigint;
 }): boolean {
   return (
     row.totalWithdrawals > ZERO ||
     row.totalDeposits > ZERO ||
     row.totalTransfersIn > ZERO ||
-    row.totalTransfersOut > ZERO
+    row.totalTransfersOut > ZERO ||
+    (row.totalBorrows ?? ZERO) > ZERO ||
+    (row.totalRepays ?? ZERO) > ZERO ||
+    (row.debtAtSnapshot ?? ZERO) > ZERO
+  );
+}
+
+// Renders an amount with its asset symbol in a fixed-width, left-aligned column so the numeric
+// portions stay right-aligned across rows regardless of symbol length.
+function AmountWithSymbol({
+  sign,
+  value,
+  symbol,
+  className,
+}: {
+  sign?: string;
+  value: string;
+  symbol: string;
+  className?: string;
+}) {
+  return (
+    <span className={`shrink-0 tabular-nums ${className ?? ""}`}>
+      <span className="inline-block text-right">
+        {sign}
+        {value}
+      </span>
+      <span className="ml-1 inline-block w-14 text-left font-normal text-slate-500">{symbol}</span>
+    </span>
   );
 }
 
@@ -789,12 +1004,19 @@ function PendingAssetsBreakdown({
   totalDeposits,
   totalTransfersIn,
   totalTransfersOut,
+  totalBorrows = ZERO,
+  totalRepays = ZERO,
+  debtAtSnapshot = ZERO,
+  snapshotBlock = 0,
   pendingAssets,
   withdrawals,
   deposits,
   transfers,
+  borrows = [],
+  repays = [],
   decimals,
   symbol,
+  borrowRepaySymbol,
 }: {
   chain: string;
   baseAssets: bigint;
@@ -802,16 +1024,45 @@ function PendingAssetsBreakdown({
   totalDeposits: bigint;
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
+  totalBorrows?: bigint;
+  totalRepays?: bigint;
+  debtAtSnapshot?: bigint;
+  snapshotBlock?: number;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
   transfers: TransferEntry[];
+  borrows?: WithdrawalEntry[];
+  repays?: WithdrawalEntry[];
   decimals: number;
   symbol: string;
+  borrowRepaySymbol?: string;
 }) {
-  type FlowKind = "deposit" | "withdrawal" | "transfer-in" | "transfer-out";
-  const isCredit = (kind: FlowKind) => kind === "deposit" || kind === "transfer-in";
+  // Two-sided markets add Borrow (debit, like a withdrawal), Repay (credit, like a deposit)
+  // and an initial DEBT baseline (debit at the snapshot block); all kinds share one
+  // chronological timeline. Borrow/repay/debt are denominated in the paired (debt) asset.
+  type FlowKind = "deposit" | "withdrawal" | "transfer-in" | "transfer-out" | "borrow" | "repay" | "debt";
+  const isCredit = (kind: FlowKind) => kind === "deposit" || kind === "transfer-in" || kind === "repay";
+  const pairedSymbol = borrowRepaySymbol && borrowRepaySymbol.length > 0 ? borrowRepaySymbol : symbol;
+  const symbolFor = (kind: FlowKind) =>
+    kind === "borrow" || kind === "repay" || kind === "debt" ? pairedSymbol : symbol;
   const flows: Array<{ event: WithdrawalEntry; kind: FlowKind; counterparty?: string }> = [
+    // Pre-snapshot debt sorts first (snapshotBlock <= all event blocks, logIndex -1).
+    ...(debtAtSnapshot > ZERO
+      ? [
+          {
+            event: {
+              blockNumber: snapshotBlock,
+              logIndex: -1,
+              txHash: "",
+              assets: debtAtSnapshot,
+              shares: ZERO,
+              eventAssets: debtAtSnapshot,
+            } as WithdrawalEntry,
+            kind: "debt" as FlowKind,
+          },
+        ]
+      : []),
     ...deposits.map((event) => ({ event, kind: "deposit" as FlowKind })),
     ...withdrawals.map((event) => ({ event, kind: "withdrawal" as FlowKind })),
     ...transfers.map((event) => ({
@@ -819,6 +1070,8 @@ function PendingAssetsBreakdown({
       kind: (event.direction === "in" ? "transfer-in" : "transfer-out") as FlowKind,
       counterparty: event.counterparty,
     })),
+    ...borrows.map((event) => ({ event, kind: "borrow" as FlowKind })),
+    ...repays.map((event) => ({ event, kind: "repay" as FlowKind })),
   ].sort(
     (a, b) =>
       a.event.blockNumber - b.event.blockNumber ||
@@ -838,25 +1091,60 @@ function PendingAssetsBreakdown({
     [],
   );
 
-  const labelClass = (kind: FlowKind) =>
-    kind === "deposit"
-      ? "text-emerald-300/80"
-      : kind === "withdrawal"
-        ? "text-rose-300/80"
-        : "text-amber-300/80";
-  const amountClass = (kind: FlowKind) =>
-    kind === "deposit" ? "text-emerald-300" : kind === "withdrawal" ? undefined : "text-amber-300";
+  // One distinct hue per operation so they never blend visually. The amount uses the full
+  // -300 shade and the label a dimmer -300/80 (the amount reads slightly brighter than its
+  // label). Static class strings on purpose so Tailwind can detect and keep them.
+  const labelClass = (kind: FlowKind): string => {
+    switch (kind) {
+      case "deposit":
+        return "text-emerald-300/80";
+      case "repay":
+        return "text-teal-300/80";
+      case "transfer-in":
+        return "text-sky-300/80";
+      case "withdrawal":
+        return "text-rose-300/80";
+      case "transfer-out":
+        return "text-violet-300/80";
+      case "borrow":
+      case "debt":
+        return "text-amber-300/80";
+    }
+  };
+  const amountClass = (kind: FlowKind): string => {
+    switch (kind) {
+      case "deposit":
+        return "text-emerald-300";
+      case "repay":
+        return "text-teal-300";
+      case "transfer-in":
+        return "text-sky-300";
+      case "withdrawal":
+        return "text-rose-300";
+      case "transfer-out":
+        return "text-violet-300";
+      case "borrow":
+      case "debt":
+        return "text-amber-300";
+    }
+  };
   const pendingNegative = pendingAssets < ZERO;
 
   return (
     <div className="rounded-xl border border-white/10 bg-slate-950/80 p-4 font-mono text-xs text-slate-300">
       <div className="flex justify-between gap-3">
         <span className="text-slate-400">snapshot assets</span>
-        <span>{formatUnitsFixed(baseAssets, decimals)}</span>
+        <AmountWithSymbol symbol={symbol} value={formatUnitsFixed(baseAssets, decimals)} />
       </div>
       {flows.length === 0 ? (
         <div className="mt-2 text-slate-500">
-          {totalWithdrawals > ZERO || totalDeposits > ZERO || totalTransfersIn > ZERO || totalTransfersOut > ZERO
+          {totalWithdrawals > ZERO ||
+          totalDeposits > ZERO ||
+          totalTransfersIn > ZERO ||
+          totalTransfersOut > ZERO ||
+          totalBorrows > ZERO ||
+          totalRepays > ZERO ||
+          debtAtSnapshot > ZERO
             ? "Itemized flow events are unavailable in this snapshot payload."
             : "No deposits, withdrawals or transfers after snapshot block."}
         </div>
@@ -866,6 +1154,7 @@ function PendingAssetsBreakdown({
             const txUrl = explorerTxUrl(chain, event.txHash);
             const credit = isCredit(kind);
             const sign = credit ? "+" : "-";
+            const rowSymbol = symbolFor(kind);
             return (
               <div
                 key={`${kind}-${event.txHash}-${event.logIndex}-${index}`}
@@ -873,44 +1162,51 @@ function PendingAssetsBreakdown({
               >
                 <div className="flex justify-between gap-3">
                   <span className={labelClass(kind)}>
-                    {sign} {kind} (block {event.blockNumber}, tx{" "}
-                    {txUrl === "#" ? (
-                      shortHash(event.txHash)
-                    ) : (
-                      <a
-                        className="text-emerald-200 transition hover:text-emerald-100"
-                        href={txUrl}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {shortHash(event.txHash)}
-                      </a>
-                    )}
-                    {counterparty ? (
+                    {kind === "debt" ? (
                       <>
-                        , {kind === "transfer-in" ? "from" : "to"}{" "}
-                        <AddressLink bareCopy address={counterparty} chain={chain} />
+                        {sign} DEBT on block {event.blockNumber}
                       </>
-                    ) : null}
-                    )
+                    ) : (
+                      <>
+                        {sign} {kind} (block {event.blockNumber}, tx{" "}
+                        {txUrl === "#" ? (
+                          shortHash(event.txHash)
+                        ) : (
+                          <a
+                            className="text-emerald-200 transition hover:text-emerald-100"
+                            href={txUrl}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            {shortHash(event.txHash)}
+                          </a>
+                        )}
+                        {counterparty ? (
+                          <>
+                            , {kind === "transfer-in" ? "from" : "to"}{" "}
+                            <AddressLink bareCopy address={counterparty} chain={chain} />
+                          </>
+                        ) : null}
+                        )
+                      </>
+                    )}
                   </span>
-                  <span className={`shrink-0 tabular-nums ${amountClass(kind)}`}>
-                    {sign}
-                    {formatUnitsFixed(event.assets, decimals)}
-                  </span>
+                  <AmountWithSymbol
+                    className={amountClass(kind)}
+                    sign={sign}
+                    symbol={rowSymbol}
+                    value={formatUnitsFixed(event.assets, decimals)}
+                  />
                 </div>
                 {event.eventAssets !== event.assets ? (
                   <div className="flex justify-between gap-3 text-[11px] text-slate-500">
                     <span>on-chain {credit ? "received" : "moved"}</span>
-                    <span className="shrink-0 tabular-nums">
-                      {sign}
-                      {formatUnitsFixed(event.eventAssets, decimals)}
-                    </span>
+                    <AmountWithSymbol sign={sign} symbol={rowSymbol} value={formatUnitsFixed(event.eventAssets, decimals)} />
                   </div>
                 ) : null}
                 <div className="flex justify-between gap-3 text-[11px] text-slate-500">
                   <span>running</span>
-                  <span className="shrink-0 tabular-nums">{formatUnitsFixed(next, decimals)}</span>
+                  <AmountWithSymbol symbol={symbol} value={formatUnitsFixed(next, decimals)} />
                 </div>
               </div>
             );
@@ -918,29 +1214,47 @@ function PendingAssetsBreakdown({
         </div>
       )}
       <div className="mt-3 border-t border-dashed border-white/10 pt-3">
+        {debtAtSnapshot > ZERO ? (
+          <div className="mb-1 flex justify-between gap-3">
+            <span className="text-slate-400">total initial debt</span>
+            <AmountWithSymbol className="text-amber-300" sign="-" symbol={pairedSymbol} value={formatUnitsFixed(debtAtSnapshot, decimals)} />
+          </div>
+        ) : null}
         <div className="flex justify-between gap-3">
           <span className="text-slate-400">total deposits</span>
-          <span className="text-emerald-300">+{formatUnitsFixed(totalDeposits, decimals)}</span>
+          <AmountWithSymbol className="text-emerald-300" sign="+" symbol={symbol} value={formatUnitsFixed(totalDeposits, decimals)} />
         </div>
         {totalTransfersIn > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total share transfers in</span>
-            <span className="text-amber-300">+{formatUnitsFixed(totalTransfersIn, decimals)}</span>
+            <AmountWithSymbol className="text-sky-300" sign="+" symbol={symbol} value={formatUnitsFixed(totalTransfersIn, decimals)} />
           </div>
         ) : null}
         {totalTransfersOut > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total share transfers out</span>
-            <span className="text-amber-300">-{formatUnitsFixed(totalTransfersOut, decimals)}</span>
+            <AmountWithSymbol className="text-violet-300" sign="-" symbol={symbol} value={formatUnitsFixed(totalTransfersOut, decimals)} />
+          </div>
+        ) : null}
+        {totalRepays > ZERO ? (
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-slate-400">total repays</span>
+            <AmountWithSymbol className="text-teal-300" sign="+" symbol={pairedSymbol} value={formatUnitsFixed(totalRepays, decimals)} />
           </div>
         ) : null}
         <div className="mt-1 flex justify-between gap-3">
           <span className="text-slate-400">total withdrawals</span>
-          <span>-{formatUnitsFixed(totalWithdrawals, decimals)}</span>
+          <AmountWithSymbol className="text-rose-300" sign="-" symbol={symbol} value={formatUnitsFixed(totalWithdrawals, decimals)} />
         </div>
+        {totalBorrows > ZERO ? (
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-slate-400">total borrows</span>
+            <AmountWithSymbol className="text-amber-300" sign="-" symbol={pairedSymbol} value={formatUnitsFixed(totalBorrows, decimals)} />
+          </div>
+        ) : null}
         <div className={`mt-1 flex justify-between gap-3 ${pendingNegative ? "text-rose-300" : "text-emerald-200"}`}>
-          <span>= pending assets ({symbol})</span>
-          <span>{formatUnitsFixed(pendingAssets, decimals)}</span>
+          <span>= pending assets</span>
+          <AmountWithSymbol symbol={symbol} value={formatUnitsFixed(pendingAssets, decimals)} />
         </div>
       </div>
     </div>
@@ -993,7 +1307,9 @@ function HolderTable({
 
   const metaTitle = (
     <>
-      <h3 className="font-semibold text-white">Direct lenders ({rows.length})</h3>
+      <h3 className="font-semibold text-white">
+        {silo.isTwoSided ? "Direct lenders/borrowers" : "Direct lenders"} ({rows.length})
+      </h3>
       <SectionNavButtons nextId={navNextId} />
     </>
   );
@@ -1089,11 +1405,12 @@ function HolderTable({
                 tableRows.map((row) => {
                   const breakdownOpen = Boolean(expandedBreakdowns[row.address]);
                   const hasFlows = !row.isVault && hasFlowActivity(row);
+                  const isBorrower = !row.isVault && (row.totalBorrows > ZERO || row.debtAtSnapshot > ZERO);
                   return (
                     <Fragment key={row.address}>
                       <tr className="hover:bg-white/[0.03]">
                         <td className="px-5 py-4">
-                          <AddressLink address={row.address} chain={chain} />
+                          <AddressLink address={row.address} chain={chain} tone={isBorrower ? "amber" : "emerald"} />
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
@@ -1139,7 +1456,11 @@ function HolderTable({
                         <td className="px-2 py-4 text-center font-mono tabular-nums">
                           {hasFlows ? (
                             <button
-                              className="font-sans text-lg font-semibold leading-none text-emerald-200 transition hover:text-emerald-100"
+                              className={`font-sans text-lg font-semibold leading-none transition ${
+                                isBorrower
+                                  ? "text-amber-300 hover:text-amber-200"
+                                  : "text-emerald-200 hover:text-emerald-100"
+                              }`}
                               title={breakdownOpen ? "Hide flow details" : "Show flow details"}
                               type="button"
                               onClick={() => toggleBreakdown(row.address)}
@@ -1174,11 +1495,18 @@ function HolderTable({
                             <PendingAssetsBreakdown
                               chain={chain}
                               baseAssets={row.totalAssets}
+                              borrowRepaySymbol={silo.borrowRepayToken?.symbol}
+                              borrows={row.borrows}
+                              debtAtSnapshot={row.debtAtSnapshot}
                               decimals={silo.inputToken.decimals}
                               deposits={row.deposits}
                               pendingAssets={row.pendingAssets}
+                              repays={row.repays}
+                              snapshotBlock={silo.snapshotBlock}
                               symbol={silo.inputToken.symbol}
+                              totalBorrows={row.totalBorrows}
                               totalDeposits={row.totalDeposits}
+                              totalRepays={row.totalRepays}
                               totalTransfersIn={row.totalTransfersIn}
                               totalTransfersOut={row.totalTransfersOut}
                               totalWithdrawals={row.totalWithdrawals}
@@ -1457,6 +1785,27 @@ function SiloKindLabel({ silo }: { silo: SiloSnapshot }) {
   return <>Silo {silo.siloId ? `#${silo.siloId}` : "#--"}</>;
 }
 
+// Marks a two-way (borrow/repay) silo: two horizontal arrows, top pointing left and bottom
+// pointing right, in amber to match the borrower row highlight.
+function TwoWayIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={`inline-block h-3.5 w-3.5 shrink-0 text-amber-300 ${className}`}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <title>Two-way silo (lenders and borrowers)</title>
+      <path d="M20 8H4m0 0 4-4M4 8l4 4" />
+      <path d="M4 16h16m0 0-4-4m4 4-4 4" />
+    </svg>
+  );
+}
+
 function addCsvAirdrop(csvAirdrops: Map<string, bigint | null>, address: string, amount: bigint | null) {
   const current = csvAirdrops.get(address);
   if (amount === null) {
@@ -1628,6 +1977,7 @@ function buildAirdropPlan(
 
 function VaultCard({
   chain,
+  networkLabel,
   vault,
   silo,
   expanded,
@@ -1643,6 +1993,7 @@ function VaultCard({
   navNextId,
 }: {
   chain: string;
+  networkLabel: string;
   vault: VaultSnapshot;
   silo: SiloSnapshot;
   expanded: boolean;
@@ -1657,6 +2008,7 @@ function VaultCard({
   navPrevId?: string;
   navNextId?: string;
 }) {
+  const { decimal: csvDecimal } = useCsvFormat();
   const [depositorSort, setDepositorSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const hasWarning = isVaultWarning(vault);
   const isExpanded = forceExpanded || expanded;
@@ -1681,6 +2033,30 @@ function VaultCard({
           <SectionNavButtons nextId={navNextId} prevId={navPrevId} />
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {!hasWarning && vault.depositors.length > 0 ? (
+            <button
+              className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10"
+              type="button"
+              onClick={() => {
+                const dec = silo.inputToken.decimals;
+                const rows = [
+                  PENDING_CSV_HEADER,
+                  ...vault.depositors.map((depositor) => [
+                    networkLabel,
+                    silo.address,
+                    vault.address,
+                    depositor.address,
+                    depositor.addressType,
+                    formatPendingForCsv(depositor.pendingAssets, dec, csvDecimal),
+                    silo.inputToken.symbol,
+                  ]),
+                ];
+                downloadCsv(`${chain}-${vault.address}-depositors.csv`, rows);
+              }}
+            >
+              Export CSV
+            </button>
+          ) : null}
           {hasWarning ? (
             <span className="rounded-full bg-amber-300/20 px-3 py-1 text-sm text-amber-100">{warningLabel(vault)}</span>
           ) : forceExpanded ? null : (
@@ -1837,7 +2213,7 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
         <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
           <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Recovery calculations are based on balances at block{" "}
+            Recovery calculations are based on balances at Sonic block{" "}
             <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest accrued
             after this block is not included. Any negative pending balances are attributable to unaccounted
             post-snapshot interest and may also reflect interest over-accrual related to the Stream Finance incident.
@@ -1988,7 +2364,10 @@ function SiloDetailPanel({
   forceExpanded?: boolean;
   showConnectWallet?: boolean;
 }) {
-  const { snapshotBlock, eventsToBlock } = useActiveCategory();
+  // Per-silo (per-chain) blocks so switching chains shows that chain's actual blocks.
+  const snapshotBlock = silo.snapshotBlock;
+  const eventsToBlock = silo.eventsToBlock;
+  const { decimal: csvDecimal } = useCsvFormat();
   const { account, connect, connecting, hasProvider } = useWallet(
     showConnectWallet ? setAddressFilter : undefined,
   );
@@ -2042,28 +2421,37 @@ function SiloDetailPanel({
   return (
     <section className="min-w-0 space-y-6">
       <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-slate-950/40">
-        <div className={`grid gap-6 xl:items-start ${showAirdrops ? "xl:grid-cols-3" : ""}`}>
-          <div className={showAirdrops ? "xl:col-span-1" : ""}>
+        <div className="grid gap-6 xl:grid-cols-3 xl:items-start">
+          <div className="xl:col-span-1">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-emerald-200">
-              <span>
+              <span className="inline-flex items-center gap-1.5">
                 {silo.inputToken.symbol} / <SiloKindLabel silo={silo} />
+                {silo.isTwoSided ? <TwoWayIcon /> : null}
               </span>
               <NetworkBadge chainId={chain.chainId} />
               <AddressLink address={silo.address} chain={chain.chain} />
             </div>
-            <h2 className="mt-2 text-3xl font-semibold text-white">Silo lenders details</h2>
+            <h2 className="mt-2 text-3xl font-semibold text-white">
+              {silo.isTwoSided ? "Silo lenders/borrowers details" : "Silo lenders details"}
+            </h2>
             <p className="mt-2 text-sm">
               {eventsToBlock > snapshotBlock ? (
                 <>
                   <span className="text-slate-500">Blocks from</span>{" "}
-                  <span className="font-mono text-slate-200">{snapshotBlock.toString()}</span>{" "}
+                  <span className="font-mono text-slate-200">
+                    <BlockLink block={snapshotBlock} chainId={chain.chainId} />
+                  </span>{" "}
                   <span className="text-slate-500">to</span>{" "}
-                  <span className="font-mono text-slate-200">{eventsToBlock.toString()}</span>
+                  <span className="font-mono text-slate-200">
+                    <BlockLink block={eventsToBlock} chainId={chain.chainId} />
+                  </span>
                 </>
               ) : (
                 <>
                   <span className="text-slate-500">On block</span>{" "}
-                  <span className="font-mono text-slate-200">{snapshotBlock.toString()}</span>
+                  <span className="font-mono text-slate-200">
+                    <BlockLink block={snapshotBlock} chainId={chain.chainId} />
+                  </span>
                 </>
               )}
             </p>
@@ -2284,16 +2672,22 @@ function SiloDetailPanel({
           tableTotals={directTableTotals}
           onJumpToVault={jumpToVault}
           onExport={() => {
-            downloadCsv(`${chain.chain}-${silo.address}-direct-lenders.csv`, [
-              ["Address", "Type", "Assets", "Withdrawals", "Pending assets"],
-              ...visibleLenders.map((row) => [
-                row.address,
-                row.addressType,
-                formatUnitsPlain(row.totalAssets, silo.inputToken.decimals),
-                row.isVault ? "N/A" : formatUnitsPlain(row.totalWithdrawals, silo.inputToken.decimals),
-                row.isVault ? "N/A" : formatUnitsPlain(row.pendingAssets, silo.inputToken.decimals),
-              ]),
-            ]);
+            const dec = silo.inputToken.decimals;
+            const rows = [
+              PENDING_CSV_HEADER,
+              ...silo.directLenders
+                .filter((row) => !row.isVault)
+                .map((row) => [
+                  chain.label,
+                  silo.address,
+                  "",
+                  row.address,
+                  row.addressType,
+                  formatPendingForCsv(row.pendingAssets, dec, csvDecimal),
+                  silo.inputToken.symbol,
+                ]),
+            ];
+            downloadCsv(`${chain.chain}-${silo.address}-direct-lenders.csv`, rows);
           }}
           onSort={(key) => setDirectSort((current) => nextSortState(current, key))}
           onToggle={() => setDirectExpanded((current) => !current)}
@@ -2321,6 +2715,7 @@ function SiloDetailPanel({
                 addressFilter={addressFilter}
                 addressTypeFilter={addressTypeFilter}
                 chain={chain.chain}
+                networkLabel={chain.label}
                 expanded={forceExpanded || (expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT)}
                 forceExpanded={forceExpanded}
                 hideTypeFilter={!showTypeFilter}
@@ -2351,7 +2746,7 @@ function SiloDetailPanel({
 }
 
 function ExplorerView() {
-  const { chains, slug, airdropDefaults, airdropEnabled } = useActiveCategory();
+  const { chains, slug, airdropDefaults, airdropEnabled, label: categoryName } = useActiveCategory();
 
   // Silos from every chain in this category, rendered in one uniform list. Each pair keeps
   // its chain so the network badge and category-scoped links resolve correctly.
@@ -2554,6 +2949,7 @@ function ExplorerView() {
                           <span className="truncate font-semibold">
                             {silo.inputToken.symbol} <SiloKindLabel silo={silo} />
                           </span>
+                          {silo.isTwoSided ? <TwoWayIcon /> : null}
                           {isSelected ? (
                             <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-xs text-slate-300">
                               Selected
@@ -2583,6 +2979,10 @@ function ExplorerView() {
               </div>
             </div>
           </section>
+
+          {!airdropEnabled && allPairs.length > 0 ? (
+            <ExportAllPanel chains={chains} slug={slug} categoryName={categoryName} />
+          ) : null}
 
           {selectedSilo && selectedChain ? (
             <SiloDetailPanel
@@ -2791,6 +3191,9 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
 
 export default function App() {
   const categorySlug = parseCategoryFromUrl();
+  // Comma-decimal is the default because the CSV field delimiter is ";", so
+  // "," reads back as a real number in pl-PL-style spreadsheet locales.
+  const [csvDecimal, setCsvDecimal] = useState<CsvDecimal>(",");
 
   // Root: landing page listing every snapshot category.
   if (!categorySlug) {
@@ -2815,5 +3218,11 @@ export default function App() {
     view = <ExplorerView />;
   }
 
-  return <CategoryContext.Provider value={active}>{view}</CategoryContext.Provider>;
+  return (
+    <CategoryContext.Provider value={active}>
+      <CsvFormatContext.Provider value={{ decimal: csvDecimal, setDecimal: setCsvDecimal }}>
+        {view}
+      </CsvFormatContext.Provider>
+    </CategoryContext.Provider>
+  );
 }

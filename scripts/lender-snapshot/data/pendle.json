@@ -13,6 +13,7 @@
         },
         "total_assets": "17642614443367335722",
         "collateral_total_supply": "17424151452373431877971",
+        "borrow_repay_silo": null,
         "direct_lenders": {
           "0x4eb379128ddc25dded4af52a83015a80cb38d8c0": {
             "address_type": "eoa",
@@ -368,6 +369,7 @@
         },
         "total_assets": "5140750812943739348",
         "collateral_total_supply": "5094909731330657183816",
+        "borrow_repay_silo": null,
         "direct_lenders": {
           "0x0fab3da00d5c30889ca97a27428e658f32ecf96b": {
             "address_type": "eoa",
@@ -1121,6 +1123,7 @@
         },
         "total_assets": "1988465722891782960",
         "collateral_total_supply": "1983950741383228265708",
+        "borrow_repay_silo": null,
         "direct_lenders": {
           "0x10306f9fbe54347a7b90a286afe446a489bf0fc5": {
             "address_type": "eoa",
@@ -2316,6 +2319,7 @@
         },
         "total_assets": "2035689646",
         "collateral_total_supply": "1973980920903",
+        "borrow_repay_silo": null,
         "direct_lenders": {
           "0x93825446377674784c06ecbc2f869ce0c5db6887": {
             "address_type": "eoa",
@@ -2440,6 +2444,7 @@
         },
         "total_assets": "23174657540190411039416",
         "collateral_total_supply": "22791557170235725760562223",
+        "borrow_repay_silo": null,
         "direct_lenders": {
           "0x9a1bf5365edbb99c2c61ca6d9ffad0b705acfc6f": {
             "address_type": "silo_vault",
@@ -3785,6 +3790,7 @@
         },
         "total_assets": "26443248422",
         "collateral_total_supply": "24921491457493",
+        "borrow_repay_silo": null,
         "direct_lenders": {
           "0x098ddb5f48ad1daa5f691c4b2ad6360e45a22747": {
             "address_type": "eoa",
@@ -14992,6 +14998,7 @@
         },
         "total_assets": "572510308904336448260",
         "collateral_total_supply": "558494309008929146881359",
+        "borrow_repay_silo": null,
         "direct_lenders": {
           "0x041a302cb99fcf09e021e481a22fe8985531f707": {
             "address_type": "eoa",
