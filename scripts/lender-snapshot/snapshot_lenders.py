@@ -56,8 +56,8 @@ ETHEREUM_SUBGRAPH_URL = "https://gateway.thegraph.com/api/subgraphs/id/2z5Mn4WW7
 # by "block_chunk" in CATEGORIES. The scanner auto-halves the range on any RPC rejection, so
 # these are safe upper bounds rather than exact caps.
 SONIC_BLOCK_CHUNK = 500_000
-AVALANCHE_BLOCK_CHUNK = 500_000
-ARBITRUM_BLOCK_CHUNK = 500_000
+AVALANCHE_BLOCK_CHUNK = 400_000
+ARBITRUM_BLOCK_CHUNK = 400_000
 ETHEREUM_BLOCK_CHUNK = 100_000
 
 # Snapshot categories. Each category is a self-contained snapshot rendered under its own
@@ -127,20 +127,6 @@ CATEGORIES: dict[str, dict[str, Any]] = {
     "stream": {
         "targets": [
             {
-                "chain": "avalanche",
-                "chain_id": 43114,
-                "subgraph_url": AVALANCHE_SUBGRAPH_URL,
-                "block": 71568801,  # timestamp-matched to sonic block 54144258
-                "events_to_block": 89947428,  # timestamp-matched to sonic block 75700045
-                "block_chunk": AVALANCHE_BLOCK_CHUNK,
-                "silos": [
-                    {"address": "0x7437ac81457fa98ffb2d0c8f9943ecfe4813e2f1"},  # BTC.b
-                    {"address": "0x672b77f0538b53dc117c9ddfeb7377a678d321a6"},  # USDC
-                    {"address": "0x9c4d4800b489d217724155399cd64d07eae603f3"},  # AUSD
-                    {"address": "0xe0fc62e685e2b3183b4b88b1fe674cfec55a63f7"},  # USDt
-                ],
-            },
-            {
                 "chain": "arbitrum",
                 "chain_id": 42161,
                 "subgraph_url": ARBITRUM_SUBGRAPH_URL,
@@ -153,6 +139,20 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                         "address": "0xacb7432a4bb15402ce2afe0a7c9d5b738604f6f9",  # USDC, silo_id=146
                         "borrow_repay_silo": "0xf0543d476e7906374863091034fe679a7be8ee20",  # xUSD
                     },
+                ],
+            },
+            {
+                "chain": "avalanche",
+                "chain_id": 43114,
+                "subgraph_url": AVALANCHE_SUBGRAPH_URL,
+                "block": 71568801,  # timestamp-matched to sonic block 54144258
+                "events_to_block": 89947428,  # timestamp-matched to sonic block 75700045
+                "block_chunk": AVALANCHE_BLOCK_CHUNK,
+                "silos": [
+                    {"address": "0x7437ac81457fa98ffb2d0c8f9943ecfe4813e2f1"},  # BTC.b
+                    {"address": "0x672b77f0538b53dc117c9ddfeb7377a678d321a6"},  # USDC
+                    {"address": "0x9c4d4800b489d217724155399cd64d07eae603f3"},  # AUSD
+                    {"address": "0xe0fc62e685e2b3183b4b88b1fe674cfec55a63f7"},  # USDt
                 ],
             },
             {
