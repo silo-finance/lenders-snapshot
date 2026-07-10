@@ -36,7 +36,7 @@ import {
   siloCategory,
 } from "./snapshot";
 import { SNAPSHOT_CATEGORIES, findCategory, type SnapshotCategory } from "./categories";
-import { getNetworkIconPath, getNetworkName } from "./networks";
+import { getBlockExplorerUrl, getNetworkIconPath, getNetworkName } from "./networks";
 import { useWallet } from "./useWallet";
 
 // Active snapshot category (resolved from the URL) shared with the whole view tree so
@@ -425,7 +425,8 @@ function MetricCard({
 }
 
 function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
-  const { eventsToBlock } = useActiveCategory();
+  // Per-silo (per-chain) scan boundary, not the category-wide aggregate.
+  const eventsToBlock = silo.eventsToBlock;
   const directSharesSum = sumDirectShares(silo);
   const sharesValid = directSharesSum === silo.collateralTotalSupply;
   const totalPending = sumSiloPending(silo);
@@ -440,7 +441,7 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
               Total assets
               {silo.snapshotBlock > 0 ? (
                 <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
-                  at block {silo.snapshotBlock}
+                  at block <BlockLink block={silo.snapshotBlock} chainId={silo.chainId} />
                 </span>
               ) : null}
             </p>
@@ -453,7 +454,7 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
               Total pending assets
               {eventsToBlock > 0 ? (
                 <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
-                  at block {eventsToBlock}
+                  at block <BlockLink block={eventsToBlock} chainId={silo.chainId} />
                 </span>
               ) : null}
             </p>
@@ -770,6 +771,27 @@ function AddressLink({
       <CopyAddressButton address={address} bare={bareCopy} />
       {showSiloPageLink ? <SiloPageLinkButton address={address} chain={chain} /> : null}
     </span>
+  );
+}
+
+// A block number that links to the chain's block explorer when the chain is known,
+// falling back to plain text otherwise. Styling is inherited so callers control color.
+function BlockLink({ chainId, block }: { chainId: number; block: number }) {
+  const href = getBlockExplorerUrl(chainId, block);
+  if (!href) {
+    return <>{block.toString()}</>;
+  }
+  return (
+    <a
+      className="underline decoration-dotted underline-offset-2 transition hover:text-emerald-200"
+      href={href}
+      rel="noreferrer"
+      target="_blank"
+      title={`View block ${block} on explorer`}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {block.toString()}
+    </a>
   );
 }
 
@@ -2191,7 +2213,7 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
         <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
           <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Recovery calculations are based on balances at block{" "}
+            Recovery calculations are based on balances at Sonic block{" "}
             <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest accrued
             after this block is not included. Any negative pending balances are attributable to unaccounted
             post-snapshot interest and may also reflect interest over-accrual related to the Stream Finance incident.
@@ -2342,7 +2364,9 @@ function SiloDetailPanel({
   forceExpanded?: boolean;
   showConnectWallet?: boolean;
 }) {
-  const { snapshotBlock, eventsToBlock } = useActiveCategory();
+  // Per-silo (per-chain) blocks so switching chains shows that chain's actual blocks.
+  const snapshotBlock = silo.snapshotBlock;
+  const eventsToBlock = silo.eventsToBlock;
   const { decimal: csvDecimal } = useCsvFormat();
   const { account, connect, connecting, hasProvider } = useWallet(
     showConnectWallet ? setAddressFilter : undefined,
@@ -2414,14 +2438,20 @@ function SiloDetailPanel({
               {eventsToBlock > snapshotBlock ? (
                 <>
                   <span className="text-slate-500">Blocks from</span>{" "}
-                  <span className="font-mono text-slate-200">{snapshotBlock.toString()}</span>{" "}
+                  <span className="font-mono text-slate-200">
+                    <BlockLink block={snapshotBlock} chainId={chain.chainId} />
+                  </span>{" "}
                   <span className="text-slate-500">to</span>{" "}
-                  <span className="font-mono text-slate-200">{eventsToBlock.toString()}</span>
+                  <span className="font-mono text-slate-200">
+                    <BlockLink block={eventsToBlock} chainId={chain.chainId} />
+                  </span>
                 </>
               ) : (
                 <>
                   <span className="text-slate-500">On block</span>{" "}
-                  <span className="font-mono text-slate-200">{snapshotBlock.toString()}</span>
+                  <span className="font-mono text-slate-200">
+                    <BlockLink block={snapshotBlock} chainId={chain.chainId} />
+                  </span>
                 </>
               )}
             </p>
