@@ -24,44 +24,34 @@ export type SnapshotCategory = {
 
 export const SNAPSHOT_CATEGORIES: SnapshotCategory[] = [
   {
-    slug: "trevee-airdrop",
-    label: "Trevee Airdrop",
-    title: "Lender Snapshot for Trevee Airdrop",
+    slug: "stream",
+    label: "Stream Claims",
+    title: "Lender Snapshot for Stream Finance Claims",
     description: [
-      "The Trevee Airdrop snapshot lives in its own deployment.",
+      "This snapshot reconstructs lender balances across all affected Stream Finance lending markets and managed vaults as of the selected snapshot block.",
+      "SiloDAO will use the balances shown below to submit recovery claims to Stream Finance on behalf of affected lenders. Review your position by selecting a Silo or Vault and searching for your wallet address.",
     ],
-    externalUrl: "https://silo-finance.github.io/trevee-lenders-snapshot",
-    data: null,
+    data: buildCategoryData(streamData as unknown as RawRoot),
   },
   {
     slug: "trevee",
-    label: "Trevee",
-    title: "Lender Snapshot for Trevee",
+    label: "Trevee Claims",
+    title: "Lender Snapshot for Trevee Claims",
     description: [
-      "This snapshot lists the lenders of the Trevee markets on Silo, captured at a fixed block.",
-      "Use it to review each lender\u2019s position across the tracked Trevee silos and vaults.",
+      "This snapshot reconstructs lender balances across all affected Stream Finance lending markets and managed vaults as of the selected snapshot block.",
+      "These balances are provided to help affected lenders verify their positions. To participate in any recovery process, lenders should follow Trevee instructions for submitting claims related to the Stream Finance default. Review your position by selecting a Silo or Vault and searching for your wallet address.",
     ],
     data: buildCategoryData(treveeData as unknown as RawRoot),
   },
   {
     slug: "pendle",
-    label: "Pendle",
-    title: "Lender Snapshot for Pendle",
+    label: "Pendle Claims",
+    title: "Lender Snapshot for Pendle Claims",
     description: [
-      "This snapshot lists the lenders of the Pendle markets on Silo, captured at a fixed block.",
-      "Use it to review each lender\u2019s position across the tracked Pendle silos and vaults.",
+      "This snapshot reconstructs lender balances across all affected Stream Finance lending markets and managed vaults as of the selected snapshot block.",
+      "These balances are provided to help affected lenders verify their positions. To participate in any recovery process, lenders should follow Pendle\u2019s instructions for submitting claims related to the Stream Finance default. Review your position by selecting a Silo or Vault and searching for your wallet address.",
     ],
     data: buildCategoryData(pendleData as unknown as RawRoot),
-  },
-  {
-    slug: "stream",
-    label: "Stream",
-    title: "Lender Snapshot for Stream",
-    description: [
-      "This snapshot lists the lenders of the Stream markets on Silo, captured at a fixed block.",
-      "Use it to review each lender\u2019s position across the tracked Stream silos and vaults.",
-    ],
-    data: buildCategoryData(streamData as unknown as RawRoot),
   },
 ];
 
