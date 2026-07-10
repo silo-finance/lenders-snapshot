@@ -61,9 +61,12 @@ ETHEREUM_BLOCK_CHUNK = 10_000
 #
 # Each category maps to a list of chain targets. Each chain target has:
 #   "chain" (slug), "chain_id", "subgraph_url", "block" (required; the single snapshot
-#   block shared by every silo on that chain), "block_chunk" (required; the eth_getLogs
-#   block range per call, declared per chain because RPC limits are chain-specific),
-#   and a "silos" list.
+#   block shared by every silo on that chain), "events_to_block" (required; the single
+#   block up to which post-snapshot events are scanned on that chain -- declared per chain
+#   because block numbers are chain-specific, and timestamp-matched across chains so the
+#   post-snapshot window ends at the same wall-clock time everywhere), "block_chunk"
+#   (required; the eth_getLogs block range per call, declared per chain because RPC limits
+#   are chain-specific), and a "silos" list.
 # Each entry in a chain's `silos` list supports:
 #   "address" (required),
 #   "type"    (optional): "silo" (default) enumerates collateral lenders via the subgraph
@@ -82,6 +85,8 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 # Single snapshot block shared by every silo on this chain.
                 "block": 54144258,
+                # Single block up to which post-snapshot events are scanned on this chain.
+                "events_to_block": 75078341,
                 # eth_getLogs range per call for this chain (required, per-chain).
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
@@ -136,6 +141,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 146,
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 "block": 54144258,
+                "events_to_block": 75078341,
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2"},  # WETH
@@ -156,6 +162,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 146,
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 "block": 54144258,
+                "events_to_block": 75078341,
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x219656f33c58488d09d518badf50aa8cdcaca2aa"},  # WETH
@@ -172,6 +179,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 146,
                 "subgraph_url": DEFAULT_SUBGRAPH_URL,
                 "block": 54144258,
+                "events_to_block": 75078341,
                 "block_chunk": SONIC_BLOCK_CHUNK,
                 "silos": [
                     # Two-sided markets: the stable silo is the lender silo; its paired xUSD
@@ -191,6 +199,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 43114,
                 "subgraph_url": AVALANCHE_SUBGRAPH_URL,
                 "block": 71568801,  # timestamp-matched to sonic block 54144258
+                "events_to_block": 89138067,  # timestamp-matched to sonic block 75078341
                 "block_chunk": AVALANCHE_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x7437ac81457fa98ffb2d0c8f9943ecfe4813e2f1"},  # BTC.b
@@ -204,6 +213,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 42161,
                 "subgraph_url": ARBITRUM_SUBGRAPH_URL,
                 "block": 397731482,  # timestamp-matched to sonic block 54144258
+                "events_to_block": 478965392,  # timestamp-matched to sonic block 75078341
                 "block_chunk": ARBITRUM_BLOCK_CHUNK,
                 "silos": [
                     # Two-sided market: USDC is the lender silo; paired xUSD supplies Borrow/Repay.
@@ -218,6 +228,7 @@ CATEGORIES: dict[str, dict[str, Any]] = {
                 "chain_id": 1,
                 "subgraph_url": ETHEREUM_SUBGRAPH_URL,
                 "block": 23747116,  # timestamp-matched to sonic block 54144258
+                "events_to_block": 25431358,  # timestamp-matched to sonic block 75078341
                 "block_chunk": ETHEREUM_BLOCK_CHUNK,
                 "silos": [
                     {"address": "0x1de3ba67da79a81bc0c3922689c98550e4bd9bc2"},  # USDC
@@ -1290,17 +1301,23 @@ def fetch_transfer_events(
     return events
 
 
-def resolve_withdrawals_to_block(silo: dict[str, Any]) -> int | None:
-    raw = silo.get("withdrawals_to_block")
+def resolve_events_to_block(target: dict[str, Any]) -> int:
+    """The post-snapshot scan-end block is declared once per chain target and is required.
+
+    Block numbers are chain-specific, so a single value cannot be shared across chains (a
+    Sonic block reused elsewhere would skip or truncate the scan). The value is
+    timestamp-matched across chains so every chain's post-snapshot window ends at the same
+    wall-clock time. No per-silo or env override.
+    """
+    raw = target.get("events_to_block")
     if raw in (None, ""):
-        raw = os.environ.get("WITHDRAWALS_TO_BLOCK", "").strip()
-    if raw in (None, ""):
-        return None
-    if isinstance(raw, str) and raw.strip().lower() == "latest":
-        return None
+        raise SystemExit(
+            f"Missing 'events_to_block' for chain target {target.get('chain')!r}; "
+            "it must be declared per chain."
+        )
     value = int(raw)
     if value < 0:
-        raise ValueError("withdrawals_to_block must be non-negative")
+        raise ValueError("events_to_block must be non-negative")
     return value
 
 
@@ -2176,10 +2193,12 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
         # Both the eth_getLogs chunk and the chain head are per-chain: resolve them
         # once so every silo on this chain shares them (one eth_blockNumber call).
         chain_block_chunk = resolve_block_chunk(target)
+        chain_events_to_block = resolve_events_to_block(target)
         chain_latest_block = RpcClient(rpc_url, 0).eth_block_number()
         print(
             f"[info] chain={target['chain']} latest block={chain_latest_block} "
-            f"block_chunk={chain_block_chunk} (shared across silos)"
+            f"events_to_block={chain_events_to_block} block_chunk={chain_block_chunk} "
+            f"(shared across silos)"
         )
         for silo in silos:
             silo_index += 1
@@ -2189,7 +2208,7 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
                 f"silo={SILO_ADDRESS} block={BLOCK} ====="
             )
             silo_started_at = time.monotonic()
-            withdrawals_to_block = resolve_withdrawals_to_block(silo)
+            withdrawals_to_block = chain_events_to_block
             withdrawals_block_chunk = chain_block_chunk
             silo_entry = build_snapshot(
                 rpc_url,

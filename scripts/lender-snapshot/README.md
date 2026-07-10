@@ -39,13 +39,11 @@ are intentionally hardcoded: adding one is a rare, deliberate edit.
 Each category maps to a list of chain `targets`:
 
 - `chain`, `chain_id`, `subgraph_url`, `block` (the single snapshot block shared by every silo on that chain)
+- `events_to_block` (required): the single block up to which post-snapshot events are scanned on that chain. Declared per chain because block numbers are chain-specific, and timestamp-matched across chains so the post-snapshot window ends at the same wall-clock time everywhere. There is no per-silo or env override.
 - `block_chunk` (required): the number of blocks per `eth_getLogs` call, declared per chain because RPC range limits are chain-specific (some load balancers silently truncate oversized ranges). There is no per-silo or env override; the scanner still auto-halves the range on RPC rejection.
 - `silos[]` entries with:
   - `address`
   - optional `type` (`"silo"` default, or `"silo_vault"`)
-  - optional `withdrawals_to_block`:
-    - integer block number, or
-    - `"latest"` (resolved right before the withdraw scan starts for that silo)
 
 A category may also set an explicit `output` filename (defaults to `<slug>.json`).
 
@@ -61,7 +59,6 @@ Secrets are read **only** from the environment (or a local, gitignored `.env`):
 - `ETHEREUM_RPC_URL` – future archive RPC endpoint for Ethereum once Ethereum silos are configured.
 - `RPC_URL` – optional fallback used if a chain-specific URL is not set.
 - `THE_GRAPH_API_KEY` – The Graph gateway Bearer token.
-- `WITHDRAWALS_TO_BLOCK` – optional global override for scan end block (`latest` or integer).
 
 ```bash
 cp scripts/lender-snapshot/.env.example scripts/lender-snapshot/.env
