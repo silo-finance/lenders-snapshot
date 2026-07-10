@@ -4633,6 +4633,15 @@
                     "shares": "1",
                     "direction": "out",
                     "counterparty": "0x58d21b2f11358d9b3a3addef608b1eadb10a1a57"
+                  },
+                  {
+                    "block_number": 75158011,
+                    "tx_hash": "0x3c0be905540e25c7bda1648be009c65bc0531a01dcc4f7ce6715ac40bd0fffd5",
+                    "log_index": 109,
+                    "assets": "0",
+                    "shares": "1",
+                    "direction": "out",
+                    "counterparty": "0x58d21b2f11358d9b3a3addef608b1eadb10a1a57"
                   }
                 ],
                 "total_transfers_in": "0",
@@ -5476,6 +5485,24 @@
                     "shares": "0",
                     "direction": "out",
                     "counterparty": "0xe25e95f75432a79d31256cc3026e24aaa5540882"
+                  },
+                  {
+                    "block_number": 75158011,
+                    "tx_hash": "0x3c0be905540e25c7bda1648be009c65bc0531a01dcc4f7ce6715ac40bd0fffd5",
+                    "log_index": 109,
+                    "assets": "0",
+                    "shares": "1",
+                    "direction": "in",
+                    "counterparty": "0x01d6f4672d61acb6d8571682aba81e2eb7861fcd"
+                  },
+                  {
+                    "block_number": 75158011,
+                    "tx_hash": "0x3c0be905540e25c7bda1648be009c65bc0531a01dcc4f7ce6715ac40bd0fffd5",
+                    "log_index": 113,
+                    "assets": "0",
+                    "shares": "0",
+                    "direction": "out",
+                    "counterparty": "0xe25e95f75432a79d31256cc3026e24aaa5540882"
                   }
                 ],
                 "total_transfers_in": "0",
@@ -6301,6 +6328,15 @@
                     "block_number": 74622145,
                     "tx_hash": "0x0f75557008ed00c4acf0258f302d18cd17a2459aca146caa3b4a6bf40b4a762b",
                     "log_index": 105,
+                    "assets": "0",
+                    "shares": "0",
+                    "direction": "in",
+                    "counterparty": "0x58d21b2f11358d9b3a3addef608b1eadb10a1a57"
+                  },
+                  {
+                    "block_number": 75158011,
+                    "tx_hash": "0x3c0be905540e25c7bda1648be009c65bc0531a01dcc4f7ce6715ac40bd0fffd5",
+                    "log_index": 113,
                     "assets": "0",
                     "shares": "0",
                     "direction": "in",
@@ -7269,6 +7305,174 @@
                     "assets": "0",
                     "shares": "13392618833486",
                     "vault_assets": "25908211"
+                  },
+                  {
+                    "block_number": 75098595,
+                    "tx_hash": "0x1c84282bebde039659a6fc98bf949afb4e07024d327ac2a41fd7bd0b2e605ad9",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "1461691383865",
+                    "vault_assets": "2836574"
+                  },
+                  {
+                    "block_number": 75125955,
+                    "tx_hash": "0x93c6801fb4966719adb8d76b912f11c05535d969483985a2c9a262793e610d95",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "2165348237217",
+                    "vault_assets": "4221810"
+                  },
+                  {
+                    "block_number": 75126002,
+                    "tx_hash": "0x6eacba7a27de69a013f0d4f0ce7dd4557886cd601962765286ece7e1e9d7d854",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "51292848925855",
+                    "vault_assets": "100007155"
+                  },
+                  {
+                    "block_number": 75151731,
+                    "tx_hash": "0xc61b838ea5b1b6a000ffcbf77b809d6374ebb342a4cbff5a3364c9dbba7033de",
+                    "log_index": 14,
+                    "assets": "0",
+                    "shares": "1430165498087",
+                    "vault_assets": "2798190"
+                  },
+                  {
+                    "block_number": 75172585,
+                    "tx_hash": "0x5ad7bfe2c69df3abca161476a32ef3395c44ccb53758716196b39b24701715ea",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "1020667100518",
+                    "vault_assets": "2001981"
+                  },
+                  {
+                    "block_number": 75199880,
+                    "tx_hash": "0xddf840a05aa9ed0505e5538c2ef74cd18b5260d8e2952eb5787ab60ee464de1d",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "1464760109727",
+                    "vault_assets": "2883402"
+                  },
+                  {
+                    "block_number": 75252521,
+                    "tx_hash": "0xccd393fc833c45ba88cb139e8d2e447a0199a800f530612741f23ace4c02c73b",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "2458967080422",
+                    "vault_assets": "4869976"
+                  },
+                  {
+                    "block_number": 75292390,
+                    "tx_hash": "0xb2e202642dd0dcb528a450787fcd8fae012f20e7a09efddfacd4ad2db5a527bb",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "2070793905548",
+                    "vault_assets": "4118486"
+                  },
+                  {
+                    "block_number": 75314802,
+                    "tx_hash": "0xe10901e65d2687f1c2f757e9e05ff5faa14225f9229eb74e0a8bad0be0976f42",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "1330445814831",
+                    "vault_assets": "2653068"
+                  },
+                  {
+                    "block_number": 75335951,
+                    "tx_hash": "0xe9be4bce756f5edf52a747f9073e139f7166b258237b6a59af0c088bf9a1b2d1",
+                    "log_index": 84,
+                    "assets": "0",
+                    "shares": "1374180379866",
+                    "vault_assets": "2747808"
+                  },
+                  {
+                    "block_number": 75374033,
+                    "tx_hash": "0xe25f0dbba08fb870af59f52c51f81ec4e6ae7231c54430c36d6398011f214922",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "2472531407812",
+                    "vault_assets": "4968636"
+                  },
+                  {
+                    "block_number": 75432650,
+                    "tx_hash": "0x6044b3520e27ff4962dbfda8b6ed2121182658048ea535647e5f81271a6d25b0",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "5274288938414",
+                    "vault_assets": "10712404"
+                  },
+                  {
+                    "block_number": 75477896,
+                    "tx_hash": "0x2842e6ce7e75493a57569543c83443b453a6ec0ee6ee352a652a5792d139bcfa",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "22234289063873",
+                    "vault_assets": "45494867"
+                  },
+                  {
+                    "block_number": 75477928,
+                    "tx_hash": "0x28c4656c5d39590ba9bbeea95c4f25cc26d58af98437e5be5b89976bad4e3c29",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "97747891769388",
+                    "vault_assets": "200008924"
+                  },
+                  {
+                    "block_number": 75500637,
+                    "tx_hash": "0x5be3261ec895258298f0ec94511e66586ad26ad805a0c2c11bdf274a4ca11ab9",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "1885756989730",
+                    "vault_assets": "3873525"
+                  },
+                  {
+                    "block_number": 75534094,
+                    "tx_hash": "0x311d99c527e28d209241be8d53a26a4a1a0a953dbdead7640d0bef078d467ce4",
+                    "log_index": 46,
+                    "assets": "0",
+                    "shares": "3639908875592",
+                    "vault_assets": "7533051"
+                  },
+                  {
+                    "block_number": 75599230,
+                    "tx_hash": "0x1e43fa15dac92ae9deced7a25e95d820de43ed9c7d9ad47ecef962b8626b8fa2",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "5809342983338",
+                    "vault_assets": "12169167"
+                  },
+                  {
+                    "block_number": 75607980,
+                    "tx_hash": "0xe3e9a05bd9e041d4761762fd018978ee09cc9d8f59cd343c9b94335d56a4043e",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "17070336439619",
+                    "vault_assets": "35815232"
+                  },
+                  {
+                    "block_number": 75622494,
+                    "tx_hash": "0x3884cdca4f74c756e11f9285b2f3da1c6081f615c3d18aa2ce1933319b8c7ec2",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "1519220265328",
+                    "vault_assets": "3197662"
+                  },
+                  {
+                    "block_number": 75663227,
+                    "tx_hash": "0x0d3307265c7ac51ad06d1221980c7bbd73c33c0645086470c4b151737180be71",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "4508639710289",
+                    "vault_assets": "9580722"
+                  },
+                  {
+                    "block_number": 75689592,
+                    "tx_hash": "0x08b3abc66a7d843191f7e5d5f92f81fb531b531e5f3738a45f31dc3fe1542619",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "3083599228330",
+                    "vault_assets": "6595784"
                   }
                 ],
                 "total_withdrawals": "0",
@@ -7488,6 +7692,46 @@
                     "assets": "0",
                     "shares": "9312956617769",
                     "vault_assets": "17918904"
+                  },
+                  {
+                    "block_number": 75255740,
+                    "tx_hash": "0xb4ed975237c45957ba570ff563d1839923f22248371a5fc6bdec0ea98093372d",
+                    "log_index": 3,
+                    "assets": "0",
+                    "shares": "100937083012683",
+                    "vault_assets": "199999440"
+                  },
+                  {
+                    "block_number": 75433711,
+                    "tx_hash": "0xd462c0869c67af63efff3e35d711d40238f7c037349f91ccd520d4238051d423",
+                    "log_index": 3,
+                    "assets": "0",
+                    "shares": "10614279427556",
+                    "vault_assets": "21561578"
+                  },
+                  {
+                    "block_number": 75434121,
+                    "tx_hash": "0xaec38d33edd94afe33860eb8171e34f960e4d0d5f3c17053942eee69414ce634",
+                    "log_index": 3,
+                    "assets": "0",
+                    "shares": "99987779487680",
+                    "vault_assets": "203124382"
+                  },
+                  {
+                    "block_number": 75452076,
+                    "tx_hash": "0x4176e75e5b04ab8cd262093c3f2d5fcc62735aa3923e9be652d51d35395b79af",
+                    "log_index": 3,
+                    "assets": "0",
+                    "shares": "5744403567414",
+                    "vault_assets": "11702415"
+                  },
+                  {
+                    "block_number": 75599300,
+                    "tx_hash": "0x4d66f2b1695c777ffcb937fbe3a20950e218bc5eadab7507d48425b34c46c1a3",
+                    "log_index": 3,
+                    "assets": "0",
+                    "shares": "16310331078026",
+                    "vault_assets": "34166607"
                   }
                 ],
                 "total_deposits": "0",
@@ -7517,6 +7761,62 @@
                     "assets": "0",
                     "shares": "4174414107468",
                     "vault_assets": "8000000"
+                  },
+                  {
+                    "block_number": 75108936,
+                    "tx_hash": "0x99554eaa878fcf21c95c2bea9f66d5cbe4d9740bca32a11393d5e74b63aee28f",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "4115361958131",
+                    "vault_assets": "8000000"
+                  },
+                  {
+                    "block_number": 75233452,
+                    "tx_hash": "0xd6ebfe24d5c43ea8ca78a5eaccf390810038860c2f27e75ebca9ce75355cc655",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "4049773777798",
+                    "vault_assets": "8000000"
+                  },
+                  {
+                    "block_number": 75307507,
+                    "tx_hash": "0x7b255db8f09cec52a746b4647edf41fcfb404d14ac726d4371f8186e0ed4f08e",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "2509409198776",
+                    "vault_assets": "5000000"
+                  },
+                  {
+                    "block_number": 75449308,
+                    "tx_hash": "0x351acbc8837bff1589f215cf5b0a75e955b0fd5f005d5e7931841d26d794059f",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "4911225177816",
+                    "vault_assets": "10000000"
+                  },
+                  {
+                    "block_number": 75515498,
+                    "tx_hash": "0x789e7ba96baf7debfcbe61f16f0eef808564bdd4af3ae74827c43ae3fe174175",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "2911330778565",
+                    "vault_assets": "6000000"
+                  },
+                  {
+                    "block_number": 75594346,
+                    "tx_hash": "0x9e6fe9c6c0d7bdeb453a1e9314cbf2ead377af5b3e670ae50d31d55e46e3cff5",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "3822698247075",
+                    "vault_assets": "8000000"
+                  },
+                  {
+                    "block_number": 75633900,
+                    "tx_hash": "0xa355fdd791005ae884e2c203fef9e5e705b64d18bc1b8e23e0c8dfe718136804",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "2368277681655",
+                    "vault_assets": "5000000"
                   }
                 ],
                 "total_withdrawals": "0",
@@ -7576,6 +7876,14 @@
                     "assets": "0",
                     "shares": "211753293113866",
                     "vault_assets": "399000000"
+                  },
+                  {
+                    "block_number": 75670515,
+                    "tx_hash": "0x087387c65a64ae6d094a18f3642ee06db17b3fee622e5d2e85a330db06b2dfef",
+                    "log_index": 3,
+                    "assets": "0",
+                    "shares": "12215206500599",
+                    "vault_assets": "26000000"
                   }
                 ],
                 "total_deposits": "0",
@@ -7645,6 +7953,62 @@
                     "assets": "0",
                     "shares": "519770215264",
                     "vault_assets": "1000000"
+                  },
+                  {
+                    "block_number": 75115417,
+                    "tx_hash": "0xe9f01ffa5329a28b3fecbdbfcb769265f0b9c7fb5c93e4d7d388e7f5212e775d",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "513851448591",
+                    "vault_assets": "1000000"
+                  },
+                  {
+                    "block_number": 75184976,
+                    "tx_hash": "0x4049a9522cc1f4c912bacb67403b45530d58643deeef6debf539126f3962aa7c",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "508971798625",
+                    "vault_assets": "1000000"
+                  },
+                  {
+                    "block_number": 75404302,
+                    "tx_hash": "0xc1506ba425e86b40d0719afd46e6525fe7cf8cf0a9c080b026e93a9a5c5ba05a",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "7422967400864",
+                    "vault_assets": "15000000"
+                  },
+                  {
+                    "block_number": 75504547,
+                    "tx_hash": "0xf25629a1cc2a8bfa0e57eb4e9bf90da581db4e1adc615e4518d6144f5b3eb225",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "7296191807687",
+                    "vault_assets": "15000000"
+                  },
+                  {
+                    "block_number": 75528886,
+                    "tx_hash": "0x7bc8578c5ebc83c23c3699ff8969b8238cb82bb507d2430e2b54adf2649f9411",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "7255862163131",
+                    "vault_assets": "15000000"
+                  },
+                  {
+                    "block_number": 75593884,
+                    "tx_hash": "0xe3144957aaca0511d2052f968151f64ccd1cc4c03111f3ef01a3f2e97fd52c15",
+                    "log_index": 18,
+                    "assets": "0",
+                    "shares": "7168154093284",
+                    "vault_assets": "15000000"
+                  },
+                  {
+                    "block_number": 75648038,
+                    "tx_hash": "0x724521875f4d8615b6983fbae3a19091b3932f2eb1938392fc28ddc5f86b80d2",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "2361297700355",
+                    "vault_assets": "5000000"
                   }
                 ],
                 "total_withdrawals": "0",
@@ -7760,6 +8124,30 @@
                     "assets": "0",
                     "shares": "15753845108618",
                     "vault_assets": "30000000"
+                  },
+                  {
+                    "block_number": 75239825,
+                    "tx_hash": "0x75984d9c99aa3a5152c1419b769d71647cb951304e3e9610aa493d4aa21b86c5",
+                    "log_index": 3,
+                    "assets": "0",
+                    "shares": "2227320775225",
+                    "vault_assets": "4403900"
+                  },
+                  {
+                    "block_number": 75289163,
+                    "tx_hash": "0xeb703d5031b917b2b6fe45a0a93d2a1f638c0857805842a134647d456ceced03",
+                    "log_index": 3,
+                    "assets": "0",
+                    "shares": "7544380060820",
+                    "vault_assets": "15000000"
+                  },
+                  {
+                    "block_number": 75445872,
+                    "tx_hash": "0x6c770986d92db8ab77dfea8e4f665a6d60d00c54ffa93da9fb25527b90a7fc32",
+                    "log_index": 3,
+                    "assets": "0",
+                    "shares": "7370182818836",
+                    "vault_assets": "15000000"
                   }
                 ],
                 "total_deposits": "0",
@@ -57482,10 +57870,20 @@
                 "total_withdrawals": "0",
                 "deposits": [],
                 "total_deposits": "0",
-                "transfers": [],
+                "transfers": [
+                  {
+                    "block_number": 75130513,
+                    "tx_hash": "0x71331d79f2cc0c7997c7d48fe411c3198119686c946f36b05f37c55ff5cbe0aa",
+                    "log_index": 3,
+                    "assets": "373877439",
+                    "shares": "357542775646723587230053459",
+                    "direction": "out",
+                    "counterparty": "0x5740915f36dbb30d0f28865b153ae3f04635b9d2"
+                  }
+                ],
                 "total_transfers_in": "0",
-                "total_transfers_out": "0",
-                "pending_assets": "373877439"
+                "total_transfers_out": "373877439",
+                "pending_assets": "0"
               },
               "0x7b8135db002d27f745ef7f9f284fe9f641e6b217": {
                 "address_type": "eoa",
@@ -120053,6 +120451,30 @@
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
                 "pending_assets": "0"
+              },
+              "0x5740915f36dbb30d0f28865b153ae3f04635b9d2": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 75130513,
+                    "tx_hash": "0x71331d79f2cc0c7997c7d48fe411c3198119686c946f36b05f37c55ff5cbe0aa",
+                    "log_index": 3,
+                    "assets": "373877439",
+                    "shares": "357542775646723587230053459",
+                    "direction": "in",
+                    "counterparty": "0x7b1dac408ada0017b0a7bbb4ffad30922717d389"
+                  }
+                ],
+                "total_transfers_in": "373877439",
+                "total_transfers_out": "0",
+                "pending_assets": "373877439"
               }
             },
             "status": "ok"
@@ -120062,7 +120484,7 @@
           "symbol": "xUSD",
           "decimals": 6
         },
-        "withdrawals_scanned_to_block": 75078341
+        "withdrawals_scanned_to_block": 75700045
       },
       "0xb1412442aa998950f2f652667d5eba35fe66e43f": {
         "snapshot_block": 54144258,
@@ -121474,7 +121896,16 @@
                 "vault_shares": "554838898764944867",
                 "fraction": "0.000000000000213870",
                 "attributed_silo_assets": "0",
-                "withdrawals": [],
+                "withdrawals": [
+                  {
+                    "block_number": 75619630,
+                    "tx_hash": "0xcc40b83c0f1f3579b1350b79d96c0ec70f96b09a655f1feb9ddbe275f773ab00",
+                    "log_index": 7,
+                    "assets": "0",
+                    "shares": "554838898764944867",
+                    "vault_assets": "30"
+                  }
+                ],
                 "total_withdrawals": "0",
                 "deposits": [],
                 "total_deposits": "0",
@@ -128388,7 +128819,7 @@
           "symbol": "xUSD",
           "decimals": 6
         },
-        "withdrawals_scanned_to_block": 75078341
+        "withdrawals_scanned_to_block": 75700045
       }
     }
   },
@@ -128676,10 +129107,20 @@
             "total_withdrawals": "0",
             "deposits": [],
             "total_deposits": "0",
-            "transfers": [],
+            "transfers": [
+              {
+                "block_number": 89334275,
+                "tx_hash": "0x9ffc4819befc1004de439632a0515b7dc0c0aac6564857f41327053f00a3f9a7",
+                "log_index": 111,
+                "assets": "941460",
+                "shares": "926953835",
+                "direction": "out",
+                "counterparty": "0x631a1d3a0f858cd0e24b3caab235d18325699ce3"
+              }
+            ],
             "total_transfers_in": "0",
-            "total_transfers_out": "0",
-            "pending_assets": "941460"
+            "total_transfers_out": "941460",
+            "pending_assets": "0"
           },
           "0x5b360046336c7bbf42f0c3060e84b7626e83e552": {
             "address_type": "eoa",
@@ -129485,6 +129926,30 @@
             "total_transfers_in": "3046",
             "total_transfers_out": "0",
             "pending_assets": "3046"
+          },
+          "0x631a1d3a0f858cd0e24b3caab235d18325699ce3": {
+            "address_type": "eoa",
+            "collateral_shares": "0",
+            "assets_collateral": "0",
+            "total_assets": "0",
+            "withdrawals": [],
+            "total_withdrawals": "0",
+            "deposits": [],
+            "total_deposits": "0",
+            "transfers": [
+              {
+                "block_number": 89334275,
+                "tx_hash": "0x9ffc4819befc1004de439632a0515b7dc0c0aac6564857f41327053f00a3f9a7",
+                "log_index": 111,
+                "assets": "941460",
+                "shares": "926953835",
+                "direction": "in",
+                "counterparty": "0x58f1101f3632f1d0544197351fbded673f4b43f1"
+              }
+            ],
+            "total_transfers_in": "941460",
+            "total_transfers_out": "0",
+            "pending_assets": "941460"
           }
         },
         "vaults": {
@@ -134351,7 +134816,7 @@
             "status": "ok"
           }
         },
-        "withdrawals_scanned_to_block": 89138067
+        "withdrawals_scanned_to_block": 89947428
       },
       "0x672b77f0538b53dc117c9ddfeb7377a678d321a6": {
         "snapshot_block": 71568801,
@@ -139118,11 +139583,29 @@
                     "shares": "7871343898719",
                     "direction": "in",
                     "counterparty": "0x92fbb58342164546325602588599b05802c69bbe"
+                  },
+                  {
+                    "block_number": 89277698,
+                    "tx_hash": "0x96f34f7f609b24cf622cf3419293e1cfbec30999a2feb0c63d38198f844fa13a",
+                    "log_index": 17,
+                    "assets": "1041923",
+                    "shares": "1000000000000",
+                    "direction": "out",
+                    "counterparty": "0x92fbb58342164546325602588599b05802c69bbe"
+                  },
+                  {
+                    "block_number": 89694390,
+                    "tx_hash": "0xcc09c8c380f45d6f6518c6cbf48e3bc2109f5f65c535f4c33e42c9d3221e8ff1",
+                    "log_index": 41,
+                    "assets": "520961",
+                    "shares": "500000000000",
+                    "direction": "in",
+                    "counterparty": "0x92fbb58342164546325602588599b05802c69bbe"
                   }
                 ],
-                "total_transfers_in": "11616814",
-                "total_transfers_out": "13368390",
-                "pending_assets": "1335054922"
+                "total_transfers_in": "12137775",
+                "total_transfers_out": "14410313",
+                "pending_assets": "1334533960"
               },
               "0x37c6739c4cac8fef23119901307bc64ad5ee623f": {
                 "address_type": "eoa",
@@ -141560,8 +142043,25 @@
                 "vault_shares": "13580464953925631",
                 "fraction": "0.001936260033451410",
                 "attributed_silo_assets": "14149809019",
-                "withdrawals": [],
-                "total_withdrawals": "0",
+                "withdrawals": [
+                  {
+                    "block_number": 89695186,
+                    "tx_hash": "0x06f1dfecf7bb9e4c5157ad90497b023c9aa803f609b6f62d92d5998fa6abd2e7",
+                    "log_index": 33,
+                    "assets": "1041",
+                    "shares": "1000000000",
+                    "vault_assets": "203506"
+                  },
+                  {
+                    "block_number": 89695278,
+                    "tx_hash": "0x935f882bb33184a86a7938532d31d48f1cfbd6792aaca62cc9d312f46e4d69b4",
+                    "log_index": 52,
+                    "assets": "1041",
+                    "shares": "1000000000",
+                    "vault_assets": "203516"
+                  }
+                ],
+                "total_withdrawals": "2082",
                 "deposits": [
                   {
                     "block_number": 71829362,
@@ -146889,11 +147389,74 @@
                     "shares": "5829901559473",
                     "direction": "out",
                     "counterparty": "0x76b60dcf71da2294f8aa034432d925d1eed8cf68"
+                  },
+                  {
+                    "block_number": 89142674,
+                    "tx_hash": "0xbb8b027cc67eba106a9155735d0f4e5bdc4c284e78b766710dcc26326ef61fbb",
+                    "log_index": 4,
+                    "assets": "1344221",
+                    "shares": "1290133793078",
+                    "direction": "in",
+                    "counterparty": "0x56f6bf6b793713c050fd02147a45b563bb4d8efa"
+                  },
+                  {
+                    "block_number": 89252503,
+                    "tx_hash": "0xb613cfedde78a6ac4b2f538ad7b3af9b4a5b7353acea4ca37ae5a62eae834f2b",
+                    "log_index": 23,
+                    "assets": "7906120",
+                    "shares": "7588003370636",
+                    "direction": "out",
+                    "counterparty": "0x8091110790e54379a19e92b4503644789de5afe0"
+                  },
+                  {
+                    "block_number": 89277698,
+                    "tx_hash": "0x96f34f7f609b24cf622cf3419293e1cfbec30999a2feb0c63d38198f844fa13a",
+                    "log_index": 17,
+                    "assets": "1041923",
+                    "shares": "1000000000000",
+                    "direction": "in",
+                    "counterparty": "0x37b84b579e6b2ef70f1abb87427d81ced7c87f4b"
+                  },
+                  {
+                    "block_number": 89286134,
+                    "tx_hash": "0x66e28aaec3f6cdb4b00d68a11d0266450bb10efb13ab8e005e00861d8706c6e2",
+                    "log_index": 8,
+                    "assets": "240378992",
+                    "shares": "230706893392071",
+                    "direction": "in",
+                    "counterparty": "0xa6e6ff47cbf3b6c5909126c80edccd67bf42fdb9"
+                  },
+                  {
+                    "block_number": 89287153,
+                    "tx_hash": "0xdae1147b1ceb8c551016cdbcf87647633c88b9775ce1d362c80be26de810bd83",
+                    "log_index": 107,
+                    "assets": "240378992",
+                    "shares": "230706893392071",
+                    "direction": "out",
+                    "counterparty": "0xa6e6ff47cbf3b6c5909126c80edccd67bf42fdb9"
+                  },
+                  {
+                    "block_number": 89546912,
+                    "tx_hash": "0x3b5407bf170bc197445cdd6a31aec15d989ca61144cfb3adb0d48408f22b1d44",
+                    "log_index": 36,
+                    "assets": "7906120",
+                    "shares": "7588003000000",
+                    "direction": "in",
+                    "counterparty": "0x8091110790e54379a19e92b4503644789de5afe0"
+                  },
+                  {
+                    "block_number": 89694390,
+                    "tx_hash": "0xcc09c8c380f45d6f6518c6cbf48e3bc2109f5f65c535f4c33e42c9d3221e8ff1",
+                    "log_index": 41,
+                    "assets": "520961",
+                    "shares": "500000000000",
+                    "direction": "out",
+                    "counterparty": "0x37b84b579e6b2ef70f1abb87427d81ced7c87f4b"
                   }
                 ],
-                "total_transfers_in": "8389202305",
-                "total_transfers_out": "19674477119",
-                "pending_assets": "7081983339"
+                "total_transfers_in": "8639873561",
+                "total_transfers_out": "19923283192",
+                "pending_assets": "7083846440"
               },
               "0x94b8f5edbb2bd553385cb9537e805ed1094e1463": {
                 "address_type": "contract_other",
@@ -153864,10 +154427,28 @@
                     "shares": "7588003370636",
                     "direction": "out",
                     "counterparty": "0x92fbb58342164546325602588599b05802c69bbe"
+                  },
+                  {
+                    "block_number": 89252503,
+                    "tx_hash": "0xb613cfedde78a6ac4b2f538ad7b3af9b4a5b7353acea4ca37ae5a62eae834f2b",
+                    "log_index": 23,
+                    "assets": "7906120",
+                    "shares": "7588003370636",
+                    "direction": "in",
+                    "counterparty": "0x92fbb58342164546325602588599b05802c69bbe"
+                  },
+                  {
+                    "block_number": 89546912,
+                    "tx_hash": "0x3b5407bf170bc197445cdd6a31aec15d989ca61144cfb3adb0d48408f22b1d44",
+                    "log_index": 36,
+                    "assets": "7906120",
+                    "shares": "7588003000000",
+                    "direction": "out",
+                    "counterparty": "0x92fbb58342164546325602588599b05802c69bbe"
                   }
                 ],
-                "total_transfers_in": "31681852",
-                "total_transfers_out": "31681852",
+                "total_transfers_in": "39587972",
+                "total_transfers_out": "39587972",
                 "pending_assets": "0"
               },
               "0xccccccf25584cafbd4d80e9464361af1e7280b44": {
@@ -158589,10 +159170,28 @@
                     "shares": "230706893392071",
                     "direction": "in",
                     "counterparty": "0x92fbb58342164546325602588599b05802c69bbe"
+                  },
+                  {
+                    "block_number": 89286134,
+                    "tx_hash": "0x66e28aaec3f6cdb4b00d68a11d0266450bb10efb13ab8e005e00861d8706c6e2",
+                    "log_index": 8,
+                    "assets": "240378992",
+                    "shares": "230706893392071",
+                    "direction": "out",
+                    "counterparty": "0x92fbb58342164546325602588599b05802c69bbe"
+                  },
+                  {
+                    "block_number": 89287153,
+                    "tx_hash": "0xdae1147b1ceb8c551016cdbcf87647633c88b9775ce1d362c80be26de810bd83",
+                    "log_index": 107,
+                    "assets": "240378992",
+                    "shares": "230706893392071",
+                    "direction": "in",
+                    "counterparty": "0x92fbb58342164546325602588599b05802c69bbe"
                   }
                 ],
-                "total_transfers_in": "4083770437",
-                "total_transfers_out": "3843391448",
+                "total_transfers_in": "4324149429",
+                "total_transfers_out": "4083770440",
                 "pending_assets": "240378989"
               },
               "0x904ba3b57a3a896cf4438a18aca227a1362eaf05": {
@@ -160512,11 +161111,20 @@
                     "shares": "3441761001587",
                     "direction": "in",
                     "counterparty": "0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"
+                  },
+                  {
+                    "block_number": 89142674,
+                    "tx_hash": "0xbb8b027cc67eba106a9155735d0f4e5bdc4c284e78b766710dcc26326ef61fbb",
+                    "log_index": 4,
+                    "assets": "1344221",
+                    "shares": "1290133793078",
+                    "direction": "out",
+                    "counterparty": "0x92fbb58342164546325602588599b05802c69bbe"
                   }
                 ],
                 "total_transfers_in": "901698434",
-                "total_transfers_out": "132118",
-                "pending_assets": "901566316"
+                "total_transfers_out": "1476339",
+                "pending_assets": "900222095"
               },
               "0xa0c25709aad393d4290c1c0206b3e4d0c5cc87a6": {
                 "address_type": "eoa",
@@ -164337,7 +164945,7 @@
             "status": "not_in_withdraw_queue"
           }
         },
-        "withdrawals_scanned_to_block": 89138067
+        "withdrawals_scanned_to_block": 89947428
       },
       "0x9c4d4800b489d217724155399cd64d07eae603f3": {
         "snapshot_block": 71568801,
@@ -165932,11 +166540,20 @@
                     "shares": "314943456168",
                     "direction": "in",
                     "counterparty": "0xcfc3d5a2135cdf4587ce67af4118c300b8632c57"
+                  },
+                  {
+                    "block_number": 89533467,
+                    "tx_hash": "0xc41fdc78ac8fe2f4631f9e412dc18abce82cd6ddb6d31bd4cdbe8443e5431568",
+                    "log_index": 7,
+                    "assets": "963404",
+                    "shares": "1000095046970",
+                    "direction": "out",
+                    "counterparty": "0x952ae19942de973163432b86fea01699f315ef4f"
                   }
                 ],
                 "total_transfers_in": "963404",
-                "total_transfers_out": "0",
-                "pending_assets": "963404"
+                "total_transfers_out": "963404",
+                "pending_assets": "0"
               },
               "0x3d7b0c3997e48fa3fc96cd057d1fb4e5f891835b": {
                 "address_type": "silo_vault",
@@ -165961,12 +166578,36 @@
                 "total_transfers_in": "6120887",
                 "total_transfers_out": "0",
                 "pending_assets": "6120887"
+              },
+              "0x952ae19942de973163432b86fea01699f315ef4f": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 89533467,
+                    "tx_hash": "0xc41fdc78ac8fe2f4631f9e412dc18abce82cd6ddb6d31bd4cdbe8443e5431568",
+                    "log_index": 7,
+                    "assets": "963404",
+                    "shares": "1000095046970",
+                    "direction": "in",
+                    "counterparty": "0x4b1acaf94f81eb3ba74cf8897c9d8ccfff8a82ca"
+                  }
+                ],
+                "total_transfers_in": "963404",
+                "total_transfers_out": "0",
+                "pending_assets": "963404"
               }
             },
             "status": "ok"
           }
         },
-        "withdrawals_scanned_to_block": 89138067
+        "withdrawals_scanned_to_block": 89947428
       },
       "0xe0fc62e685e2b3183b4b88b1fe674cfec55a63f7": {
         "snapshot_block": 71568801,
@@ -167163,17 +167804,50 @@
                     "shares": "3969056023029",
                     "direction": "in",
                     "counterparty": "0xcfc3d5a2135cdf4587ce67af4118c300b8632c57"
+                  },
+                  {
+                    "block_number": 89533513,
+                    "tx_hash": "0x5b43710495395e6716eeacddfada1941063aa17002946e35b56ead5ac7cf1494",
+                    "log_index": 8,
+                    "assets": "4091281",
+                    "shares": "3969056023029",
+                    "direction": "out",
+                    "counterparty": "0x952ae19942de973163432b86fea01699f315ef4f"
                   }
                 ],
                 "total_transfers_in": "8182562",
-                "total_transfers_out": "4091281",
+                "total_transfers_out": "8182562",
+                "pending_assets": "0"
+              },
+              "0x952ae19942de973163432b86fea01699f315ef4f": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 89533513,
+                    "tx_hash": "0x5b43710495395e6716eeacddfada1941063aa17002946e35b56ead5ac7cf1494",
+                    "log_index": 8,
+                    "assets": "4091281",
+                    "shares": "3969056023029",
+                    "direction": "in",
+                    "counterparty": "0x4b1acaf94f81eb3ba74cf8897c9d8ccfff8a82ca"
+                  }
+                ],
+                "total_transfers_in": "4091281",
+                "total_transfers_out": "0",
                 "pending_assets": "4091281"
               }
             },
             "status": "ok"
           }
         },
-        "withdrawals_scanned_to_block": 89138067
+        "withdrawals_scanned_to_block": 89947428
       }
     }
   },
@@ -178271,11 +178945,20 @@
                     "shares": "2212694519859620000000000000",
                     "direction": "out",
                     "counterparty": "0xff86afcdb6de24b484262f8485d2c13f5c090f4c"
+                  },
+                  {
+                    "block_number": 481608698,
+                    "tx_hash": "0x936a65e5edb91befa02b41fc6ed1d2ceaeeb11f946791429e9e8bdc12646d4f3",
+                    "log_index": 7,
+                    "assets": "2206400994",
+                    "shares": "2096804645859620000000002549",
+                    "direction": "in",
+                    "counterparty": "0xff86afcdb6de24b484262f8485d2c13f5c090f4c"
                   }
                 ],
-                "total_transfers_in": "4656696462",
+                "total_transfers_in": "6863097456",
                 "total_transfers_out": "4656696462",
-                "pending_assets": "0"
+                "pending_assets": "2206400994"
               },
               "0xb3d28c9487c123fa2c3287e3fd9e54ddbce803e4": {
                 "address_type": "eoa",
@@ -181430,11 +182113,20 @@
                     "shares": "5255149000000000000000000",
                     "direction": "out",
                     "counterparty": "0x1cd05c62b55a2c8edd0341299096af5443e3f4c8"
+                  },
+                  {
+                    "block_number": 481608698,
+                    "tx_hash": "0x936a65e5edb91befa02b41fc6ed1d2ceaeeb11f946791429e9e8bdc12646d4f3",
+                    "log_index": 7,
+                    "assets": "2206400994",
+                    "shares": "2096804645859620000000002549",
+                    "direction": "out",
+                    "counterparty": "0x11777b2bf98b31f0d71690416562f0b42d6f8594"
                   }
                 ],
                 "total_transfers_in": "4656696462",
-                "total_transfers_out": "2450295467",
-                "pending_assets": "2206400995"
+                "total_transfers_out": "4656696461",
+                "pending_assets": "1"
               },
               "0xb100a5b2591dd099040a5ab76efe682a6d8a48a2": {
                 "address_type": "contract_other",
@@ -181619,11 +182311,20 @@
                     "shares": "1242619779034434963274086807",
                     "direction": "in",
                     "counterparty": "0xba1333333333a1ba1108e8412f11850a5c319ba9"
+                  },
+                  {
+                    "block_number": 480603772,
+                    "tx_hash": "0x9dcfb587a01c4c691a483e210053b313c1c0446aa96cd53a4c8634860f346298",
+                    "log_index": 5,
+                    "assets": "1307569363",
+                    "shares": "1242619779034434963274086807",
+                    "direction": "out",
+                    "counterparty": "0x952ae19942de973163432b86fea01699f315ef4f"
                   }
                 ],
                 "total_transfers_in": "1311453879",
-                "total_transfers_out": "3884516",
-                "pending_assets": "1307569363"
+                "total_transfers_out": "1311453879",
+                "pending_assets": "0"
               },
               "0x48daab9f7ed6e3184c26d9ddaccc356d52d6237f": {
                 "address_type": "contract_other",
@@ -182802,6 +183503,30 @@
                 "total_transfers_in": "1215100",
                 "total_transfers_out": "1215100",
                 "pending_assets": "0"
+              },
+              "0x952ae19942de973163432b86fea01699f315ef4f": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 480603772,
+                    "tx_hash": "0x9dcfb587a01c4c691a483e210053b313c1c0446aa96cd53a4c8634860f346298",
+                    "log_index": 5,
+                    "assets": "1307569363",
+                    "shares": "1242619779034434963274086807",
+                    "direction": "in",
+                    "counterparty": "0x4b1acaf94f81eb3ba74cf8897c9d8ccfff8a82ca"
+                  }
+                ],
+                "total_transfers_in": "1307569363",
+                "total_transfers_out": "0",
+                "pending_assets": "1307569363"
               }
             },
             "status": "ok"
@@ -183792,7 +184517,7 @@
           "symbol": "xUSD",
           "decimals": 6
         },
-        "withdrawals_scanned_to_block": 478965392
+        "withdrawals_scanned_to_block": 482328398
       }
     }
   },
@@ -187147,11 +187872,20 @@
                     "shares": "492723654848",
                     "direction": "out",
                     "counterparty": "0x082f554a92da8311a8b6c62ba432b24f33790458"
+                  },
+                  {
+                    "block_number": 25471348,
+                    "tx_hash": "0x0db528c44f23fc7fa4544684a2fab81096450a14aae8bc89f42cd0592d43da12",
+                    "log_index": 205,
+                    "assets": "495822326",
+                    "shares": "476265053026626",
+                    "direction": "out",
+                    "counterparty": "0x0514f827c129c16418a0933e03c99a6af982fc61"
                   }
                 ],
                 "total_transfers_in": "34109086059",
-                "total_transfers_out": "195318677935",
-                "pending_assets": "431073055212"
+                "total_transfers_out": "195814500261",
+                "pending_assets": "430577232886"
               },
               "0xbc7ebb7dae9b94c604bc3eeec0a5359e4a5678ea": {
                 "address_type": "erc4626_unresolved",
@@ -187885,6 +188619,115 @@
                 ],
                 "total_transfers_in": "39176183",
                 "total_transfers_out": "39682094",
+                "pending_assets": "0"
+              },
+              "0x3fb49f96338b22cadd9614a51633189d4ce21088": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 46,
+                    "assets": "414",
+                    "shares": "398105119",
+                    "vault_assets": "177425"
+                  }
+                ],
+                "total_deposits": "414",
+                "transfers": [
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 55,
+                    "assets": "4",
+                    "shares": "3981051",
+                    "direction": "out",
+                    "counterparty": "0x2a315c59a6a95aeeec085c73badac801c2f4209f"
+                  },
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 58,
+                    "assets": "410",
+                    "shares": "394124068",
+                    "direction": "out",
+                    "counterparty": "0x000000000004444c5dc75cb358380d2e3de08a90"
+                  }
+                ],
+                "total_transfers_in": "0",
+                "total_transfers_out": "414",
+                "pending_assets": "0"
+              },
+              "0x09ad820aac5779683b481c4674208a4e1b024afa": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [
+                  {
+                    "block_number": 25499781,
+                    "tx_hash": "0x845472360d6aded5a4fda37e6280014caf8d1aa24fccaa1d8e3a34a8a1de8c80",
+                    "log_index": 263,
+                    "assets": "827",
+                    "shares": "794485184",
+                    "vault_assets": "354567"
+                  },
+                  {
+                    "block_number": 25499793,
+                    "tx_hash": "0xa9af87367a24b621c4f18ccd76020695a81219521bedb7566a387fd7a304316b",
+                    "log_index": 171,
+                    "assets": "419",
+                    "shares": "402880081",
+                    "vault_assets": "179815"
+                  },
+                  {
+                    "block_number": 25500070,
+                    "tx_hash": "0xe930db84fbdd0349a6af9455e8ddbcf3a266c3b91ae14bddb6a14fa8e2e6cecd",
+                    "log_index": 194,
+                    "assets": "631",
+                    "shares": "606667299",
+                    "vault_assets": "271316"
+                  }
+                ],
+                "total_deposits": "1877",
+                "transfers": [
+                  {
+                    "block_number": 25499781,
+                    "tx_hash": "0x845472360d6aded5a4fda37e6280014caf8d1aa24fccaa1d8e3a34a8a1de8c80",
+                    "log_index": 272,
+                    "assets": "827",
+                    "shares": "794485184",
+                    "direction": "out",
+                    "counterparty": "0x20f6ee51340adeed01a59b0e65cb3703f3dc860c"
+                  },
+                  {
+                    "block_number": 25499793,
+                    "tx_hash": "0xa9af87367a24b621c4f18ccd76020695a81219521bedb7566a387fd7a304316b",
+                    "log_index": 180,
+                    "assets": "419",
+                    "shares": "402880081",
+                    "direction": "out",
+                    "counterparty": "0x20f6ee51340adeed01a59b0e65cb3703f3dc860c"
+                  },
+                  {
+                    "block_number": 25500070,
+                    "tx_hash": "0xe930db84fbdd0349a6af9455e8ddbcf3a266c3b91ae14bddb6a14fa8e2e6cecd",
+                    "log_index": 203,
+                    "assets": "631",
+                    "shares": "606667299",
+                    "direction": "out",
+                    "counterparty": "0x20f6ee51340adeed01a59b0e65cb3703f3dc860c"
+                  }
+                ],
+                "total_transfers_in": "0",
+                "total_transfers_out": "1877",
                 "pending_assets": "0"
               },
               "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0": {
@@ -191060,11 +191903,20 @@
                     "shares": "10239247098",
                     "direction": "in",
                     "counterparty": "0x4f1c91064f16d2ea7b33ff17c5b9e5affee7b61e"
+                  },
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 66,
+                    "assets": "1",
+                    "shares": "985310",
+                    "direction": "in",
+                    "counterparty": "0x7f54f05635d15cde17a49502fedb9d1803a3be8a"
                   }
                 ],
-                "total_transfers_in": "142426",
+                "total_transfers_in": "142427",
                 "total_transfers_out": "0",
-                "pending_assets": "142426"
+                "pending_assets": "142427"
               },
               "0xbde7f713ac0b995194f8513309a81a9bb29e1154": {
                 "address_type": "eoa",
@@ -191135,11 +191987,20 @@
                     "shares": "1267608781291672",
                     "direction": "in",
                     "counterparty": "0xba1333333333a1ba1108e8412f11850a5c319ba9"
+                  },
+                  {
+                    "block_number": 25471345,
+                    "tx_hash": "0x92d2e2e52d86e580b9dd40af737ed7671665753d96fed5143b4589eaf019dede",
+                    "log_index": 17,
+                    "assets": "1321012158",
+                    "shares": "1268906001940971",
+                    "direction": "out",
+                    "counterparty": "0x0514f827c129c16418a0933e03c99a6af982fc61"
                   }
                 ],
                 "total_transfers_in": "1321012158",
-                "total_transfers_out": "0",
-                "pending_assets": "1321012158"
+                "total_transfers_out": "1321012158",
+                "pending_assets": "0"
               },
               "0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f": {
                 "address_type": "contract_other",
@@ -191216,11 +192077,20 @@
                     "shares": "1762456980765953",
                     "direction": "in",
                     "counterparty": "0xba1333333333a1ba1108e8412f11850a5c319ba9"
+                  },
+                  {
+                    "block_number": 25471345,
+                    "tx_hash": "0x92d2e2e52d86e580b9dd40af737ed7671665753d96fed5143b4589eaf019dede",
+                    "log_index": 14,
+                    "assets": "1834830237",
+                    "shares": "1762456980765953",
+                    "direction": "out",
+                    "counterparty": "0x0514f827c129c16418a0933e03c99a6af982fc61"
                   }
                 ],
                 "total_transfers_in": "1834830237",
-                "total_transfers_out": "0",
-                "pending_assets": "1834830237"
+                "total_transfers_out": "1834830237",
+                "pending_assets": "0"
               },
               "0xb300000b72deaeb607a12d5f54773d1c19c7028d": {
                 "address_type": "contract_other",
@@ -191291,11 +192161,20 @@
                     "shares": "4407311214622714",
                     "direction": "in",
                     "counterparty": "0xba1333333333a1ba1108e8412f11850a5c319ba9"
+                  },
+                  {
+                    "block_number": 25471345,
+                    "tx_hash": "0x92d2e2e52d86e580b9dd40af737ed7671665753d96fed5143b4589eaf019dede",
+                    "log_index": 11,
+                    "assets": "4588292349",
+                    "shares": "4407311214622714",
+                    "direction": "out",
+                    "counterparty": "0x0514f827c129c16418a0933e03c99a6af982fc61"
                   }
                 ],
                 "total_transfers_in": "4588292349",
-                "total_transfers_out": "0",
-                "pending_assets": "4588292349"
+                "total_transfers_out": "4588292349",
+                "pending_assets": "0"
               },
               "0xd39d1733a03f940ce47cec8982e45e6964d29fa1": {
                 "address_type": "eoa",
@@ -191315,11 +192194,20 @@
                     "shares": "11204660218663628",
                     "direction": "in",
                     "counterparty": "0xba1333333333a1ba1108e8412f11850a5c319ba9"
+                  },
+                  {
+                    "block_number": 25471345,
+                    "tx_hash": "0x92d2e2e52d86e580b9dd40af737ed7671665753d96fed5143b4589eaf019dede",
+                    "log_index": 8,
+                    "assets": "11664766625",
+                    "shares": "11204660218663628",
+                    "direction": "out",
+                    "counterparty": "0x0514f827c129c16418a0933e03c99a6af982fc61"
                   }
                 ],
                 "total_transfers_in": "11664766625",
-                "total_transfers_out": "0",
-                "pending_assets": "11664766625"
+                "total_transfers_out": "11664766625",
+                "pending_assets": "0"
               },
               "0x341a58a1ad7aa1fee212719b0c2d8e4c8e0fd195": {
                 "address_type": "eoa",
@@ -191339,11 +192227,20 @@
                     "shares": "431917757691235",
                     "direction": "in",
                     "counterparty": "0xba1333333333a1ba1108e8412f11850a5c319ba9"
+                  },
+                  {
+                    "block_number": 25471345,
+                    "tx_hash": "0x92d2e2e52d86e580b9dd40af737ed7671665753d96fed5143b4589eaf019dede",
+                    "log_index": 20,
+                    "assets": "449653960",
+                    "shares": "431917757691235",
+                    "direction": "out",
+                    "counterparty": "0x0514f827c129c16418a0933e03c99a6af982fc61"
                   }
                 ],
                 "total_transfers_in": "449653960",
-                "total_transfers_out": "0",
-                "pending_assets": "449653960"
+                "total_transfers_out": "449653960",
+                "pending_assets": "0"
               },
               "0x4128c06251e49ad27bbfa22a0907af701c47b240": {
                 "address_type": "eoa",
@@ -191674,12 +192571,399 @@
                 "total_transfers_in": "505911",
                 "total_transfers_out": "0",
                 "pending_assets": "505911"
+              },
+              "0x0514f827c129c16418a0933e03c99a6af982fc61": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 25471345,
+                    "tx_hash": "0x92d2e2e52d86e580b9dd40af737ed7671665753d96fed5143b4589eaf019dede",
+                    "log_index": 8,
+                    "assets": "11664766625",
+                    "shares": "11204660218663628",
+                    "direction": "in",
+                    "counterparty": "0xd39d1733a03f940ce47cec8982e45e6964d29fa1"
+                  },
+                  {
+                    "block_number": 25471345,
+                    "tx_hash": "0x92d2e2e52d86e580b9dd40af737ed7671665753d96fed5143b4589eaf019dede",
+                    "log_index": 11,
+                    "assets": "4588292349",
+                    "shares": "4407311214622714",
+                    "direction": "in",
+                    "counterparty": "0xe5bff5a3752d48606d5f4ff19954138fe5e656b1"
+                  },
+                  {
+                    "block_number": 25471345,
+                    "tx_hash": "0x92d2e2e52d86e580b9dd40af737ed7671665753d96fed5143b4589eaf019dede",
+                    "log_index": 14,
+                    "assets": "1834830237",
+                    "shares": "1762456980765953",
+                    "direction": "in",
+                    "counterparty": "0x11946f3bb1e67b8f4e50cb01ea1fba7cec7ac60e"
+                  },
+                  {
+                    "block_number": 25471345,
+                    "tx_hash": "0x92d2e2e52d86e580b9dd40af737ed7671665753d96fed5143b4589eaf019dede",
+                    "log_index": 17,
+                    "assets": "1321012158",
+                    "shares": "1268906001940971",
+                    "direction": "in",
+                    "counterparty": "0x14ec7a28c020283eb53f302e8dbcc025cb49baf8"
+                  },
+                  {
+                    "block_number": 25471345,
+                    "tx_hash": "0x92d2e2e52d86e580b9dd40af737ed7671665753d96fed5143b4589eaf019dede",
+                    "log_index": 20,
+                    "assets": "449653960",
+                    "shares": "431917757691235",
+                    "direction": "in",
+                    "counterparty": "0x341a58a1ad7aa1fee212719b0c2d8e4c8e0fd195"
+                  },
+                  {
+                    "block_number": 25471348,
+                    "tx_hash": "0x0db528c44f23fc7fa4544684a2fab81096450a14aae8bc89f42cd0592d43da12",
+                    "log_index": 205,
+                    "assets": "495822326",
+                    "shares": "476265053026626",
+                    "direction": "in",
+                    "counterparty": "0xba1333333333a1ba1108e8412f11850a5c319ba9"
+                  },
+                  {
+                    "block_number": 25471348,
+                    "tx_hash": "0x0db528c44f23fc7fa4544684a2fab81096450a14aae8bc89f42cd0592d43da12",
+                    "log_index": 216,
+                    "assets": "20354377658",
+                    "shares": "19551517226711127",
+                    "direction": "out",
+                    "counterparty": "0x61d7063041d83c8ca3e42c39181dfd14b3bc76c2"
+                  }
+                ],
+                "total_transfers_in": "20354377655",
+                "total_transfers_out": "20354377658",
+                "pending_assets": "-3"
+              },
+              "0x61d7063041d83c8ca3e42c39181dfd14b3bc76c2": {
+                "address_type": "contract_other",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 25471348,
+                    "tx_hash": "0x0db528c44f23fc7fa4544684a2fab81096450a14aae8bc89f42cd0592d43da12",
+                    "log_index": 216,
+                    "assets": "20354377658",
+                    "shares": "19551517226711127",
+                    "direction": "in",
+                    "counterparty": "0x0514f827c129c16418a0933e03c99a6af982fc61"
+                  },
+                  {
+                    "block_number": 25474741,
+                    "tx_hash": "0x7bead580b8d610e56949fb4162384e6e31dec24ad3b4668d8f4bddc345f14fd4",
+                    "log_index": 98,
+                    "assets": "20354377658",
+                    "shares": "19551517226711127",
+                    "direction": "out",
+                    "counterparty": "0xeccd16aa1ae0b32b231a3b5ffe8567abf68616e2"
+                  }
+                ],
+                "total_transfers_in": "20354377658",
+                "total_transfers_out": "20354377658",
+                "pending_assets": "0"
+              },
+              "0xeccd16aa1ae0b32b231a3b5ffe8567abf68616e2": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 25474741,
+                    "tx_hash": "0x7bead580b8d610e56949fb4162384e6e31dec24ad3b4668d8f4bddc345f14fd4",
+                    "log_index": 98,
+                    "assets": "20354377658",
+                    "shares": "19551517226711127",
+                    "direction": "in",
+                    "counterparty": "0x61d7063041d83c8ca3e42c39181dfd14b3bc76c2"
+                  },
+                  {
+                    "block_number": 25474741,
+                    "tx_hash": "0x7bead580b8d610e56949fb4162384e6e31dec24ad3b4668d8f4bddc345f14fd4",
+                    "log_index": 102,
+                    "assets": "20354377658",
+                    "shares": "19551517226711127",
+                    "direction": "out",
+                    "counterparty": "0xb0f53fc4e15301147de9b3e49c3db942e3f118f2"
+                  }
+                ],
+                "total_transfers_in": "20354377658",
+                "total_transfers_out": "20354377658",
+                "pending_assets": "0"
+              },
+              "0xb0f53fc4e15301147de9b3e49c3db942e3f118f2": {
+                "address_type": "gnosis_safe",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 25474741,
+                    "tx_hash": "0x7bead580b8d610e56949fb4162384e6e31dec24ad3b4668d8f4bddc345f14fd4",
+                    "log_index": 102,
+                    "assets": "20354377658",
+                    "shares": "19551517226711127",
+                    "direction": "in",
+                    "counterparty": "0xeccd16aa1ae0b32b231a3b5ffe8567abf68616e2"
+                  }
+                ],
+                "total_transfers_in": "20354377658",
+                "total_transfers_out": "0",
+                "pending_assets": "20354377658"
+              },
+              "0x2a315c59a6a95aeeec085c73badac801c2f4209f": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 55,
+                    "assets": "4",
+                    "shares": "3981051",
+                    "direction": "in",
+                    "counterparty": "0x3fb49f96338b22cadd9614a51633189d4ce21088"
+                  }
+                ],
+                "total_transfers_in": "4",
+                "total_transfers_out": "0",
+                "pending_assets": "4"
+              },
+              "0x000000000004444c5dc75cb358380d2e3de08a90": {
+                "address_type": "contract_other",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 58,
+                    "assets": "410",
+                    "shares": "394124068",
+                    "direction": "in",
+                    "counterparty": "0x3fb49f96338b22cadd9614a51633189d4ce21088"
+                  },
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 62,
+                    "assets": "410",
+                    "shares": "394124068",
+                    "direction": "out",
+                    "counterparty": "0x7f54f05635d15cde17a49502fedb9d1803a3be8a"
+                  }
+                ],
+                "total_transfers_in": "410",
+                "total_transfers_out": "410",
+                "pending_assets": "0"
+              },
+              "0x7f54f05635d15cde17a49502fedb9d1803a3be8a": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 62,
+                    "assets": "410",
+                    "shares": "394124068",
+                    "direction": "in",
+                    "counterparty": "0x000000000004444c5dc75cb358380d2e3de08a90"
+                  },
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 66,
+                    "assets": "1",
+                    "shares": "985310",
+                    "direction": "out",
+                    "counterparty": "0xcd6b980029e6e6e0733ac8ec3e02be9410d09799"
+                  },
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 69,
+                    "assets": "409",
+                    "shares": "393138758",
+                    "direction": "out",
+                    "counterparty": "0xa570f81d6a96f22c6fd18b5b60ea7b1b4e532c1e"
+                  }
+                ],
+                "total_transfers_in": "410",
+                "total_transfers_out": "410",
+                "pending_assets": "0"
+              },
+              "0xa570f81d6a96f22c6fd18b5b60ea7b1b4e532c1e": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 25499593,
+                    "tx_hash": "0x43c0779f5ab5a339e368c18a6eac6d3c76e084c77e7fb3795e5f34974535ce1f",
+                    "log_index": 69,
+                    "assets": "409",
+                    "shares": "393138758",
+                    "direction": "in",
+                    "counterparty": "0x7f54f05635d15cde17a49502fedb9d1803a3be8a"
+                  },
+                  {
+                    "block_number": 25499781,
+                    "tx_hash": "0x845472360d6aded5a4fda37e6280014caf8d1aa24fccaa1d8e3a34a8a1de8c80",
+                    "log_index": 275,
+                    "assets": "827",
+                    "shares": "794485184",
+                    "direction": "in",
+                    "counterparty": "0x20f6ee51340adeed01a59b0e65cb3703f3dc860c"
+                  },
+                  {
+                    "block_number": 25499793,
+                    "tx_hash": "0xa9af87367a24b621c4f18ccd76020695a81219521bedb7566a387fd7a304316b",
+                    "log_index": 183,
+                    "assets": "419",
+                    "shares": "402880081",
+                    "direction": "in",
+                    "counterparty": "0x20f6ee51340adeed01a59b0e65cb3703f3dc860c"
+                  },
+                  {
+                    "block_number": 25500070,
+                    "tx_hash": "0xe930db84fbdd0349a6af9455e8ddbcf3a266c3b91ae14bddb6a14fa8e2e6cecd",
+                    "log_index": 206,
+                    "assets": "631",
+                    "shares": "606667299",
+                    "direction": "in",
+                    "counterparty": "0x20f6ee51340adeed01a59b0e65cb3703f3dc860c"
+                  }
+                ],
+                "total_transfers_in": "2286",
+                "total_transfers_out": "0",
+                "pending_assets": "2286"
+              },
+              "0x20f6ee51340adeed01a59b0e65cb3703f3dc860c": {
+                "address_type": "eoa",
+                "vault_shares": "0",
+                "fraction": "0",
+                "attributed_silo_assets": "0",
+                "withdrawals": [],
+                "total_withdrawals": "0",
+                "deposits": [],
+                "total_deposits": "0",
+                "transfers": [
+                  {
+                    "block_number": 25499781,
+                    "tx_hash": "0x845472360d6aded5a4fda37e6280014caf8d1aa24fccaa1d8e3a34a8a1de8c80",
+                    "log_index": 272,
+                    "assets": "827",
+                    "shares": "794485184",
+                    "direction": "in",
+                    "counterparty": "0x09ad820aac5779683b481c4674208a4e1b024afa"
+                  },
+                  {
+                    "block_number": 25499781,
+                    "tx_hash": "0x845472360d6aded5a4fda37e6280014caf8d1aa24fccaa1d8e3a34a8a1de8c80",
+                    "log_index": 275,
+                    "assets": "827",
+                    "shares": "794485184",
+                    "direction": "out",
+                    "counterparty": "0xa570f81d6a96f22c6fd18b5b60ea7b1b4e532c1e"
+                  },
+                  {
+                    "block_number": 25499793,
+                    "tx_hash": "0xa9af87367a24b621c4f18ccd76020695a81219521bedb7566a387fd7a304316b",
+                    "log_index": 180,
+                    "assets": "419",
+                    "shares": "402880081",
+                    "direction": "in",
+                    "counterparty": "0x09ad820aac5779683b481c4674208a4e1b024afa"
+                  },
+                  {
+                    "block_number": 25499793,
+                    "tx_hash": "0xa9af87367a24b621c4f18ccd76020695a81219521bedb7566a387fd7a304316b",
+                    "log_index": 183,
+                    "assets": "419",
+                    "shares": "402880081",
+                    "direction": "out",
+                    "counterparty": "0xa570f81d6a96f22c6fd18b5b60ea7b1b4e532c1e"
+                  },
+                  {
+                    "block_number": 25500070,
+                    "tx_hash": "0xe930db84fbdd0349a6af9455e8ddbcf3a266c3b91ae14bddb6a14fa8e2e6cecd",
+                    "log_index": 203,
+                    "assets": "631",
+                    "shares": "606667299",
+                    "direction": "in",
+                    "counterparty": "0x09ad820aac5779683b481c4674208a4e1b024afa"
+                  },
+                  {
+                    "block_number": 25500070,
+                    "tx_hash": "0xe930db84fbdd0349a6af9455e8ddbcf3a266c3b91ae14bddb6a14fa8e2e6cecd",
+                    "log_index": 206,
+                    "assets": "631",
+                    "shares": "606667299",
+                    "direction": "out",
+                    "counterparty": "0xa570f81d6a96f22c6fd18b5b60ea7b1b4e532c1e"
+                  }
+                ],
+                "total_transfers_in": "1877",
+                "total_transfers_out": "1877",
+                "pending_assets": "0"
               }
             },
             "status": "ok"
           }
         },
-        "withdrawals_scanned_to_block": 25431358
+        "withdrawals_scanned_to_block": 25501084
       }
     }
   }
