@@ -88,7 +88,7 @@ function toActiveCategory(category: SnapshotCategory): ActiveCategory {
 }
 
 type SortDirection = "asc" | "desc";
-type TableSortKey = "address" | "type" | "assets" | "withdrawals" | "pending";
+type TableSortKey = "address" | "type" | "assets" | "debt" | "pending";
 type TableSortState = {
   key: TableSortKey;
   direction: SortDirection;
@@ -97,7 +97,7 @@ type TableSortState = {
 type AggregateTotals = {
   shares: bigint;
   assets: bigint;
-  withdrawals: bigint;
+  debt: bigint;
   pending: bigint;
 };
 
@@ -256,10 +256,10 @@ function sumDirectLenderTotals(lenders: DirectLender[]): AggregateTotals {
     (acc, lender) => ({
       shares: acc.shares + lender.totalShares,
       assets: acc.assets + lender.totalAssets,
-      withdrawals: acc.withdrawals + (lender.isVault ? ZERO : lender.totalWithdrawals),
+      debt: acc.debt + (lender.isVault ? ZERO : lender.debtAtSnapshot),
       pending: acc.pending + (lender.isVault ? ZERO : lender.pendingAssets),
     }),
-    { shares: ZERO, assets: ZERO, withdrawals: ZERO, pending: ZERO },
+    { shares: ZERO, assets: ZERO, debt: ZERO, pending: ZERO },
   );
 }
 
@@ -268,10 +268,10 @@ function sumDepositorTotals(depositors: VaultDepositor[]): AggregateTotals {
     (acc, depositor) => ({
       shares: acc.shares + depositor.vaultShares,
       assets: acc.assets + depositor.attributedSiloAssets,
-      withdrawals: acc.withdrawals + depositor.totalWithdrawals,
+      debt: ZERO,
       pending: acc.pending + depositor.pendingAssets,
     }),
-    { shares: ZERO, assets: ZERO, withdrawals: ZERO, pending: ZERO },
+    { shares: ZERO, assets: ZERO, debt: ZERO, pending: ZERO },
   );
 }
 
@@ -925,8 +925,8 @@ function sortDirectLenders(rows: DirectLender[], sortState: TableSortState): Dir
     if (sortState.key === "type") {
       return compareStrings(left.addressType, right.addressType, sortState.direction);
     }
-    if (sortState.key === "withdrawals") {
-      return compareValues(left.totalWithdrawals, right.totalWithdrawals, sortState.direction);
+    if (sortState.key === "debt") {
+      return compareValues(left.debtAtSnapshot, right.debtAtSnapshot, sortState.direction);
     }
     if (sortState.key === "pending") {
       return compareValues(left.pendingAssets, right.pendingAssets, sortState.direction);
@@ -1432,18 +1432,16 @@ function HolderTable({
                   />
                   <SortHeader align="right" label="Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
                 </th>
-                <th className="px-5 py-3 text-right font-medium">
-                  <ColumnHeaderSum
-                    value={`${formatUnitsRounded(tableTotals.withdrawals, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
-                  />
-                  <SortHeader
-                    align="right"
-                    label="Withdrawals"
-                    sortKey="withdrawals"
-                    sortState={sortState}
-                    onClick={onSort}
-                  />
-                </th>
+                {silo.isTwoSided ? (
+                  <th className="px-5 py-3 text-right font-medium">
+                    <ColumnHeaderSum
+                      value={`${formatUnitsRounded(tableTotals.debt, silo.inputToken.decimals, 2)} ${
+                        silo.borrowRepayToken?.symbol || silo.inputToken.symbol
+                      }`}
+                    />
+                    <SortHeader align="right" label="Debt" sortKey="debt" sortState={sortState} onClick={onSort} />
+                  </th>
+                ) : null}
                 <th className="px-5 py-3 text-right font-medium">
                   <ColumnHeaderSum
                     value={`${formatUnitsRounded(tableTotals.pending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
@@ -1456,7 +1454,7 @@ function HolderTable({
             <tbody className="divide-y divide-white/10 text-slate-200">
               {tableRows.length === 0 ? (
                 <tr>
-                  <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={6}>
+                  <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={silo.isTwoSided ? 6 : 5}>
                     {anyRowFilterActive
                       ? "No direct lenders match the current filters."
                       : "No direct lenders match the current address filter."}
@@ -1496,15 +1494,18 @@ function HolderTable({
                           </div>
                           <div className="mt-0.5 text-xs text-slate-500">{row.collateralShares.toString()} shares</div>
                         </td>
-                        <td className="px-5 py-4 text-right font-mono tabular-nums">
-                          {row.isVault ? (
-                            <span className="text-slate-500">N/A</span>
-                          ) : (
-                            <>
-                              {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                            </>
-                          )}
-                        </td>
+                        {silo.isTwoSided ? (
+                          <td className="px-5 py-4 text-right font-mono tabular-nums">
+                            {row.isVault ? (
+                              <span className="text-slate-500">N/A</span>
+                            ) : (
+                              <>
+                                {formatUnitsRounded(row.debtAtSnapshot, silo.inputToken.decimals, 2)}{" "}
+                                {silo.borrowRepayToken?.symbol || silo.inputToken.symbol}
+                              </>
+                            )}
+                          </td>
+                        ) : null}
                         <td className="px-5 py-4 text-right font-mono tabular-nums">
                           {row.isVault ? (
                             <span className="text-slate-500">N/A</span>
@@ -1534,7 +1535,7 @@ function HolderTable({
                       </tr>
                       {breakdownOpen && hasFlows && !row.isVault ? (
                         <tr className="bg-slate-950/40">
-                          <td className="px-5 pb-4" colSpan={6}>
+                          <td className="px-5 pb-4" colSpan={silo.isTwoSided ? 6 : 5}>
                             <PendingAssetsBreakdown
                               chain={chain}
                               baseAssets={row.totalAssets}
@@ -1580,9 +1581,6 @@ function sortDepositors(rows: VaultDepositor[], sortState: TableSortState): Vaul
     }
     if (sortState.key === "type") {
       return compareStrings(a.addressType, b.addressType, sortState.direction);
-    }
-    if (sortState.key === "withdrawals") {
-      return compareValues(a.totalWithdrawals, b.totalWithdrawals, sortState.direction);
     }
     if (sortState.key === "pending") {
       return compareValues(a.pendingAssets, b.pendingAssets, sortState.direction);
@@ -1653,18 +1651,6 @@ function DepositorTable({
               </th>
               <th className="px-5 py-3 text-right font-medium">
                 <ColumnHeaderSum
-                  value={`${formatUnitsRounded(tableTotals.withdrawals, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
-                />
-                <SortHeader
-                  align="right"
-                  label="Withdrawals"
-                  sortKey="withdrawals"
-                  sortState={sortState}
-                  onClick={onSort}
-                />
-              </th>
-              <th className="px-5 py-3 text-right font-medium">
-                <ColumnHeaderSum
                   value={`${formatUnitsRounded(tableTotals.pending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                 />
                 <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
@@ -1675,7 +1661,7 @@ function DepositorTable({
           <tbody className="divide-y divide-white/10 text-slate-200">
             {filteredRows.length === 0 ? (
               <tr>
-                <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={6}>
+                <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={5}>
                   {anyRowFilterActive
                     ? "No vault depositors match the current filters."
                     : "No vault depositors match the current address filter."}
@@ -1701,9 +1687,6 @@ function DepositorTable({
                         <div className="mt-0.5 text-xs text-slate-500">{row.vaultShares.toString()} shares</div>
                       </td>
                       <td className="px-5 py-4 text-right font-mono tabular-nums">
-                        {formatUnitsRounded(row.totalWithdrawals, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
-                      </td>
-                      <td className="px-5 py-4 text-right font-mono tabular-nums">
                         <span className={row.pendingAssets < ZERO ? "text-rose-300" : undefined}>
                           {formatUnitsRounded(row.pendingAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
                         </span>
@@ -1724,7 +1707,7 @@ function DepositorTable({
                     </tr>
                     {breakdownOpen && hasFlows ? (
                       <tr className="bg-slate-950/40">
-                        <td className="px-5 pb-4" colSpan={6}>
+                        <td className="px-5 pb-4" colSpan={5}>
                           <PendingAssetsBreakdown
                             chain={chain}
                             baseAssets={row.attributedSiloAssets}
