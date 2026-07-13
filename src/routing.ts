@@ -77,21 +77,68 @@ export function buildSiloPath(category: string, chain: string, address: string):
   return withBase(`/${category.toLowerCase()}/${chain.toLowerCase()}/${address}`);
 }
 
+// All filters that describe how a silo's tables are viewed. Every field is shareable
+// through the URL query string so the exact filtered view can be copied and reopened.
+export type SnapshotViewParams = {
+  // Address substring filter (query: `filter`).
+  addressFilter?: string;
+  // Address type filter (query: `type`); omitted when unset or "all".
+  addressType?: string;
+  // Row filters (query: `details` / `borrower` / `negative`, each present as `=1`).
+  details?: boolean;
+  borrower?: boolean;
+  negative?: boolean;
+};
+
+export function parseSnapshotViewParamsFromUrl(): SnapshotViewParams {
+  const params = new URLSearchParams(window.location.search);
+  const addressFilter = params.get("filter")?.trim() || undefined;
+  const addressType = params.get("type")?.trim() || undefined;
+  return {
+    addressFilter,
+    addressType: addressType && addressType !== "all" ? addressType : undefined,
+    details: params.get("details") === "1",
+    borrower: params.get("borrower") === "1",
+    negative: params.get("negative") === "1",
+  };
+}
+
+// Writes the shareable view params onto an existing URLSearchParams, skipping any that
+// are empty/disabled so clean views keep a clean URL.
+function appendSnapshotViewParams(params: URLSearchParams, view: SnapshotViewParams): void {
+  const trimmedFilter = view.addressFilter?.trim();
+  if (trimmedFilter) {
+    params.set("filter", trimmedFilter);
+  }
+  const trimmedType = view.addressType?.trim();
+  if (trimmedType && trimmedType !== "all") {
+    params.set("type", trimmedType);
+  }
+  if (view.details) {
+    params.set("details", "1");
+  }
+  if (view.borrower) {
+    params.set("borrower", "1");
+  }
+  if (view.negative) {
+    params.set("negative", "1");
+  }
+}
+
 export type ExplorerSelection = {
   chain?: string;
   address?: string;
-  filter?: string;
+  view: SnapshotViewParams;
 };
 
 export function parseExplorerSelectionFromUrl(): ExplorerSelection {
   const params = new URLSearchParams(window.location.search);
   const chain = params.get("chain") ?? undefined;
   const address = params.get("silo") ?? undefined;
-  const filter = params.get("filter")?.trim() || undefined;
   return {
     chain: chain && CHAIN_NAME_PATTERN.test(chain) ? chain.toLowerCase() : undefined,
     address: address && SILO_ADDRESS_PATTERN.test(address) ? address : undefined,
-    filter,
+    view: parseSnapshotViewParamsFromUrl(),
   };
 }
 
@@ -99,34 +146,24 @@ export function buildExplorerSelectionUrl(
   category: string,
   chain: string,
   address: string,
-  filter?: string,
+  view: SnapshotViewParams = {},
 ): string {
   const params = new URLSearchParams();
   params.set("chain", chain.toLowerCase());
   params.set("silo", address);
-  const trimmedFilter = filter?.trim();
-  if (trimmedFilter) {
-    params.set("filter", trimmedFilter);
-  }
+  appendSnapshotViewParams(params, view);
   return `${categoryHomePath(category)}?${params.toString()}`;
 }
 
-export function parseFilterFromUrl(): string {
-  return new URLSearchParams(window.location.search).get("filter")?.trim() || "";
-}
-
-export function buildSiloPathWithFilter(
+export function buildSiloPathWithView(
   category: string,
   chain: string,
   address: string,
-  filter?: string,
+  view: SnapshotViewParams = {},
 ): string {
   const path = buildSiloPath(category, chain, address);
-  const trimmedFilter = filter?.trim();
-  if (!trimmedFilter) {
-    return path;
-  }
   const params = new URLSearchParams();
-  params.set("filter", trimmedFilter);
-  return `${path}?${params.toString()}`;
+  appendSnapshotViewParams(params, view);
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
 }

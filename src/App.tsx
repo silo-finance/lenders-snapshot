@@ -3,13 +3,14 @@ import packageJson from "../package.json";
 import {
   buildExplorerSelectionUrl,
   buildSiloPath,
-  buildSiloPathWithFilter,
+  buildSiloPathWithView,
   categoryHomePath,
   landingHomePath,
   parseCategoryFromUrl,
   parseExplorerSelectionFromUrl,
-  parseFilterFromUrl,
+  parseSnapshotViewParamsFromUrl,
   parseSiloPathFromUrl,
+  type SnapshotViewParams,
 } from "./routing";
 import {
   type ChainSnapshot,
@@ -924,6 +925,76 @@ function hasFlowActivity(row: {
   );
 }
 
+// Row-level view filters toggled from the last table column. Combined with AND: a row is
+// shown only if it satisfies every enabled filter.
+export type RowViewFilters = { details: boolean; borrower: boolean; negative: boolean };
+
+// A borrower is a direct lender/borrower with any debt exposure: an initial DEBT baseline at
+// the snapshot block or at least one Borrow after it. Vault depositors carry no borrow/debt
+// data, so they are never borrowers (the "borrows" field only exists on direct lenders).
+function isBorrowerRow(row: DirectLender | VaultDepositor): boolean {
+  if (!("borrows" in row)) {
+    return false;
+  }
+  return !row.isVault && (row.debtAtSnapshot > ZERO || row.totalBorrows > ZERO || row.borrows.length > 0);
+}
+
+// Applies uniformly to every table (direct lenders and vault depositors) so the row filters
+// are truly global. Non-matching rows are dropped; e.g. Borrower keeps only borrowers, which
+// means depositor tables and one-sided silos correctly show nothing while it is active.
+function matchesRowViewFilters(row: DirectLender | VaultDepositor, filters: RowViewFilters): boolean {
+  if (filters.details && !hasFlowActivity(row)) {
+    return false;
+  }
+  if (filters.borrower && !isBorrowerRow(row)) {
+    return false;
+  }
+  if (filters.negative && row.pendingAssets >= ZERO) {
+    return false;
+  }
+  return true;
+}
+
+// Each filter's active highlight matches the color it represents elsewhere in the UI:
+// deposits/positive green, borrower amber, negative balances red.
+const ROW_VIEW_FILTER_OPTIONS: Array<{ key: keyof RowViewFilters; label: string; activeClass: string }> = [
+  { key: "details", label: "Details", activeClass: "font-semibold text-emerald-200" },
+  { key: "borrower", label: "Borrower", activeClass: "font-semibold text-amber-300" },
+  { key: "negative", label: "Negative", activeClass: "font-semibold text-rose-300" },
+];
+
+// Clickable, borderless row-filter toggles rendered in the silo filter toolbar. These are
+// global within a category: the active set is remembered across silo switches. Active options
+// are highlighted by text color/weight; no checkboxes or borders.
+function TableRowFilterToggles({
+  filters,
+  onToggle,
+}: {
+  filters: RowViewFilters;
+  onToggle: (key: keyof RowViewFilters) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {ROW_VIEW_FILTER_OPTIONS.map((option) => {
+        const active = filters[option.key];
+        return (
+          <button
+            key={option.key}
+            aria-pressed={active}
+            className={`text-sm transition-colors ${
+              active ? option.activeClass : "text-slate-400 hover:text-slate-200"
+            }`}
+            type="button"
+            onClick={() => onToggle(option.key)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // Renders an amount with its asset symbol in a fixed-width, left-aligned column so the numeric
 // portions stay right-aligned across rows regardless of symbol length.
 function AmountWithSymbol({
@@ -1236,6 +1307,7 @@ function HolderTable({
   onToggle,
   onJumpToVault,
   onExport,
+  rowViewFilters,
   forceExpanded = false,
   navNextId,
 }: {
@@ -1249,14 +1321,15 @@ function HolderTable({
   onToggle: () => void;
   onJumpToVault: (vaultAddress: string) => void;
   onExport: () => void;
+  rowViewFilters: RowViewFilters;
   forceExpanded?: boolean;
   navNextId?: string;
 }) {
   const isExpanded = forceExpanded || expanded;
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
-  const [showOnlyPlusMinus, setShowOnlyPlusMinus] = useState(false);
-  const tableRows = showOnlyPlusMinus
-    ? rows.filter((row) => !row.isVault && hasFlowActivity(row))
+  const anyRowFilterActive = rowViewFilters.details || rowViewFilters.borrower || rowViewFilters.negative;
+  const tableRows = anyRowFilterActive
+    ? rows.filter((row) => !row.isVault && matchesRowViewFilters(row, rowViewFilters))
     : rows;
 
   function toggleBreakdown(address: string) {
@@ -1335,26 +1408,15 @@ function HolderTable({
                   />
                   <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
                 </th>
-                <th className="w-24 px-2 py-3 text-center font-medium">
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="text-2xl leading-none normal-case tracking-normal">±</span>
-                    <input
-                      aria-label="Show only rows with plus minus details"
-                      checked={showOnlyPlusMinus}
-                      className="h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
-                      type="checkbox"
-                      onChange={(event) => setShowOnlyPlusMinus(event.target.checked)}
-                    />
-                  </div>
-                </th>
+                <th className="w-16 px-2 py-3 font-medium" aria-label="Pending assets details" />
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 text-slate-200">
               {tableRows.length === 0 ? (
                 <tr>
                   <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={6}>
-                    {showOnlyPlusMinus
-                      ? "No direct lenders with plus/minus match the current filters."
+                    {anyRowFilterActive
+                      ? "No direct lenders match the current filters."
                       : "No direct lenders match the current address filter."}
                   </td>
                 </tr>
@@ -1498,6 +1560,7 @@ function DepositorTable({
   addressTypeFilter,
   tableTotals,
   onSort,
+  rowViewFilters,
   hideTypeFilter = false,
 }: {
   chain: string;
@@ -1508,18 +1571,19 @@ function DepositorTable({
   addressTypeFilter: string;
   tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
+  rowViewFilters: RowViewFilters;
   hideTypeFilter?: boolean;
 }) {
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
-  const [showOnlyPlusMinus, setShowOnlyPlusMinus] = useState(false);
   const needle = addressFilter.trim().toLowerCase();
+  const anyRowFilterActive = rowViewFilters.details || rowViewFilters.borrower || rowViewFilters.negative;
   const visibleRows = rows.filter((row) => {
     const addressMatches = needle ? row.address.toLowerCase().includes(needle) : true;
     const typeMatches = hideTypeFilter || addressTypeFilter === "all" || row.addressType === addressTypeFilter;
     return addressMatches && typeMatches;
   });
   const filteredRows = sortDepositors(
-    showOnlyPlusMinus ? visibleRows.filter((row) => hasFlowActivity(row)) : visibleRows,
+    anyRowFilterActive ? visibleRows.filter((row) => matchesRowViewFilters(row, rowViewFilters)) : visibleRows,
     sortState,
   );
 
@@ -1563,26 +1627,15 @@ function DepositorTable({
                 />
                 <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
               </th>
-              <th className="w-24 px-2 py-3 text-center font-medium">
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-2xl leading-none normal-case tracking-normal">±</span>
-                  <input
-                    aria-label="Show only rows with plus minus details"
-                    checked={showOnlyPlusMinus}
-                    className="h-4 w-4 rounded border-white/20 bg-slate-950 accent-emerald-300"
-                    type="checkbox"
-                    onChange={(event) => setShowOnlyPlusMinus(event.target.checked)}
-                  />
-                </div>
-              </th>
+              <th className="w-16 px-2 py-3 font-medium" aria-label="Pending assets details" />
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10 text-slate-200">
             {filteredRows.length === 0 ? (
               <tr>
                 <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={6}>
-                  {showOnlyPlusMinus
-                    ? "No vault depositors with plus/minus match the current filters."
+                  {anyRowFilterActive
+                    ? "No vault depositors match the current filters."
                     : "No vault depositors match the current address filter."}
                 </td>
               </tr>
@@ -1736,6 +1789,7 @@ function VaultCard({
   onToggle,
   addressFilter,
   addressTypeFilter,
+  rowViewFilters,
   forceExpanded = false,
   hideTypeFilter = false,
   navPrevId,
@@ -1749,6 +1803,7 @@ function VaultCard({
   onToggle: () => void;
   addressFilter: string;
   addressTypeFilter: string;
+  rowViewFilters: RowViewFilters;
   forceExpanded?: boolean;
   hideTypeFilter?: boolean;
   navPrevId?: string;
@@ -1873,6 +1928,7 @@ function VaultCard({
             chain={chain}
             hideTypeFilter={hideTypeFilter}
             rows={vault.depositors}
+            rowViewFilters={rowViewFilters}
             silo={silo}
             sortState={depositorSort}
             tableTotals={depositorTotals}
@@ -2017,6 +2073,8 @@ function SiloDetailPanel({
   addressTypeFilter,
   setAddressTypeFilter,
   addressTypes,
+  rowViewFilters,
+  setRowViewFilters,
   directSort,
   setDirectSort,
   directExpanded,
@@ -2032,12 +2090,14 @@ function SiloDetailPanel({
   silo: SiloSnapshot;
   addressFilter: string;
   setAddressFilter: (value: string) => void;
-  // Builds the relative shareable URL for a given address filter, used for the
-  // share/open shortcuts beside the address input.
-  buildFilterShareUrl?: (filter: string) => string;
+  // Builds the relative shareable URL for the current view (address + type + row filters),
+  // used for the share/open shortcuts beside the address input.
+  buildFilterShareUrl?: (view: SnapshotViewParams) => string;
   addressTypeFilter: string;
   setAddressTypeFilter: (value: string) => void;
   addressTypes: string[];
+  rowViewFilters: RowViewFilters;
+  setRowViewFilters: (value: RowViewFilters | ((current: RowViewFilters) => RowViewFilters)) => void;
   directSort: TableSortState;
   setDirectSort: (value: TableSortState | ((current: TableSortState) => TableSortState)) => void;
   directExpanded: boolean;
@@ -2056,6 +2116,17 @@ function SiloDetailPanel({
   const { account, connect, connecting, hasProvider } = useWallet(
     showConnectWallet ? setAddressFilter : undefined,
   );
+
+  const toggleRowFilter = (key: keyof RowViewFilters) =>
+    setRowViewFilters((current) => ({ ...current, [key]: !current[key] }));
+  // The full set of shareable filters currently applied to this silo's tables.
+  const currentView: SnapshotViewParams = {
+    addressFilter: addressFilter.trim() || undefined,
+    addressType: showTypeFilter && addressTypeFilter !== "all" ? addressTypeFilter : undefined,
+    details: rowViewFilters.details,
+    borrower: rowViewFilters.borrower,
+    negative: rowViewFilters.negative,
+  };
 
   const lenderNeedle = addressFilter.trim().toLowerCase();
   const typeMatches = (addressType: string) =>
@@ -2140,15 +2211,16 @@ function SiloDetailPanel({
         <SiloMetrics silo={silo} />
       </div>
 
-      <div
-        className={`grid gap-4 rounded-3xl border border-white/20 bg-white/[0.13] p-5 ${
-          showTypeFilter && showExpandControls
-            ? "lg:grid-cols-[minmax(0,1.5fr)_minmax(12rem,0.7fr)_auto] lg:items-end"
-            : showConnectWallet
-              ? "lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end"
-              : ""
-        }`}
-      >
+      <div className="space-y-4 rounded-3xl border border-white/20 bg-white/[0.13] p-5">
+        <div
+          className={`grid gap-4 ${
+            showTypeFilter && showExpandControls
+              ? "lg:grid-cols-[minmax(0,1.5fr)_minmax(12rem,0.7fr)_auto] lg:items-end"
+              : showConnectWallet
+                ? "lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end"
+                : ""
+          }`}
+        >
         <div className="min-w-0">
           <label className="text-xs uppercase tracking-[0.22em] text-slate-500" htmlFor="filter">
             Address filter
@@ -2157,7 +2229,7 @@ function SiloDetailPanel({
             id="filter"
             shareUrl={
               buildFilterShareUrl && addressFilter.trim()
-                ? `${window.location.origin}${buildFilterShareUrl(addressFilter.trim())}`
+                ? `${window.location.origin}${buildFilterShareUrl(currentView)}`
                 : undefined
             }
             value={addressFilter}
@@ -2214,6 +2286,11 @@ function SiloDetailPanel({
             </button>
           </div>
         ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-4">
+          <span className="text-xs uppercase tracking-[0.22em] text-slate-500">Filters</span>
+          <TableRowFilterToggles filters={rowViewFilters} onToggle={toggleRowFilter} />
+        </div>
       </div>
 
       {(!filterActive || visibleLenders.length > 0) ? (
@@ -2223,6 +2300,7 @@ function SiloDetailPanel({
           forceExpanded={forceExpanded}
           navNextId={tableSectionIds.length > 1 ? tableSectionIds[1] : undefined}
           rows={visibleLenders}
+          rowViewFilters={rowViewFilters}
           silo={silo}
           sortState={directSort}
           tableTotals={directTableTotals}
@@ -2277,6 +2355,7 @@ function SiloDetailPanel({
                 hideTypeFilter={!showTypeFilter}
                 navNextId={index + 2 < tableSectionIds.length ? tableSectionIds[index + 2] : undefined}
                 navPrevId={tableSectionIds[index]}
+                rowViewFilters={rowViewFilters}
                 silo={silo}
                 vault={vault}
                 onToggle={() =>
@@ -2305,10 +2384,16 @@ function ExplorerView() {
   // its chain so the network badge and category-scoped links resolve correctly.
   const allPairs = flattenSilos(chains);
 
+  const initialView = parseSnapshotViewParamsFromUrl();
   const [selectedChainName, setSelectedChainName] = useState(() => getInitialExplorerSelection(chains).chainName);
   const [selectedSiloAddress, setSelectedSiloAddress] = useState(() => getInitialExplorerSelection(chains).siloAddress);
-  const [addressFilter, setAddressFilter] = useState(() => parseFilterFromUrl());
-  const [addressTypeFilter, setAddressTypeFilter] = useState("all");
+  const [addressFilter, setAddressFilter] = useState(() => initialView.addressFilter ?? "");
+  const [addressTypeFilter, setAddressTypeFilter] = useState(() => initialView.addressType ?? "all");
+  const [rowViewFilters, setRowViewFilters] = useState<RowViewFilters>(() => ({
+    details: Boolean(initialView.details),
+    borrower: Boolean(initialView.borrower),
+    negative: Boolean(initialView.negative),
+  }));
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>({});
@@ -2333,11 +2418,20 @@ function ExplorerView() {
       ).sort((a, b) => a.localeCompare(b))
     : [];
 
-  function syncSelectionUrl(chainName: string, siloAddress: string, replace = false) {
+  // The full shareable view (address + type + row filters) currently applied.
+  const currentView: SnapshotViewParams = {
+    addressFilter: addressFilter.trim() || undefined,
+    addressType: addressTypeFilter !== "all" ? addressTypeFilter : undefined,
+    details: rowViewFilters.details,
+    borrower: rowViewFilters.borrower,
+    negative: rowViewFilters.negative,
+  };
+
+  function syncSelectionUrl(chainName: string, siloAddress: string, view: SnapshotViewParams, replace = false) {
     if (!siloAddress) {
       return;
     }
-    const url = buildExplorerSelectionUrl(slug, chainName, siloAddress, addressFilter);
+    const url = buildExplorerSelectionUrl(slug, chainName, siloAddress, view);
     const current = `${window.location.pathname}${window.location.search}`;
     if (current === url) {
       return;
@@ -2352,24 +2446,31 @@ function ExplorerView() {
   // Reflect the current selection in the address bar on first load so the URL is
   // always shareable, without adding a spurious history entry.
   useEffect(() => {
-    syncSelectionUrl(selectedChainName, selectedSiloAddress, true);
+    syncSelectionUrl(selectedChainName, selectedSiloAddress, currentView, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep the address filter reflected in the URL (replace, so typing doesn't
-  // flood the history stack) so the exact filtered view is shareable.
+  // Keep every filter reflected in the URL (replace, so typing doesn't flood the
+  // history stack) so the exact filtered view is shareable.
   useEffect(() => {
-    syncSelectionUrl(selectedChainName, selectedSiloAddress, true);
+    syncSelectionUrl(selectedChainName, selectedSiloAddress, currentView, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addressFilter]);
+  }, [addressFilter, addressTypeFilter, rowViewFilters]);
 
   // Keep selection in sync with browser back/forward navigation.
   useEffect(() => {
     function handlePopState() {
       const selection = getInitialExplorerSelection(chains);
+      const view = parseSnapshotViewParamsFromUrl();
       setSelectedChainName(selection.chainName);
       setSelectedSiloAddress(selection.siloAddress);
-      setAddressFilter(parseFilterFromUrl());
+      setAddressFilter(view.addressFilter ?? "");
+      setAddressTypeFilter(view.addressType ?? "all");
+      setRowViewFilters({
+        details: Boolean(view.details),
+        borrower: Boolean(view.borrower),
+        negative: Boolean(view.negative),
+      });
     }
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -2378,10 +2479,17 @@ function ExplorerView() {
   function selectSilo(chainName: string, siloAddress: string) {
     setSelectedChainName(chainName);
     setSelectedSiloAddress(siloAddress);
+    // Type filter is per-silo (its options differ per silo), so it resets. Row filters are
+    // global within the category and stay active when switching silos.
     setAddressTypeFilter("all");
     setDirectExpanded(true);
     setExpandedVaults({});
-    syncSelectionUrl(chainName, siloAddress);
+    syncSelectionUrl(chainName, siloAddress, {
+      addressFilter: addressFilter.trim() || undefined,
+      details: rowViewFilters.details,
+      borrower: rowViewFilters.borrower,
+      negative: rowViewFilters.negative,
+    });
   }
 
   return (
@@ -2467,8 +2575,8 @@ function ExplorerView() {
           {selectedSilo && selectedChain ? (
             <SiloDetailPanel
               addressFilter={addressFilter}
-              buildFilterShareUrl={(filter) =>
-                buildExplorerSelectionUrl(slug, selectedChain.chain, selectedSilo.address, filter)
+              buildFilterShareUrl={(view) =>
+                buildExplorerSelectionUrl(slug, selectedChain.chain, selectedSilo.address, view)
               }
               addressTypeFilter={addressTypeFilter}
               addressTypes={addressTypes}
@@ -2476,8 +2584,10 @@ function ExplorerView() {
               directExpanded={directExpanded}
               directSort={directSort}
               expandedVaults={expandedVaults}
+              rowViewFilters={rowViewFilters}
               setAddressFilter={setAddressFilter}
               setAddressTypeFilter={setAddressTypeFilter}
+              setRowViewFilters={setRowViewFilters}
               setDirectExpanded={setDirectExpanded}
               setDirectSort={setDirectSort}
               setExpandedVaults={setExpandedVaults}
@@ -2496,21 +2606,35 @@ function ExplorerView() {
 
 function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapshot }) {
   const { slug } = useActiveCategory();
-  const [addressFilter, setAddressFilter] = useState(() => parseFilterFromUrl());
+  const initialView = parseSnapshotViewParamsFromUrl();
+  const [addressFilter, setAddressFilter] = useState(() => initialView.addressFilter ?? "");
+  const [rowViewFilters, setRowViewFilters] = useState<RowViewFilters>(() => ({
+    details: Boolean(initialView.details),
+    borrower: Boolean(initialView.borrower),
+    negative: Boolean(initialView.negative),
+  }));
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>(
     Object.fromEntries(silo.vaults.map((vault) => [vault.address, true])),
   );
 
-  // Reflect the address filter in the URL so the filtered silo view is shareable.
+  const currentView: SnapshotViewParams = {
+    addressFilter: addressFilter.trim() || undefined,
+    details: rowViewFilters.details,
+    borrower: rowViewFilters.borrower,
+    negative: rowViewFilters.negative,
+  };
+
+  // Reflect every filter in the URL so the exact filtered silo view is shareable.
   useEffect(() => {
-    const url = buildSiloPathWithFilter(slug, chain.chain, silo.address, addressFilter);
+    const url = buildSiloPathWithView(slug, chain.chain, silo.address, currentView);
     const current = `${window.location.pathname}${window.location.search}`;
     if (current !== url) {
       window.history.replaceState(null, "", url);
     }
-  }, [slug, addressFilter, chain.chain, silo.address]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, addressFilter, rowViewFilters, chain.chain, silo.address]);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
@@ -2524,7 +2648,7 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
         <div className="min-w-0 space-y-6 py-8">
           <SiloDetailPanel
             addressFilter={addressFilter}
-            buildFilterShareUrl={(filter) => buildSiloPathWithFilter(slug, chain.chain, silo.address, filter)}
+            buildFilterShareUrl={(view) => buildSiloPathWithView(slug, chain.chain, silo.address, view)}
             addressTypeFilter="all"
             addressTypes={[]}
             chain={chain}
@@ -2532,8 +2656,10 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
             directSort={directSort}
             expandedVaults={expandedVaults}
             forceExpanded
+            rowViewFilters={rowViewFilters}
             setAddressFilter={setAddressFilter}
             setAddressTypeFilter={() => undefined}
+            setRowViewFilters={setRowViewFilters}
             setDirectExpanded={setDirectExpanded}
             setDirectSort={setDirectSort}
             setExpandedVaults={setExpandedVaults}
