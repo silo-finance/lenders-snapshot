@@ -211,6 +211,8 @@ export type ChainSnapshot = {
 const KNOWN_CHAINS: Record<string, { label: string; chainId: number; explorer: string }> = {
   sonic: { label: "Sonic", chainId: 146, explorer: "https://sonicscan.org/address/" },
   ethereum: { label: "Ethereum", chainId: 1, explorer: "https://etherscan.io/address/" },
+  arbitrum: { label: "Arbitrum One", chainId: 42161, explorer: "https://arbiscan.io/address/" },
+  avalanche: { label: "Avalanche C-Chain", chainId: 43114, explorer: "https://snowtrace.io/address/" },
 };
 
 const KNOWN_TOKEN_SYMBOLS: Record<string, string> = {
