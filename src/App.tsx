@@ -653,13 +653,13 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function copyAddress(address: string) {
+function copyText(value: string) {
   if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(address);
+    return navigator.clipboard.writeText(value);
   }
 
   const textarea = document.createElement("textarea");
-  textarea.value = address;
+  textarea.value = value;
   textarea.style.position = "fixed";
   textarea.style.opacity = "0";
   document.body.appendChild(textarea);
@@ -670,7 +670,7 @@ function copyAddress(address: string) {
   return Promise.resolve();
 }
 
-function CopyAddressButton({ address, bare = false }: { address: string; bare?: boolean }) {
+function CopyValueButton({ value, label, bare = false }: { value: string; label: string; bare?: boolean }) {
   const [copied, setCopied] = useState(false);
 
   const className = bare
@@ -686,19 +686,19 @@ function CopyAddressButton({ address, bare = false }: { address: string; bare?: 
   return (
     <button
       className={className}
-      title={copied ? "Address copied" : "Copy address"}
+      title={copied ? `${label} copied` : `Copy ${label.toLowerCase()}`}
       type="button"
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        void copyAddress(address).then(() => {
+        void copyText(value).then(() => {
           setCopied(true);
           window.setTimeout(() => setCopied(false), 1200);
         });
       }}
     >
       <span aria-hidden="true">{copied ? "✓" : "⧉"}</span>
-      <span className="sr-only">{copied ? "Address copied" : "Copy address"}</span>
+      <span className="sr-only">{copied ? `${label} copied` : `Copy ${label.toLowerCase()}`}</span>
     </button>
   );
 }
@@ -762,8 +762,34 @@ function AddressLink({
       >
         {shortAddress(address)}
       </a>
-      <CopyAddressButton address={address} bare={bareCopy} />
+      <CopyValueButton bare={bareCopy} label="Address" value={address} />
       {showSiloPageLink ? <SiloPageLinkButton address={address} chain={chain} /> : null}
+    </span>
+  );
+}
+
+function TransactionLink({ chain, txHash }: { chain: string; txHash: string }) {
+  if (!txHash) {
+    return <>n/a</>;
+  }
+  const href = explorerTxUrl(chain, txHash);
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {href === "#" ? (
+        <span title={txHash}>{shortHash(txHash)}</span>
+      ) : (
+        <a
+          className="text-emerald-200 transition hover:text-emerald-100"
+          href={href}
+          rel="noreferrer"
+          target="_blank"
+          title={txHash}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {shortHash(txHash)}
+        </a>
+      )}
+      <CopyValueButton bare label="Transaction hash" value={txHash} />
     </span>
   );
 }
@@ -829,7 +855,7 @@ function AddressFilterInput({
               title={copied ? "Link copied" : "Copy shareable link for this address"}
               type="button"
               onClick={() => {
-                void copyAddress(shareUrl).then(() => {
+                void copyText(shareUrl).then(() => {
                   setCopied(true);
                   window.setTimeout(() => setCopied(false), 1200);
                 });
@@ -1226,7 +1252,6 @@ function PendingAssetsBreakdown({
       ) : (
         <div className="mt-2 divide-y divide-white/[0.06]">
           {flowRows.map(({ event, kind, counterparty, next }, index) => {
-            const txUrl = explorerTxUrl(chain, event.txHash);
             const credit = isCredit(kind);
             const sign = credit ? "+" : "-";
             const rowSymbol = symbolFor(kind);
@@ -1246,18 +1271,7 @@ function PendingAssetsBreakdown({
                     ) : (
                       <>
                         {sign} {kind} (block {event.blockNumber}, tx{" "}
-                        {txUrl === "#" ? (
-                          shortHash(event.txHash)
-                        ) : (
-                          <a
-                            className="text-emerald-200 transition hover:text-emerald-100"
-                            href={txUrl}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            {shortHash(event.txHash)}
-                          </a>
-                        )}
+                        <TransactionLink chain={chain} txHash={event.txHash} />
                         {counterparty ? (
                           <>
                             , {kind === "transfer-in" ? "from" : "to"}{" "}
