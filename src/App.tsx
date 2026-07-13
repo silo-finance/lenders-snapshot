@@ -440,20 +440,44 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
         hint="Sum across all vaults"
       />
       </div>
-      {silo.borrowRepaySilo ? (
-        <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
-          <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            <span className="font-semibold text-amber-100">Note on negative pending assets.</span>{" "}
-            After the {silo.borrowRepayToken?.symbol || "borrowed asset"} depeg, sharply higher
-            interest rates inflated collateral values, letting positions borrow far more{" "}
-            {silo.borrowRepayToken?.symbol || "the borrowed asset"} than their snapshot-time
-            collateral was worth. This surfaces as a large negative pending — a valuation-timing
-            effect, not missing data or an under-collateralized loan.
-          </span>
-        </p>
-      ) : null}
     </>
+  );
+}
+
+function DisclaimerNote({ className = "", children }: { className?: string; children: ReactNode }) {
+  return (
+    <p
+      className={`flex w-full items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-medium leading-snug text-amber-200 ${className}`}
+    >
+      <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+function NegativePendingDisclaimer({ silo, className = "" }: { silo: SiloSnapshot; className?: string }) {
+  if (!silo.borrowRepaySilo) {
+    return null;
+  }
+  const borrowSymbol = silo.borrowRepayToken?.symbol || "borrowed asset";
+  return (
+    <DisclaimerNote className={className}>
+      <span className="font-semibold text-amber-100">Note on negative pending assets.</span> After the {borrowSymbol}{" "}
+      depeg, sharply higher interest rates inflated collateral values, letting positions borrow far more {borrowSymbol}{" "}
+      than their snapshot-time collateral was worth. This surfaces as a large negative pending — a valuation-timing
+      effect, not missing data or an under-collateralized loan.
+    </DisclaimerNote>
+  );
+}
+
+function FeeShareTransferDisclaimer({ className = "" }: { className?: string }) {
+  return (
+    <DisclaimerNote className={className}>
+      <span className="font-semibold text-amber-100">Note on fee-related vault transfers.</span> Silos do not have
+      fee-related share transfers; vaults may. Accrued vault fees/interest are not tracked as a standalone flow, but they
+      can be included in vault share-token transfers. Such transfers may increase other wallets&rsquo; balances while
+      leaving the vault fee recipient with a negative pending balance — an accounting artifact, not missing funds.
+    </DisclaimerNote>
   );
 }
 
@@ -1951,7 +1975,7 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
   const { slug, title, description, snapshotBlock } = useActiveCategory();
   const [descriptionOpen, setDescriptionOpen] = useState(false);
   return (
-    <header className="border-b border-white/10 pb-8">
+    <header className="border-b border-white/10 pb-4">
       <div>
         <a
           className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 transition hover:text-emerald-200"
@@ -1998,15 +2022,15 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
             ) : null}
           </div>
         )}
-        <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
-          <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            Recovery calculations are based on balances at Sonic block{" "}
-            <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest accrued
-            after this block is not included. Any negative pending balances are attributable to unaccounted
+        <div className="mt-3 space-y-2">
+          <DisclaimerNote>
+            <span className="font-semibold text-amber-100">Recovery calculations</span> are based on balances at Sonic
+            block <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest
+            accrued after this block is not included. Any negative pending balances are attributable to unaccounted
             post-snapshot interest and may also reflect interest over-accrual related to the Stream Finance incident.
-          </span>
-        </p>
+          </DisclaimerNote>
+          <FeeShareTransferDisclaimer />
+        </div>
       </div>
     </header>
   );
@@ -2287,9 +2311,12 @@ function SiloDetailPanel({
           </div>
         ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 pt-4">
-          <span className="text-xs uppercase tracking-[0.22em] text-slate-500">Filters</span>
-          <TableRowFilterToggles filters={rowViewFilters} onToggle={toggleRowFilter} />
+        <div className="flex flex-wrap items-start gap-4 border-t border-white/10 pt-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="text-xs uppercase tracking-[0.22em] text-slate-500">Filters</span>
+            <TableRowFilterToggles filters={rowViewFilters} onToggle={toggleRowFilter} />
+          </div>
+          <NegativePendingDisclaimer silo={silo} className="min-w-[12rem] flex-1" />
         </div>
       </div>
 
@@ -2497,7 +2524,7 @@ function ExplorerView() {
       <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
         <AppHeader />
 
-        <div className="min-w-0 space-y-6 py-8">
+        <div className="min-w-0 space-y-6 pt-4 pb-8">
           <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-slate-950/30 sm:p-5">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2645,7 +2672,7 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
           }.`}
         />
 
-        <div className="min-w-0 space-y-6 py-8">
+        <div className="min-w-0 space-y-6 pt-4 pb-8">
           <SiloDetailPanel
             addressFilter={addressFilter}
             buildFilterShareUrl={(view) => buildSiloPathWithView(slug, chain.chain, silo.address, view)}
@@ -2681,7 +2708,7 @@ function SiloNotFoundView({ address, chain }: { address: string; chain?: string 
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
       <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
         <AppHeader />
-        <div className="py-8">
+        <div className="pt-4 pb-8">
           <EmptyState message={`No snapshot data found for silo ${label}.`} />
         </div>
       </section>
