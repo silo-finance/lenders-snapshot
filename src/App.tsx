@@ -481,6 +481,24 @@ function FeeShareTransferDisclaimer({ className = "" }: { className?: string }) 
   );
 }
 
+function FlowValuationDisclaimer({
+  snapshotBlock,
+  className = "",
+}: {
+  snapshotBlock: number;
+  className?: string;
+}) {
+  return (
+    <DisclaimerNote className={className}>
+      <span className="font-semibold text-amber-100">Note on flow valuations.</span> Share transfers are converted to
+      assets at the snapshot-block exchange rate (block{" "}
+      <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>), because on-chain
+      Transfer events only report share amounts. Deposits, withdrawals, borrows, and repays use the actual asset
+      amounts recorded in each transaction.
+    </DisclaimerNote>
+  );
+}
+
 function scrollToSection(sectionId: string) {
   document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -2030,6 +2048,7 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
             post-snapshot interest and may also reflect interest over-accrual related to the Stream Finance incident.
           </DisclaimerNote>
           <FeeShareTransferDisclaimer />
+          <FlowValuationDisclaimer snapshotBlock={snapshotBlock} />
         </div>
       </div>
     </header>
