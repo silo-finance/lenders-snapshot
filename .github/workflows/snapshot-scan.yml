@@ -2,6 +2,11 @@ name: Snapshot scan
 
 on:
   workflow_dispatch:
+    inputs:
+      categories:
+        description: "Space-separated category slugs to scan"
+        default: "trevee pendle stream"
+        required: false
 
 permissions:
   contents: write
@@ -25,7 +30,7 @@ jobs:
         run: python -m pip install -r scripts/lender-snapshot/requirements.txt
 
       - name: Run snapshot
-        run: python scripts/lender-snapshot/snapshot_lenders.py
+        run: python scripts/lender-snapshot/snapshot_lenders.py ${{ inputs.categories || 'trevee pendle stream' }}
         env:
           SONIC_RPC_URL: ${{ secrets.SONIC_RPC_URL }}
           ETHEREUM_RPC_URL: ${{ secrets.ETHEREUM_RPC_URL }}
