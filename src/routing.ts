@@ -84,10 +84,11 @@ export type SnapshotViewParams = {
   addressFilter?: string;
   // Address type filter (query: `type`); omitted when unset or "all".
   addressType?: string;
-  // Row filters (query: `details` / `borrower` / `negative`, each present as `=1`).
+  // Row filters (each query key is present as `=1` when enabled).
   details?: boolean;
   borrower?: boolean;
   negative?: boolean;
+  airdrop?: boolean;
 };
 
 export function parseSnapshotViewParamsFromUrl(): SnapshotViewParams {
@@ -100,6 +101,7 @@ export function parseSnapshotViewParamsFromUrl(): SnapshotViewParams {
     details: params.get("details") === "1",
     borrower: params.get("borrower") === "1",
     negative: params.get("negative") === "1",
+    airdrop: params.get("airdrop") === "1",
   };
 }
 
@@ -122,6 +124,9 @@ function appendSnapshotViewParams(params: URLSearchParams, view: SnapshotViewPar
   }
   if (view.negative) {
     params.set("negative", "1");
+  }
+  if (view.airdrop) {
+    params.set("airdrop", "1");
   }
 }
 

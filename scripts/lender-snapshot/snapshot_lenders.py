@@ -1456,6 +1456,9 @@ FLOW_FIELD_KEYS = (
     "transfers",
     "total_transfers_in",
     "total_transfers_out",
+    # Off-chain distributions applied after scanning; preserved across rescans.
+    "airdrops",
+    "total_airdrops",
     # Two-sided markets only (absent otherwise): Borrow debits, Repay credits.
     "borrows",
     "total_borrows",
@@ -1467,7 +1470,7 @@ FLOW_FIELD_KEYS = (
 )
 
 # Flow event lists that carry a block_number (used for timestamp stamping).
-FLOW_LIST_KEYS = ("withdrawals", "deposits", "transfers", "borrows", "repays")
+FLOW_LIST_KEYS = ("withdrawals", "deposits", "transfers", "airdrops", "borrows", "repays")
 
 
 def _flow_block_numbers_in_entry(entry: dict[str, Any]) -> set[int]:
@@ -1636,7 +1639,7 @@ def _append_transfer(
 
 
 def _finalize_pending(entry: dict[str, Any], base_assets: int) -> None:
-    """pending = base - debt_at_snapshot + deposits + transfers_in + repays - withdrawals - transfers_out - borrows.
+    """pending = base - debt + deposits + transfers_in + repays - withdrawals - transfers_out - borrows - airdrops.
 
     Signed on purpose (NOT clamped to zero): a negative result surfaces unreconciled flows
     (e.g. interest accrued between snapshot and withdrawal) instead of silently hiding them.
@@ -1650,6 +1653,7 @@ def _finalize_pending(entry: dict[str, Any], base_assets: int) -> None:
     total_transfers_out = int(entry.get("total_transfers_out", 0))
     total_borrows = int(entry.get("total_borrows", 0))
     total_repays = int(entry.get("total_repays", 0))
+    total_airdrops = int(entry.get("total_airdrops", 0))
     debt_at_snapshot = int(entry.get("debt_at_snapshot", 0))
     entry["pending_assets"] = str(
         base_assets
@@ -1660,6 +1664,7 @@ def _finalize_pending(entry: dict[str, Any], base_assets: int) -> None:
         - total_withdrawals
         - total_transfers_out
         - total_borrows
+        - total_airdrops
     )
 
 
@@ -2262,6 +2267,7 @@ def _recompute_flow_totals(entry: dict[str, Any]) -> None:
     withdrawals = entry.get("withdrawals") or []
     deposits = entry.get("deposits") or []
     transfers = entry.get("transfers") or []
+    airdrops = entry.get("airdrops") or []
     borrows = entry.get("borrows") or []
     repays = entry.get("repays") or []
     total_w = sum(int(r.get("assets", 0)) for r in withdrawals if isinstance(r, dict))
@@ -2270,6 +2276,7 @@ def _recompute_flow_totals(entry: dict[str, Any]) -> None:
     total_out = sum(int(r.get("assets", 0)) for r in transfers if isinstance(r, dict) and r.get("direction") == "out")
     total_b = sum(int(r.get("assets", 0)) for r in borrows if isinstance(r, dict))
     total_r = sum(int(r.get("assets", 0)) for r in repays if isinstance(r, dict))
+    total_a = sum(int(r.get("assets", 0)) for r in airdrops if isinstance(r, dict))
     entry["total_withdrawals"] = str(total_w)
     entry["total_deposits"] = str(total_d)
     entry["total_transfers_in"] = str(total_in)
@@ -2278,10 +2285,14 @@ def _recompute_flow_totals(entry: dict[str, Any]) -> None:
         entry["total_borrows"] = str(total_b)
     if repays or "total_repays" in entry:
         entry["total_repays"] = str(total_r)
+    if airdrops or "total_airdrops" in entry:
+        entry["total_airdrops"] = str(total_a)
     base = _entry_base_assets(entry)
     debt_at_snapshot = int(entry.get("debt_at_snapshot", 0))
     # Same signed reconciliation as _finalize_pending (NOT clamped to zero).
-    entry["pending_assets"] = str(base - debt_at_snapshot + total_d + total_in + total_r - total_w - total_out - total_b)
+    entry["pending_assets"] = str(
+        base - debt_at_snapshot + total_d + total_in + total_r - total_w - total_out - total_b - total_a
+    )
 
 
 def _merge_flow_entry(old_entry: Any, new_entry: Any) -> Any:
@@ -2294,7 +2305,7 @@ def _merge_flow_entry(old_entry: Any, new_entry: Any) -> Any:
         return new_entry
     if not isinstance(new_entry, dict):
         return old_entry
-    flow_lists = ("withdrawals", "deposits", "transfers", "borrows", "repays")
+    flow_lists = ("withdrawals", "deposits", "transfers", "airdrops", "borrows", "repays")
     has_flows = any(k in old_entry for k in flow_lists) or any(k in new_entry for k in flow_lists)
     if not has_flows:
         # e.g. a silo_vault direct-lender entry: flow fields are intentionally absent.
@@ -2471,6 +2482,12 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
     if completed == 0:
         print(f"[done] category '{slug}': no silos configured")
     else:
+        # Off-chain distributions are applied only after every silo has been merged. The
+        # applier is idempotent, so standalone and scanner-driven runs produce the same JSON.
+        from apply_airdrops import AIRDROPS, apply_category
+
+        if slug in AIRDROPS:
+            apply_category(slug, output_path)
         total_elapsed = time.monotonic() - started_at
         print(f"[done] category '{slug}': {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
     return completed

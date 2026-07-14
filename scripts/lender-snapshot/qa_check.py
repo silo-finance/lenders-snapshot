@@ -12,6 +12,7 @@ share-sum invariants against the stored total supplies, with ZERO tolerance
   - for each lender/depositor (exact, signed, NOT clamped to zero):
     pending_assets == base_assets - debt_at_snapshot + total_deposits + total_transfers_in
                       + total_repays - total_withdrawals - total_transfers_out - total_borrows
+                      - total_airdrops
     (total_borrows/total_repays/debt_at_snapshot are 0 except on two-sided-market lenders)
   - for each lender/depositor:
     sum(withdrawals[].assets) == total_withdrawals
@@ -20,6 +21,7 @@ share-sum invariants against the stored total supplies, with ZERO tolerance
     sum(transfers[out].assets) == total_transfers_out
     sum(borrows[].assets) == total_borrows      (two-sided markets)
     sum(repays[].assets) == total_repays        (two-sided markets)
+    sum(airdrops[].assets) == total_airdrops
   - two-sided markets, chronological sanity (WARNING only): replaying a lender's flows in
     (block, log_index, tx) order with net borrow seeded from debt_at_snapshot, cumulative
     net borrow exceeding cumulative collateral basis is flagged (distressed/incident
@@ -44,10 +46,10 @@ with accrued interest, shares do not). For each lender/depositor we reconcile in
     upstream), in which case it is downgraded to a visible WARNING. The pin is exact on both
     identity and residual, so any change re-triggers the hard error; and a pinned entry whose
     chain is scanned but never matched is itself a HARD error (stale-exception guard).
-  - share_residual >= 0 with a negative `pending_assets` is interest accrued between the
-    snapshot block and a later (full) withdrawal -- valuing base/transfers at the snapshot
-    rate while withdrawals/deposits use event-time assets makes pending dip below zero by
-    the accrued interest. That is expected and reported as a WARNING, not an error.
+  - share_residual >= 0 with a negative `pending_assets` is an asset-side effect: usually
+    interest accrued between the snapshot block and a later full withdrawal, or an airdrop
+    deduction that exhausted the final eligible position. That is expected and reported as
+    a WARNING, not an error.
 
 SHARE_DUST is overridable via QA_SHARE_DUST (default 0; shares come from raw on-chain
 balances/log values and should reconcile exactly).
@@ -280,6 +282,7 @@ def check_pending(
     total_borrows: int = 0,
     total_repays: int = 0,
     debt_at_snapshot: int = 0,
+    total_airdrops: int = 0,
 ) -> None:
     """Exact signed pending invariant plus the share-based negative-pending policy.
 
@@ -296,6 +299,7 @@ def check_pending(
         - total_withdrawals
         - total_transfers_out
         - total_borrows
+        - total_airdrops
     )
     report.check_equal(f"{label} pending_assets consistency", expected, pending_assets)
     if residual_shares < -SHARE_DUST:
@@ -320,8 +324,9 @@ def check_pending(
         else:
             report.error(f"{label}: unreconciled shares (missed inflow): share_residual={residual_shares}")
     elif pending_assets < 0:
-        # Shares reconcile, so a negative pending is accrued interest, not an error.
-        report.warn(f"{label}: negative pending is accrued interest ({pending_assets}, share_residual={residual_shares})")
+        # Shares reconcile, so the negative value is an asset-side effect (event-time
+        # valuation and/or an airdrop deduction), not evidence of a missed share inflow.
+        report.warn(f"{label}: negative pending with reconciled shares ({pending_assets}, share_residual={residual_shares})")
 
 
 class Report:
@@ -416,6 +421,7 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
         total_transfers_out = to_int(entry.get("total_transfers_out", 0))
         total_borrows = to_int(entry.get("total_borrows", 0))
         total_repays = to_int(entry.get("total_repays", 0))
+        total_airdrops = to_int(entry.get("total_airdrops", 0))
         debt_at_snapshot = to_int(entry.get("debt_at_snapshot", 0))
         pending_assets = to_int(entry.get("pending_assets", base_assets))
         residual_shares = share_residual(
@@ -438,6 +444,7 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
             total_borrows=total_borrows,
             total_repays=total_repays,
             debt_at_snapshot=debt_at_snapshot,
+            total_airdrops=total_airdrops,
         )
         check_flow_sum(
             f"{prefix} lender {lender_addr} withdrawals_sum vs total_withdrawals",
@@ -470,6 +477,13 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
                 f"{prefix} lender {lender_addr} repays_sum vs total_repays",
                 entry.get("repays", []),
                 total_repays,
+                report,
+            )
+        if "airdrops" in entry or total_airdrops:
+            check_flow_sum(
+                f"{prefix} lender {lender_addr} airdrops_sum vs total_airdrops",
+                entry.get("airdrops", []),
+                total_airdrops,
                 report,
             )
         check_borrow_backing(f"{prefix} lender {lender_addr}", base_assets, entry, report)
@@ -510,6 +524,7 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
             total_deposits = to_int(depositor.get("total_deposits", 0))
             total_transfers_in = to_int(depositor.get("total_transfers_in", 0))
             total_transfers_out = to_int(depositor.get("total_transfers_out", 0))
+            total_airdrops = to_int(depositor.get("total_airdrops", 0))
             pending_assets = to_int(depositor.get("pending_assets", base_assets))
             residual_shares = share_residual(
                 to_int(depositor.get("vault_shares", 0)),
@@ -528,6 +543,7 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
                 residual_shares,
                 report,
                 (chain.lower(), silo_addr.lower(), vault_addr.lower(), depositor_addr.lower()),
+                total_airdrops=total_airdrops,
             )
             check_flow_sum(
                 f"{vlabel} depositor {depositor_addr} withdrawals_sum vs total_withdrawals",
@@ -548,6 +564,13 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
                 total_transfers_out,
                 report,
             )
+            if "airdrops" in depositor or total_airdrops:
+                check_flow_sum(
+                    f"{vlabel} depositor {depositor_addr} airdrops_sum vs total_airdrops",
+                    depositor.get("airdrops", []),
+                    total_airdrops,
+                    report,
+                )
 
 
 def verify_onchain(root: dict[str, Any], chain_filter: set[str], report: Report) -> None:
@@ -656,7 +679,7 @@ def main() -> int:
     print("=" * 100)
     print(f"SUMMARY  Checks: {report.checks}  Warnings: {report.warnings}  Errors: {report.errors}")
     if report.errors == 0:
-        print("[OK] QA passed (exact invariants; negatives within interest tolerance)")
+        print("[OK] QA passed (exact invariants; negative asset-side effects reported as warnings)")
         return 0
     print("[FAIL] QA failed")
     return 1

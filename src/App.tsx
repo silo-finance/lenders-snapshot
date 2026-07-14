@@ -499,6 +499,16 @@ function FlowValuationDisclaimer({
   );
 }
 
+function AirdropDisclaimer({ className = "" }: { className?: string }) {
+  return (
+    <DisclaimerNote className={className}>
+      <span className="font-semibold text-amber-100">Note on airdrop deductions.</span> Lenders in this category received
+      a distribution airdrop. Each recipient&rsquo;s pending assets shown here are reduced by the amount they received,
+      and the deduction appears as an &ldquo;airdrop&rdquo; entry in their operation history.
+    </DisclaimerNote>
+  );
+}
+
 function scrollToSection(sectionId: string) {
   document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -978,6 +988,7 @@ function hasFlowActivity(row: {
   totalDeposits: bigint;
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
+  totalAirdrops?: bigint;
   totalBorrows?: bigint;
   totalRepays?: bigint;
   debtAtSnapshot?: bigint;
@@ -987,6 +998,7 @@ function hasFlowActivity(row: {
     row.totalDeposits > ZERO ||
     row.totalTransfersIn > ZERO ||
     row.totalTransfersOut > ZERO ||
+    (row.totalAirdrops ?? ZERO) > ZERO ||
     (row.totalBorrows ?? ZERO) > ZERO ||
     (row.totalRepays ?? ZERO) > ZERO ||
     (row.debtAtSnapshot ?? ZERO) > ZERO
@@ -995,7 +1007,7 @@ function hasFlowActivity(row: {
 
 // Row-level view filters toggled from the last table column. Combined with AND: a row is
 // shown only if it satisfies every enabled filter.
-export type RowViewFilters = { details: boolean; borrower: boolean; negative: boolean };
+export type RowViewFilters = { details: boolean; borrower: boolean; negative: boolean; airdrop: boolean };
 
 // A borrower is a direct lender/borrower with any debt exposure: an initial DEBT baseline at
 // the snapshot block or at least one Borrow after it. Vault depositors carry no borrow/debt
@@ -1020,15 +1032,19 @@ function matchesRowViewFilters(row: DirectLender | VaultDepositor, filters: RowV
   if (filters.negative && row.pendingAssets >= ZERO) {
     return false;
   }
+  if (filters.airdrop && row.totalAirdrops <= ZERO) {
+    return false;
+  }
   return true;
 }
 
 // Each filter's active highlight matches the color it represents elsewhere in the UI:
-// deposits/positive green, borrower amber, negative balances red.
+// deposits/positive green, borrower amber, negative balances red, and airdrops fuchsia.
 const ROW_VIEW_FILTER_OPTIONS: Array<{ key: keyof RowViewFilters; label: string; activeClass: string }> = [
   { key: "details", label: "Details", activeClass: "font-semibold text-emerald-200" },
   { key: "borrower", label: "Borrower", activeClass: "font-semibold text-amber-300" },
   { key: "negative", label: "Negative", activeClass: "font-semibold text-rose-300" },
+  { key: "airdrop", label: "Airdrop", activeClass: "font-semibold text-fuchsia-300" },
 ];
 
 // Clickable, borderless row-filter toggles rendered in the silo filter toolbar. These are
@@ -1102,6 +1118,7 @@ function PendingAssetsBreakdown({
   totalDeposits,
   totalTransfersIn,
   totalTransfersOut,
+  totalAirdrops = ZERO,
   totalBorrows = ZERO,
   totalRepays = ZERO,
   debtAtSnapshot = ZERO,
@@ -1113,6 +1130,7 @@ function PendingAssetsBreakdown({
   transfers,
   borrows = [],
   repays = [],
+  airdrops = [],
   decimals,
   symbol,
   borrowRepaySymbol,
@@ -1123,6 +1141,7 @@ function PendingAssetsBreakdown({
   totalDeposits: bigint;
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
+  totalAirdrops?: bigint;
   totalBorrows?: bigint;
   totalRepays?: bigint;
   debtAtSnapshot?: bigint;
@@ -1134,6 +1153,7 @@ function PendingAssetsBreakdown({
   transfers: TransferEntry[];
   borrows?: WithdrawalEntry[];
   repays?: WithdrawalEntry[];
+  airdrops?: WithdrawalEntry[];
   decimals: number;
   symbol: string;
   borrowRepaySymbol?: string;
@@ -1141,7 +1161,15 @@ function PendingAssetsBreakdown({
   // Two-sided markets add Borrow (debit, like a withdrawal), Repay (credit, like a deposit)
   // and an initial DEBT baseline (debit at the snapshot block); all kinds share one
   // chronological timeline. Borrow/repay/debt are denominated in the paired (debt) asset.
-  type FlowKind = "deposit" | "withdrawal" | "transfer-in" | "transfer-out" | "borrow" | "repay" | "debt";
+  type FlowKind =
+    | "deposit"
+    | "withdrawal"
+    | "transfer-in"
+    | "transfer-out"
+    | "borrow"
+    | "repay"
+    | "airdrop"
+    | "debt";
   const isCredit = (kind: FlowKind) => kind === "deposit" || kind === "transfer-in" || kind === "repay";
   const pairedSymbol = borrowRepaySymbol && borrowRepaySymbol.length > 0 ? borrowRepaySymbol : symbol;
   const symbolFor = (kind: FlowKind) =>
@@ -1173,6 +1201,7 @@ function PendingAssetsBreakdown({
     })),
     ...borrows.map((event) => ({ event, kind: "borrow" as FlowKind })),
     ...repays.map((event) => ({ event, kind: "repay" as FlowKind })),
+    ...airdrops.map((event) => ({ event, kind: "airdrop" as FlowKind })),
   ].sort(
     (a, b) =>
       a.event.blockNumber - b.event.blockNumber ||
@@ -1207,6 +1236,8 @@ function PendingAssetsBreakdown({
         return "text-rose-300/80";
       case "transfer-out":
         return "text-violet-300/80";
+      case "airdrop":
+        return "text-fuchsia-300/80";
       case "borrow":
       case "debt":
         return "text-amber-300/80";
@@ -1224,6 +1255,8 @@ function PendingAssetsBreakdown({
         return "text-rose-300";
       case "transfer-out":
         return "text-violet-300";
+      case "airdrop":
+        return "text-fuchsia-300";
       case "borrow":
       case "debt":
         return "text-amber-300";
@@ -1243,6 +1276,7 @@ function PendingAssetsBreakdown({
           totalDeposits > ZERO ||
           totalTransfersIn > ZERO ||
           totalTransfersOut > ZERO ||
+          totalAirdrops > ZERO ||
           totalBorrows > ZERO ||
           totalRepays > ZERO ||
           debtAtSnapshot > ZERO
@@ -1267,6 +1301,10 @@ function PendingAssetsBreakdown({
                       <>
                         {sign} DEBT on block {event.blockNumber}
                         {daysLabel ? <span className="text-slate-500"> {daysLabel}</span> : null}
+                      </>
+                    ) : kind === "airdrop" ? (
+                      <>
+                        {sign} airdrop
                       </>
                     ) : (
                       <>
@@ -1327,6 +1365,17 @@ function PendingAssetsBreakdown({
             <AmountWithSymbol className="text-violet-300" sign="-" symbol={symbol} value={formatUnitsFixed(totalTransfersOut, decimals)} />
           </div>
         ) : null}
+        {totalAirdrops > ZERO ? (
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-slate-400">total airdrops</span>
+            <AmountWithSymbol
+              className="text-fuchsia-300"
+              sign="-"
+              symbol={symbol}
+              value={formatUnitsFixed(totalAirdrops, decimals)}
+            />
+          </div>
+        ) : null}
         {totalRepays > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total repays</span>
@@ -1383,7 +1432,8 @@ function HolderTable({
 }) {
   const isExpanded = forceExpanded || expanded;
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
-  const anyRowFilterActive = rowViewFilters.details || rowViewFilters.borrower || rowViewFilters.negative;
+  const anyRowFilterActive =
+    rowViewFilters.details || rowViewFilters.borrower || rowViewFilters.negative || rowViewFilters.airdrop;
   const tableRows = anyRowFilterActive
     ? rows.filter((row) => !row.isVault && matchesRowViewFilters(row, rowViewFilters))
     : rows;
@@ -1558,6 +1608,7 @@ function HolderTable({
                               debtAtSnapshot={row.debtAtSnapshot}
                               decimals={silo.inputToken.decimals}
                               deposits={row.deposits}
+                              airdrops={row.airdrops}
                               pendingAssets={row.pendingAssets}
                               repays={row.repays}
                               snapshotBlock={silo.snapshotBlock}
@@ -1565,6 +1616,7 @@ function HolderTable({
                               symbol={silo.inputToken.symbol}
                               totalBorrows={row.totalBorrows}
                               totalDeposits={row.totalDeposits}
+                              totalAirdrops={row.totalAirdrops}
                               totalRepays={row.totalRepays}
                               totalTransfersIn={row.totalTransfersIn}
                               totalTransfersOut={row.totalTransfersOut}
@@ -1630,7 +1682,8 @@ function DepositorTable({
 }) {
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
   const needle = addressFilter.trim().toLowerCase();
-  const anyRowFilterActive = rowViewFilters.details || rowViewFilters.borrower || rowViewFilters.negative;
+  const anyRowFilterActive =
+    rowViewFilters.details || rowViewFilters.borrower || rowViewFilters.negative || rowViewFilters.airdrop;
   const visibleRows = rows.filter((row) => {
     const addressMatches = needle ? row.address.toLowerCase().includes(needle) : true;
     const typeMatches = hideTypeFilter || addressTypeFilter === "all" || row.addressType === addressTypeFilter;
@@ -1727,11 +1780,13 @@ function DepositorTable({
                             baseAssets={row.attributedSiloAssets}
                             decimals={silo.inputToken.decimals}
                             deposits={row.deposits}
+                            airdrops={row.airdrops}
                             pendingAssets={row.pendingAssets}
                             snapshotBlock={silo.snapshotBlock}
                             snapshotBlockTimestamp={silo.snapshotBlockTimestamp}
                             symbol={silo.inputToken.symbol}
                             totalDeposits={row.totalDeposits}
+                            totalAirdrops={row.totalAirdrops}
                             totalTransfersIn={row.totalTransfersIn}
                             totalTransfersOut={row.totalTransfersOut}
                             totalWithdrawals={row.totalWithdrawals}
@@ -2046,6 +2101,7 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
           </DisclaimerNote>
           <FeeShareTransferDisclaimer />
           <FlowValuationDisclaimer snapshotBlock={snapshotBlock} />
+          {slug === "trevee" ? <AirdropDisclaimer /> : null}
         </div>
       </div>
     </header>
@@ -2166,6 +2222,7 @@ function SiloDetailPanel({
     details: rowViewFilters.details,
     borrower: rowViewFilters.borrower,
     negative: rowViewFilters.negative,
+    airdrop: rowViewFilters.airdrop,
   };
 
   const lenderNeedle = addressFilter.trim().toLowerCase();
@@ -2436,6 +2493,7 @@ function ExplorerView() {
     details: Boolean(initialView.details),
     borrower: Boolean(initialView.borrower),
     negative: Boolean(initialView.negative),
+    airdrop: Boolean(initialView.airdrop),
   }));
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
@@ -2468,6 +2526,7 @@ function ExplorerView() {
     details: rowViewFilters.details,
     borrower: rowViewFilters.borrower,
     negative: rowViewFilters.negative,
+    airdrop: rowViewFilters.airdrop,
   };
 
   function syncSelectionUrl(chainName: string, siloAddress: string, view: SnapshotViewParams, replace = false) {
@@ -2513,6 +2572,7 @@ function ExplorerView() {
         details: Boolean(view.details),
         borrower: Boolean(view.borrower),
         negative: Boolean(view.negative),
+        airdrop: Boolean(view.airdrop),
       });
     }
     window.addEventListener("popstate", handlePopState);
@@ -2532,6 +2592,7 @@ function ExplorerView() {
       details: rowViewFilters.details,
       borrower: rowViewFilters.borrower,
       negative: rowViewFilters.negative,
+      airdrop: rowViewFilters.airdrop,
     });
   }
 
@@ -2655,6 +2716,7 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
     details: Boolean(initialView.details),
     borrower: Boolean(initialView.borrower),
     negative: Boolean(initialView.negative),
+    airdrop: Boolean(initialView.airdrop),
   }));
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
@@ -2667,6 +2729,7 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
     details: rowViewFilters.details,
     borrower: rowViewFilters.borrower,
     negative: rowViewFilters.negative,
+    airdrop: rowViewFilters.airdrop,
   };
 
   // Reflect every filter in the URL so the exact filtered silo view is shareable.
