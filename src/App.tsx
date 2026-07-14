@@ -1378,6 +1378,9 @@ function PendingAssetsBreakdown({
                     ) : kind === "airdrop" ? (
                       <>
                         {sign} airdrop
+                        {event.airdropPart && event.airdropParts && event.airdropParts > 1
+                          ? ` ${event.airdropPart} of ${event.airdropParts}`
+                          : ""}
                       </>
                     ) : (
                       <>
@@ -2118,9 +2121,20 @@ function VaultCard({
   );
 }
 
+function categoryHasAirdrops(chains: ChainSnapshot[]): boolean {
+  return chains.some((chain) =>
+    chain.silos.some(
+      (silo) =>
+        silo.directLenders.some((lender) => lender.totalAirdrops > ZERO) ||
+        silo.vaults.some((vault) => vault.depositors.some((depositor) => depositor.totalAirdrops > ZERO)),
+    ),
+  );
+}
+
 function AppHeader({ subtitle }: { subtitle?: string }) {
-  const { slug, title, description, snapshotBlock } = useActiveCategory();
+  const { slug, title, description, snapshotBlock, chains } = useActiveCategory();
   const [descriptionOpen, setDescriptionOpen] = useState(false);
+  const hasAirdrops = categoryHasAirdrops(chains);
   return (
     <header className="border-b border-white/10 pb-4">
       <div>
@@ -2178,7 +2192,7 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
           </DisclaimerNote>
           <FeeShareTransferDisclaimer />
           <FlowValuationDisclaimer snapshotBlock={snapshotBlock} />
-          {slug === "trevee" ? <AirdropDisclaimer /> : null}
+          {hasAirdrops ? <AirdropDisclaimer /> : null}
         </div>
       </div>
     </header>

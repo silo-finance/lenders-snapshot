@@ -2482,12 +2482,6 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
     if completed == 0:
         print(f"[done] category '{slug}': no silos configured")
     else:
-        # Off-chain distributions are applied only after every silo has been merged. The
-        # applier is idempotent, so standalone and scanner-driven runs produce the same JSON.
-        from apply_airdrops import AIRDROPS, apply_category
-
-        if slug in AIRDROPS:
-            apply_category(slug, output_path)
         total_elapsed = time.monotonic() - started_at
         print(f"[done] category '{slug}': {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
     return completed
@@ -2521,6 +2515,12 @@ def main() -> int:
     if total_completed == 0:
         print("[done] no silos configured")
     else:
+        # Apply off-chain distributions only after every requested category has been
+        # fully merged. The cascade reads and updates Trevee, Pendle, and Stream
+        # together, and is idempotent across standalone and scanner-driven runs.
+        from apply_airdrops import apply_airdrops
+
+        apply_airdrops()
         print(f"[done] all categories complete: {total_completed} silo(s) total")
     return 0
 

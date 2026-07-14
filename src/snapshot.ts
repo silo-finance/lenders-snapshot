@@ -54,6 +54,9 @@ type RawWithdrawalEntry = {
   log_index?: number | string;
   assets?: RawAmount;
   shares?: RawAmount;
+  // Synthetic airdrops split across categories carry a 1-based category part.
+  airdrop_part?: number | string;
+  airdrop_parts?: number | string;
   // Vault depositors only: raw vault underlying withdrawn on-chain (full redemption
   // across all silos). `assets` is the snapshot-rate slice attributed to this silo
   // and is what actually reduces `pending_assets`.
@@ -160,6 +163,8 @@ export type WithdrawalEntry = {
   // depositors it is the full vault redemption (across all silos), while `assets`
   // is the slice attributed to this silo.
   eventAssets: bigint;
+  airdropPart?: number;
+  airdropParts?: number;
 };
 
 export type TransferDirection = "in" | "out";
@@ -288,6 +293,12 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
           assets,
           shares,
           eventAssets,
+          ...(entry.airdrop_part === undefined || entry.airdrop_part === null
+            ? {}
+            : { airdropPart: toNumber(entry.airdrop_part, 0) }),
+          ...(entry.airdrop_parts === undefined || entry.airdrop_parts === null
+            ? {}
+            : { airdropParts: toNumber(entry.airdrop_parts, 0) }),
         };
       })
       .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex || a.txHash.localeCompare(b.txHash));

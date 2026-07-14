@@ -24,7 +24,7 @@ For vault depositors, each `withdrawals[]` entry also keeps the raw on-chain amo
 ## Layout
 
 - `snapshot_lenders.py` – main script that produces one `data/<category>.json` per category.
-- `apply_airdrops.py` – idempotent post-processor that applies configured off-chain distributions to pending balances. The main scanner invokes it automatically for configured categories; it can also be run independently with `python3 apply_airdrops.py <category>`.
+- `apply_airdrops.py` – idempotent post-processor that applies configured off-chain distributions to pending balances across Trevee, Pendle, and Stream. The main scanner invokes it after all requested categories are scanned; it can also be run independently with `python3 apply_airdrops.py`.
 - `airdrops/` – source CSV files for configured distributions. Only the `Amount sent` column is applied.
 - `qa_check.py` – pure-JSON validator (no RPC/graph) that asserts share-sum invariants against the stored total supplies.
 - `data/` – generated per-category snapshot files (e.g. `data/stream.json`), imported by the UI.
@@ -80,6 +80,9 @@ python3 scripts/lender-snapshot/snapshot_lenders.py stream
 # You can pass several slugs to scan more than one category in a single run:
 python3 scripts/lender-snapshot/snapshot_lenders.py stream pendle
 
+# Reapply the configured airdrops without rescanning on-chain data:
+python3 scripts/lender-snapshot/apply_airdrops.py
+
 # Validate the JSON invariants for all data/*.json (zero tolerance, exact wei equality):
 python3 scripts/lender-snapshot/qa_check.py
 
@@ -91,6 +94,24 @@ python3 scripts/lender-snapshot/qa_check.py --verify-onchain
 ```
 
 Re-running for the same Silo **merges (unions)** its flow events into the existing entry rather than overwriting: recorded `withdrawals[]` / `deposits[]` / `transfers[]` are combined and de-duplicated (by `tx_hash`+`log_index`[+`direction`]) and the derived totals are recomputed. This is deliberate — the RPC endpoint is load-balanced and `eth_getLogs` can silently return an **incomplete** set of logs for a range (identical queries hit different backends and return different counts), so a plain overwrite could let an unlucky run replace a more complete result with a smaller one. Because writes are append-only per event, repeating the run can only ever grow the recorded set; other Silos and chains are preserved. **To start clean, delete the category's `data/<slug>.json`.**
+
+## Airdrop cascade
+
+Configured airdrops are matched by recipient address and applied in category order:
+**Trevee → Pendle → Stream**. If an address is absent from Trevee, processing starts
+at the first later category where a compatible position exists.
+
+- ETH allocations use 18-decimal WETH/scETH positions. Stream has no compatible
+  ETH position, so Pendle is the final possible category.
+- USDC allocations use 6-decimal USD positions: USDC in Trevee/Pendle and
+  USDC/scUSD/AUSD/USDt in Stream.
+
+Each category before the final compatible one is capped at the recipient's positive
+pending balance. The last compatible category absorbs the remainder and may therefore
+end with a negative `pending_assets`. When one allocation is split across categories,
+its synthetic `airdrops[]` rows carry `airdrop_part` and `airdrop_parts`; all positions
+within the same category share the same part. A single-category allocation has no part
+metadata, so the UI displays simply `airdrop` rather than `airdrop 1 of 1`.
 
 ## Performance
 
