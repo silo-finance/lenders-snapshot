@@ -105,6 +105,19 @@ class ApplyAirdropsCascadeTest(unittest.TestCase):
         self.assertEqual(report["airdrops"][0]["matched"], 1)
         self.assertEqual(self._entry("pendle", "p1")["pending_assets"], "3")
 
+    def test_address_only_in_stream_absorbs_whole_amount_there(self) -> None:
+        self._prepare_categories({"stream": [("s1", ADDRESS, 1)]})
+
+        report = self._run(4, {"trevee": ["t1"], "pendle": ["p1"], "stream": ["s1"]})
+
+        self.assertEqual(report["airdrops"][0]["matched"], 1)
+        entry = self._entry("stream", "s1")
+        self.assertEqual(entry["pending_assets"], "-3")
+        row = entry["airdrops"][0]
+        self.assertEqual(row["assets"], "4")
+        self.assertNotIn("airdrop_part", row)
+        self.assertNotIn("airdrop_parts", row)
+
     def test_zero_allocation_category_is_omitted_from_numbering(self) -> None:
         self._prepare_categories(
             {
