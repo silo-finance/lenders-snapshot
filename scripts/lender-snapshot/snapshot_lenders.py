@@ -2502,6 +2502,24 @@ def main() -> int:
         raise SystemExit(f"Unknown category slug(s): {', '.join(unknown)}. Available: {available}")
     selected = requested
 
+    # The airdrop cascade at the end of the run reads and rewrites every cascade
+    # category together, so each one must be available: either scanned in this run
+    # or already present on disk. Fail fast instead of crashing after a long scan.
+    from apply_airdrops import CATEGORY_ORDER as CASCADE_CATEGORIES
+
+    missing_for_cascade = [
+        cascade_slug
+        for cascade_slug in CASCADE_CATEGORIES
+        if cascade_slug not in selected
+        and not category_output_path(cascade_slug, CATEGORIES[cascade_slug]).exists()
+    ]
+    if missing_for_cascade:
+        raise SystemExit(
+            "The airdrop cascade needs snapshot data for every cascade category "
+            f"({', '.join(CASCADE_CATEGORIES)}). Missing: {', '.join(missing_for_cascade)}. "
+            "Include them in this run or restore their data/<slug>.json files."
+        )
+
     global _PROGRESS
     selected_categories = {slug: CATEGORIES[slug] for slug in selected}
     budget = compute_run_budget(selected_categories)
