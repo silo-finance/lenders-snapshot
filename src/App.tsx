@@ -390,7 +390,7 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
         <div className="flex items-start justify-between gap-x-10">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-              Total assets
+              Total Deposited
               {silo.snapshotBlock > 0 ? (
                 <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
                   at block <BlockLink block={silo.snapshotBlock} chainId={silo.chainId} />
@@ -403,7 +403,7 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
           </div>
           <div className="min-w-0 text-right">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-              Total pending assets
+              Total Net Claim Amount
               {eventsToBlock > 0 ? (
                 <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
                   at block <BlockLink block={eventsToBlock} chainId={silo.chainId} />
@@ -1567,7 +1567,7 @@ function HolderTable({
                   <ColumnHeaderSum
                     value={`${formatUnitsRounded(tableTotals.assets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                   />
-                  <SortHeader align="right" label="Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
+                  <SortHeader align="right" label="Net Deposited Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
                 </th>
                 {silo.isTwoSided ? (
                   <th className="px-5 py-3 text-right font-medium">
@@ -1583,7 +1583,7 @@ function HolderTable({
                   <ColumnHeaderSum
                     value={`${formatUnitsRounded(tableTotals.pending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                   />
-                  <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
+                  <SortHeader align="right" label="Claim Amount" sortKey="pending" sortState={sortState} onClick={onSort} />
                 </th>
                 <th className="w-16 px-2 py-3 font-medium" aria-label="Pending assets details" />
               </tr>
@@ -1791,7 +1791,7 @@ function DepositorTable({
                 <ColumnHeaderSum
                   value={`${formatUnitsRounded(tableTotals.pending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                 />
-                <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
+                <SortHeader align="right" label="Claim Amount" sortKey="pending" sortState={sortState} onClick={onSort} />
               </th>
               <th className="w-16 px-2 py-3 font-medium" aria-label="Pending assets details" />
             </tr>
@@ -2357,7 +2357,7 @@ function SiloDetailPanel({
               <AddressLink address={silo.address} chain={chain.chain} />
             </div>
             <h2 className="mt-2 text-3xl font-semibold text-white">
-              {silo.isTwoSided ? "Silo lenders/borrowers details" : "Silo lenders details"}
+              {silo.isTwoSided ? "Lender/Borrower Snapshot Details" : "Lender Snapshot Details"}
             </h2>
             <p className="mt-2 text-sm">
               {eventsToBlock > snapshotBlock ? (
