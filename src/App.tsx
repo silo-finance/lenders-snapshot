@@ -510,19 +510,15 @@ function FeeShareTransferDisclaimer({ className = "" }: { className?: string }) 
 }
 
 function FlowValuationDisclaimer({
-  snapshotBlock,
   className = "",
 }: {
-  snapshotBlock: number;
   className?: string;
 }) {
   return (
     <DisclaimerNote className={className}>
       <span className="font-semibold text-amber-100">Note on flow valuations.</span> Share transfers are converted to
-      assets at the snapshot-block exchange rate (block{" "}
-      <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>), because on-chain
-      Transfer events only report share amounts. Deposits, withdrawals, borrows, and repays use the actual asset
-      amounts recorded in each transaction.
+      assets at the exchange rate for the relevant market&rsquo;s snapshot block because transfers record only share
+      amounts. Deposits, withdrawals, borrows, and repays use the actual asset amounts recorded in each transaction.
     </DisclaimerNote>
   );
 }
@@ -2205,13 +2201,14 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
         )}
         <div className="mt-3 space-y-2">
           <DisclaimerNote>
-            <span className="font-semibold text-amber-100">Recovery calculations</span> are based on balances at Sonic
-            block <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest
-            accrued after this block is not included. Any negative pending balances are attributable to unaccounted
-            post-snapshot interest and may also reflect interest over-accrual related to the Stream Finance incident.
+            <span className="font-semibold text-amber-100">Recovery calculations</span> use chain-specific snapshot
+            blocks aligned to the same moment in time. The category reference block is{" "}
+            <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest accrued
+            after the snapshot is not included. Negative claim amounts may reflect unaccounted post-snapshot interest
+            or interest over-accrual related to the Stream Finance incident.
           </DisclaimerNote>
           <FeeShareTransferDisclaimer />
-          <FlowValuationDisclaimer snapshotBlock={snapshotBlock} />
+          <FlowValuationDisclaimer />
           {hasAirdrops ? <AirdropDisclaimer /> : null}
         </div>
       </div>

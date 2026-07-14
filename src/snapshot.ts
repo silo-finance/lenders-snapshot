@@ -499,8 +499,8 @@ export function parseSnapshot(root: RawRoot): ChainSnapshot[] {
   });
 }
 
-// Every silo in a snapshot is captured at the same block, so the first non-zero
-// value represents the snapshot block (the "from" / state block) used across the UI.
+// Snapshot blocks are timestamp-matched across chains, but block numbers differ.
+// Keep the first non-zero value as the category-level reference shown in the UI.
 function computeSnapshotBlock(chains: ChainSnapshot[]): number {
   for (const chain of chains) {
     for (const silo of chain.silos) {
