@@ -1038,6 +1038,79 @@ function matchesRowViewFilters(row: DirectLender | VaultDepositor, filters: RowV
   return true;
 }
 
+type LenderFilterContext = {
+  addressNeedle: string;
+  addressTypeFilter: string;
+  rowViewFilters: RowViewFilters;
+  hideTypeFilter?: boolean;
+};
+
+function anyRowViewFilterActive(filters: RowViewFilters): boolean {
+  return filters.details || filters.borrower || filters.negative || filters.airdrop;
+}
+
+function matchesAddressAndType(
+  row: DirectLender | VaultDepositor,
+  { addressNeedle, addressTypeFilter, hideTypeFilter = false }: LenderFilterContext,
+): boolean {
+  const addressMatches = addressNeedle ? row.address.toLowerCase().includes(addressNeedle) : true;
+  const typeMatches = hideTypeFilter || addressTypeFilter === "all" || row.addressType === addressTypeFilter;
+  return addressMatches && typeMatches;
+}
+
+function filterDirectLendersForTable(
+  rows: DirectLender[],
+  context: LenderFilterContext,
+): DirectLender[] {
+  const rowFilterActive = anyRowViewFilterActive(context.rowViewFilters);
+  return rows.filter(
+    (row) =>
+      matchesAddressAndType(row, context) &&
+      (!rowFilterActive || (!row.isVault && matchesRowViewFilters(row, context.rowViewFilters))),
+  );
+}
+
+function filterDepositors(rows: VaultDepositor[], context: LenderFilterContext): VaultDepositor[] {
+  return rows.filter(
+    (row) =>
+      matchesAddressAndType(row, context) &&
+      (!anyRowViewFilterActive(context.rowViewFilters) || matchesRowViewFilters(row, context.rowViewFilters)),
+  );
+}
+
+function countLendersFiltered(silos: SiloSnapshot[], context: LenderFilterContext): number {
+  const filterActive =
+    context.addressNeedle.length > 0 ||
+    (!context.hideTypeFilter && context.addressTypeFilter !== "all") ||
+    anyRowViewFilterActive(context.rowViewFilters);
+  if (!filterActive) {
+    return countLenders(silos);
+  }
+
+  let total = 0;
+  for (const silo of silos) {
+    for (const lender of silo.directLenders) {
+      if (!lender.isVault) {
+        total += filterDirectLendersForTable([lender], context).length;
+        continue;
+      }
+      const vault = silo.vaults.find(
+        (entry) => entry.address.toLowerCase() === lender.address.toLowerCase(),
+      );
+      if (vault && !isVaultWarning(vault)) {
+        continue;
+      }
+      total += filterDirectLendersForTable([lender], context).length;
+    }
+    for (const vault of silo.vaults) {
+      if (!isVaultWarning(vault)) {
+        total += filterDepositors(vault.depositors, context).length;
+      }
+    }
+  }
+  return total;
+}
+
 // Each filter's active highlight matches the color it represents elsewhere in the UI:
 // deposits/positive green, borrower amber, negative balances red, and airdrops fuchsia.
 const ROW_VIEW_FILTER_OPTIONS: Array<{ key: keyof RowViewFilters; label: string; activeClass: string }> = [
@@ -1407,7 +1480,6 @@ function HolderTable({
   silo,
   expanded,
   sortState,
-  tableTotals,
   onSort,
   onToggle,
   onJumpToVault,
@@ -1421,7 +1493,6 @@ function HolderTable({
   silo: SiloSnapshot;
   expanded: boolean;
   sortState: TableSortState;
-  tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
   onToggle: () => void;
   onJumpToVault: (vaultAddress: string) => void;
@@ -1432,11 +1503,13 @@ function HolderTable({
 }) {
   const isExpanded = forceExpanded || expanded;
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
-  const anyRowFilterActive =
-    rowViewFilters.details || rowViewFilters.borrower || rowViewFilters.negative || rowViewFilters.airdrop;
-  const tableRows = anyRowFilterActive
-    ? rows.filter((row) => !row.isVault && matchesRowViewFilters(row, rowViewFilters))
-    : rows;
+  const rowFilterActive = anyRowViewFilterActive(rowViewFilters);
+  const tableRows = filterDirectLendersForTable(rows, {
+    addressNeedle: "",
+    addressTypeFilter: "all",
+    rowViewFilters,
+  });
+  const tableTotals = sumDirectLenderTotals(tableRows);
 
   function toggleBreakdown(address: string) {
     setExpandedBreakdowns((current) => ({ ...current, [address]: !current[address] }));
@@ -1445,7 +1518,7 @@ function HolderTable({
   const metaTitle = (
     <>
       <h3 className="font-semibold text-white">
-        {silo.isTwoSided ? "Direct lenders/borrowers" : "Direct lenders"} ({rows.length})
+        {silo.isTwoSided ? "Direct lenders/borrowers" : "Direct lenders"} ({tableRows.length})
       </h3>
       <SectionNavButtons nextId={navNextId} />
     </>
@@ -1519,7 +1592,7 @@ function HolderTable({
               {tableRows.length === 0 ? (
                 <tr>
                   <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={silo.isTwoSided ? 6 : 5}>
-                    {anyRowFilterActive
+                    {rowFilterActive
                       ? "No direct lenders match the current filters."
                       : "No direct lenders match the current address filter."}
                   </td>
@@ -1664,7 +1737,6 @@ function DepositorTable({
   sortState,
   addressFilter,
   addressTypeFilter,
-  tableTotals,
   onSort,
   rowViewFilters,
   hideTypeFilter = false,
@@ -1675,24 +1747,23 @@ function DepositorTable({
   sortState: TableSortState;
   addressFilter: string;
   addressTypeFilter: string;
-  tableTotals: AggregateTotals;
   onSort: (key: TableSortKey) => void;
   rowViewFilters: RowViewFilters;
   hideTypeFilter?: boolean;
 }) {
   const [expandedBreakdowns, setExpandedBreakdowns] = useState<Record<string, boolean>>({});
   const needle = addressFilter.trim().toLowerCase();
-  const anyRowFilterActive =
-    rowViewFilters.details || rowViewFilters.borrower || rowViewFilters.negative || rowViewFilters.airdrop;
-  const visibleRows = rows.filter((row) => {
-    const addressMatches = needle ? row.address.toLowerCase().includes(needle) : true;
-    const typeMatches = hideTypeFilter || addressTypeFilter === "all" || row.addressType === addressTypeFilter;
-    return addressMatches && typeMatches;
-  });
+  const rowFilterActive = anyRowViewFilterActive(rowViewFilters);
   const filteredRows = sortDepositors(
-    anyRowFilterActive ? visibleRows.filter((row) => matchesRowViewFilters(row, rowViewFilters)) : visibleRows,
+    filterDepositors(rows, {
+      addressNeedle: needle,
+      addressTypeFilter,
+      rowViewFilters,
+      hideTypeFilter,
+    }),
     sortState,
   );
+  const tableTotals = sumDepositorTotals(filteredRows);
 
   function toggleBreakdown(address: string) {
     setExpandedBreakdowns((current) => ({ ...current, [address]: !current[address] }));
@@ -1729,7 +1800,7 @@ function DepositorTable({
             {filteredRows.length === 0 ? (
               <tr>
                 <td className="px-5 py-6 text-center text-sm text-slate-400" colSpan={5}>
-                  {anyRowFilterActive
+                  {rowFilterActive
                     ? "No vault depositors match the current filters."
                     : "No vault depositors match the current address filter."}
                 </td>
@@ -1908,6 +1979,12 @@ function VaultCard({
   const hasWarning = isVaultWarning(vault);
   const isExpanded = forceExpanded || expanded;
   const depositorTotals = sumDepositorTotals(vault.depositors);
+  const filteredDepositorCount = filterDepositors(vault.depositors, {
+    addressNeedle: addressFilter.trim().toLowerCase(),
+    addressTypeFilter,
+    rowViewFilters,
+    hideTypeFilter,
+  }).length;
   const vaultSharesValid =
     vault.vaultTotalSupply !== null && depositorTotals.shares === vault.vaultTotalSupply && vault.status === "ok";
 
@@ -1919,6 +1996,7 @@ function VaultCard({
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
           <h3 className={hasWarning ? "font-semibold text-amber-100" : "font-semibold text-emerald-100"}>
             {vault.name || "Unnamed SiloVault"}
+            {!hasWarning ? ` (${filteredDepositorCount})` : null}
           </h3>
           <AddressLink address={vault.address} chain={chain} />
           <SectionNavButtons nextId={navNextId} prevId={navPrevId} />
@@ -2025,7 +2103,6 @@ function VaultCard({
             rowViewFilters={rowViewFilters}
             silo={silo}
             sortState={depositorSort}
-            tableTotals={depositorTotals}
             onSort={(key) => setDepositorSort((current) => nextSortState(current, key))}
           />
           <div
@@ -2248,7 +2325,6 @@ function SiloDetailPanel({
   });
   const vaultWarnings = silo.vaults.filter(isVaultWarning).length;
   const hasVisibleFilterResults = !filterActive || visibleLenders.length > 0 || visibleVaults.length > 0;
-  const directTableTotals = sumDirectLenderTotals(silo.directLenders);
   const tableSectionIds = ["direct-lenders", ...visibleVaults.map((vault) => vaultElementId(vault.address))];
 
   function expandAll() {
@@ -2403,7 +2479,6 @@ function SiloDetailPanel({
           rowViewFilters={rowViewFilters}
           silo={silo}
           sortState={directSort}
-          tableTotals={directTableTotals}
           onJumpToVault={jumpToVault}
           onExport={() => {
             const dec = silo.inputToken.decimals;
@@ -2499,8 +2574,15 @@ function ExplorerView() {
   const [directExpanded, setDirectExpanded] = useState(true);
   const [expandedVaults, setExpandedVaults] = useState<Record<string, boolean>>({});
 
-  const categoryLenderCount = countLenders(allPairs.map((pair) => pair.silo));
   const addressNeedle = addressFilter.trim().toLowerCase();
+  const categoryLenderCount = countLendersFiltered(
+    allPairs.map((pair) => pair.silo),
+    {
+      addressNeedle,
+      addressTypeFilter,
+      rowViewFilters,
+    },
+  );
   const matchedPairs = addressNeedle
     ? allPairs.filter(({ silo }) => siloMatchesAddress(silo, addressNeedle))
     : allPairs;
