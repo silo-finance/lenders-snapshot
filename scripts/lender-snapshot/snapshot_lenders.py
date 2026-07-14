@@ -2520,6 +2520,19 @@ def main() -> int:
             "Include them in this run or restore their data/<slug>.json files."
         )
 
+    # apply_airdrops.py reads data/<slug>.json by convention; a custom "output"
+    # filename on a cascade category would make the cascade silently read stale data.
+    misrouted = [
+        cascade_slug
+        for cascade_slug in CASCADE_CATEGORIES
+        if category_output_path(cascade_slug, CATEGORIES[cascade_slug]).name != f"{cascade_slug}.json"
+    ]
+    if misrouted:
+        raise SystemExit(
+            "Cascade categories must write to data/<slug>.json (apply_airdrops.py reads "
+            f"those paths); remove the custom 'output' from: {', '.join(misrouted)}"
+        )
+
     global _PROGRESS
     selected_categories = {slug: CATEGORIES[slug] for slug in selected}
     budget = compute_run_budget(selected_categories)
