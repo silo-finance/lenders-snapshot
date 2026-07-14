@@ -124,61 +124,89 @@ function downloadCsv(filename: string, rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
-const PENDING_CSV_HEADER = ["Network", "Silo", "Vault", "Address", "Type", "Pending assets", "Symbol"];
+const EXPORT_CSV_HEADER = [
+  "Network",
+  "Silo",
+  "Vault",
+  "Address",
+  "Type",
+  "Net Deposited Assets",
+  "Debt",
+  "Claim Amount",
+  "Symbol",
+];
 
 // Excel/Sheets in comma-decimal locales (e.g. pl-PL) treat "." as a thousands
 // separator and silently drop it, turning 505857.957484 into 505857957484. The
 // CSV field delimiter is ";", so a decimal comma is unambiguous there; the
 // separator is user-selectable via the export panel radio.
-function formatPendingForCsv(value: bigint, decimals: number, decimal: CsvDecimal): string {
+function formatAmountForCsv(value: bigint, decimals: number, decimal: CsvDecimal): string {
   const plain = formatUnitsPlain(value, decimals);
   return decimal === "," ? plain.replace(".", ",") : plain;
 }
 
-// One row-emitter reused by every pending-assets export. `pairs` are the (chain, silo) scopes
-// to dump; each silo contributes its non-vault direct lenders plus every vault depositor.
-// Pending is stored in the silo's underlying-asset units, so it is always formatted with
-// `silo.inputToken.decimals` (never the vault share-token decimals).
-function buildPendingCsv(
+type ExportCsvScope = {
+  includeDirectLenders?: boolean;
+  includeVaultDepositors?: boolean;
+  vaultAddress?: string;
+};
+
+// One row-emitter reused by every position export. `pairs` are the (chain, silo) scopes
+// to dump; scope options can limit output to direct lenders or one vault's depositors.
+// All exported amounts use the silo's underlying-asset units and decimals.
+function buildExportCsv(
   pairs: { chain: ChainSnapshot; silo: SiloSnapshot }[],
   decimal: CsvDecimal,
+  scope: ExportCsvScope = {},
 ): string[][] {
-  const rows: string[][] = [PENDING_CSV_HEADER];
+  const { includeDirectLenders = true, includeVaultDepositors = true, vaultAddress } = scope;
+  const rows: string[][] = [EXPORT_CSV_HEADER];
   for (const { chain, silo } of pairs) {
     const dec = silo.inputToken.decimals;
-    for (const lender of silo.directLenders) {
-      // Vault placeholder rows are expanded through their depositors below.
-      if (lender.isVault) {
-        continue;
-      }
-      rows.push([
-        chain.label,
-        silo.address,
-        "",
-        lender.address,
-        lender.addressType,
-        formatPendingForCsv(lender.pendingAssets, dec, decimal),
-        silo.inputToken.symbol,
-      ]);
-    }
-    for (const vault of silo.vaults) {
-      for (const depositor of vault.depositors) {
+    if (includeDirectLenders) {
+      for (const lender of silo.directLenders) {
+        // Vault placeholder rows are expanded through their depositors below.
+        if (lender.isVault) {
+          continue;
+        }
         rows.push([
           chain.label,
           silo.address,
-          vault.address,
-          depositor.address,
-          depositor.addressType,
-          formatPendingForCsv(depositor.pendingAssets, dec, decimal),
+          "",
+          lender.address,
+          lender.addressType,
+          formatAmountForCsv(lender.totalAssets, dec, decimal),
+          formatAmountForCsv(lender.debtAtSnapshot, dec, decimal),
+          formatAmountForCsv(lender.pendingAssets, dec, decimal),
           silo.inputToken.symbol,
         ]);
+      }
+    }
+    if (includeVaultDepositors) {
+      for (const vault of silo.vaults) {
+        if (vaultAddress && vault.address !== vaultAddress) {
+          continue;
+        }
+        for (const depositor of vault.depositors) {
+          rows.push([
+            chain.label,
+            silo.address,
+            vault.address,
+            depositor.address,
+            depositor.addressType,
+            formatAmountForCsv(depositor.attributedSiloAssets, dec, decimal),
+            formatAmountForCsv(ZERO, dec, decimal),
+            formatAmountForCsv(depositor.pendingAssets, dec, decimal),
+            silo.inputToken.symbol,
+          ]);
+        }
       }
     }
   }
   return rows;
 }
 
-// Lets the user pick the decimal separator used for "Pending assets" cells so
+// Lets the user pick the decimal separator used for exported amount cells so
 // the CSV opens cleanly in both period- and comma-decimal spreadsheet locales.
 function DecimalSeparatorRadio({
   decimal,
@@ -212,7 +240,7 @@ function DecimalSeparatorRadio({
   );
 }
 
-// Category-wide pending-assets export. Lives between the silo list and the
+// Category-wide position export. Lives between the silo list and the
 // single-silo details so it's clear the download spans the whole category
 // rather than just the selected silo.
 function ExportAllPanel({
@@ -237,7 +265,7 @@ function ExportAllPanel({
             const pairs = chains.flatMap((snapshotChain) =>
               snapshotChain.silos.map((snapshotSilo) => ({ chain: snapshotChain, silo: snapshotSilo })),
             );
-            downloadCsv(`${slug}-all-pending.csv`, buildPendingCsv(pairs, csvDecimal));
+            downloadCsv(`${slug}-all-pending.csv`, buildExportCsv(pairs, csvDecimal));
           }}
         >
           Export all (CSV)
@@ -482,19 +510,15 @@ function FeeShareTransferDisclaimer({ className = "" }: { className?: string }) 
 }
 
 function FlowValuationDisclaimer({
-  snapshotBlock,
   className = "",
 }: {
-  snapshotBlock: number;
   className?: string;
 }) {
   return (
     <DisclaimerNote className={className}>
       <span className="font-semibold text-amber-100">Note on flow valuations.</span> Share transfers are converted to
-      assets at the snapshot-block exchange rate (block{" "}
-      <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>), because on-chain
-      Transfer events only report share amounts. Deposits, withdrawals, borrows, and repays use the actual asset
-      amounts recorded in each transaction.
+      assets at the exchange rate for the relevant market&rsquo;s snapshot block because transfers record only share
+      amounts. Deposits, withdrawals, borrows, and repays use the actual asset amounts recorded in each transaction.
     </DisclaimerNote>
   );
 }
@@ -1378,6 +1402,9 @@ function PendingAssetsBreakdown({
                     ) : kind === "airdrop" ? (
                       <>
                         {sign} airdrop
+                        {event.airdropPart && event.airdropParts && event.airdropParts > 1
+                          ? ` ${event.airdropPart} of ${event.airdropParts}`
+                          : ""}
                       </>
                     ) : (
                       <>
@@ -1946,8 +1973,7 @@ function TwoWayIcon({ className = "" }: { className?: string }) {
 }
 
 function VaultCard({
-  chain,
-  networkLabel,
+  snapshotChain,
   vault,
   silo,
   expanded,
@@ -1960,8 +1986,7 @@ function VaultCard({
   navPrevId,
   navNextId,
 }: {
-  chain: string;
-  networkLabel: string;
+  snapshotChain: ChainSnapshot;
   vault: VaultSnapshot;
   silo: SiloSnapshot;
   expanded: boolean;
@@ -1974,6 +1999,7 @@ function VaultCard({
   navPrevId?: string;
   navNextId?: string;
 }) {
+  const chain = snapshotChain.chain;
   const { decimal: csvDecimal } = useCsvFormat();
   const [depositorSort, setDepositorSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const hasWarning = isVaultWarning(vault);
@@ -2007,20 +2033,13 @@ function VaultCard({
               className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10"
               type="button"
               onClick={() => {
-                const dec = silo.inputToken.decimals;
-                const rows = [
-                  PENDING_CSV_HEADER,
-                  ...vault.depositors.map((depositor) => [
-                    networkLabel,
-                    silo.address,
-                    vault.address,
-                    depositor.address,
-                    depositor.addressType,
-                    formatPendingForCsv(depositor.pendingAssets, dec, csvDecimal),
-                    silo.inputToken.symbol,
-                  ]),
-                ];
-                downloadCsv(`${chain}-${vault.address}-depositors.csv`, rows);
+                downloadCsv(
+                  `${chain}-${vault.address}-depositors.csv`,
+                  buildExportCsv([{ chain: snapshotChain, silo }], csvDecimal, {
+                    includeDirectLenders: false,
+                    vaultAddress: vault.address,
+                  }),
+                );
               }}
             >
               Export CSV
@@ -2118,9 +2137,20 @@ function VaultCard({
   );
 }
 
+function categoryHasAirdrops(chains: ChainSnapshot[]): boolean {
+  return chains.some((chain) =>
+    chain.silos.some(
+      (silo) =>
+        silo.directLenders.some((lender) => lender.totalAirdrops > ZERO) ||
+        silo.vaults.some((vault) => vault.depositors.some((depositor) => depositor.totalAirdrops > ZERO)),
+    ),
+  );
+}
+
 function AppHeader({ subtitle }: { subtitle?: string }) {
-  const { slug, title, description, snapshotBlock } = useActiveCategory();
+  const { slug, title, description, snapshotBlock, chains } = useActiveCategory();
   const [descriptionOpen, setDescriptionOpen] = useState(false);
+  const hasAirdrops = categoryHasAirdrops(chains);
   return (
     <header className="border-b border-white/10 pb-4">
       <div>
@@ -2171,14 +2201,15 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
         )}
         <div className="mt-3 space-y-2">
           <DisclaimerNote>
-            <span className="font-semibold text-amber-100">Recovery calculations</span> are based on balances at Sonic
-            block <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest
-            accrued after this block is not included. Any negative pending balances are attributable to unaccounted
-            post-snapshot interest and may also reflect interest over-accrual related to the Stream Finance incident.
+            <span className="font-semibold text-amber-100">Recovery calculations</span> use chain-specific snapshot
+            blocks aligned to the same moment in time. The category reference block is{" "}
+            <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest accrued
+            after the snapshot is not included. Negative claim amounts may reflect unaccounted post-snapshot interest
+            or interest over-accrual related to the Stream Finance incident.
           </DisclaimerNote>
           <FeeShareTransferDisclaimer />
-          <FlowValuationDisclaimer snapshotBlock={snapshotBlock} />
-          {slug === "trevee" ? <AirdropDisclaimer /> : null}
+          <FlowValuationDisclaimer />
+          {hasAirdrops ? <AirdropDisclaimer /> : null}
         </div>
       </div>
     </header>
@@ -2481,22 +2512,10 @@ function SiloDetailPanel({
           sortState={directSort}
           onJumpToVault={jumpToVault}
           onExport={() => {
-            const dec = silo.inputToken.decimals;
-            const rows = [
-              PENDING_CSV_HEADER,
-              ...silo.directLenders
-                .filter((row) => !row.isVault)
-                .map((row) => [
-                  chain.label,
-                  silo.address,
-                  "",
-                  row.address,
-                  row.addressType,
-                  formatPendingForCsv(row.pendingAssets, dec, csvDecimal),
-                  silo.inputToken.symbol,
-                ]),
-            ];
-            downloadCsv(`${chain.chain}-${silo.address}-direct-lenders.csv`, rows);
+            downloadCsv(
+              `${chain.chain}-${silo.address}-direct-lenders.csv`,
+              buildExportCsv([{ chain, silo }], csvDecimal, { includeVaultDepositors: false }),
+            );
           }}
           onSort={(key) => setDirectSort((current) => nextSortState(current, key))}
           onToggle={() => setDirectExpanded((current) => !current)}
@@ -2523,8 +2542,6 @@ function SiloDetailPanel({
                 key={vault.address}
                 addressFilter={addressFilter}
                 addressTypeFilter={addressTypeFilter}
-                chain={chain.chain}
-                networkLabel={chain.label}
                 expanded={forceExpanded || (expandedVaults[vault.address] ?? index < DEFAULT_EXPANDED_LIMIT)}
                 forceExpanded={forceExpanded}
                 hideTypeFilter={!showTypeFilter}
@@ -2532,6 +2549,7 @@ function SiloDetailPanel({
                 navPrevId={tableSectionIds[index]}
                 rowViewFilters={rowViewFilters}
                 silo={silo}
+                snapshotChain={chain}
                 vault={vault}
                 onToggle={() =>
                   setExpandedVaults((current) => ({

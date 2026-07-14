@@ -2482,12 +2482,6 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
     if completed == 0:
         print(f"[done] category '{slug}': no silos configured")
     else:
-        # Off-chain distributions are applied only after every silo has been merged. The
-        # applier is idempotent, so standalone and scanner-driven runs produce the same JSON.
-        from apply_airdrops import AIRDROPS, apply_category
-
-        if slug in AIRDROPS:
-            apply_category(slug, output_path)
         total_elapsed = time.monotonic() - started_at
         print(f"[done] category '{slug}': {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
     return completed
@@ -2508,6 +2502,37 @@ def main() -> int:
         raise SystemExit(f"Unknown category slug(s): {', '.join(unknown)}. Available: {available}")
     selected = requested
 
+    # The airdrop cascade at the end of the run reads and rewrites every cascade
+    # category together, so each one must be available: either scanned in this run
+    # or already present on disk. Fail fast instead of crashing after a long scan.
+    from apply_airdrops import CATEGORY_ORDER as CASCADE_CATEGORIES
+
+    missing_for_cascade = [
+        cascade_slug
+        for cascade_slug in CASCADE_CATEGORIES
+        if cascade_slug not in selected
+        and not category_output_path(cascade_slug, CATEGORIES[cascade_slug]).exists()
+    ]
+    if missing_for_cascade:
+        raise SystemExit(
+            "The airdrop cascade needs snapshot data for every cascade category "
+            f"({', '.join(CASCADE_CATEGORIES)}). Missing: {', '.join(missing_for_cascade)}. "
+            "Include them in this run or restore their data/<slug>.json files."
+        )
+
+    # apply_airdrops.py reads data/<slug>.json by convention; a custom "output"
+    # filename on a cascade category would make the cascade silently read stale data.
+    misrouted = [
+        cascade_slug
+        for cascade_slug in CASCADE_CATEGORIES
+        if category_output_path(cascade_slug, CATEGORIES[cascade_slug]).name != f"{cascade_slug}.json"
+    ]
+    if misrouted:
+        raise SystemExit(
+            "Cascade categories must write to data/<slug>.json (apply_airdrops.py reads "
+            f"those paths); remove the custom 'output' from: {', '.join(misrouted)}"
+        )
+
     global _PROGRESS
     selected_categories = {slug: CATEGORIES[slug] for slug in selected}
     budget = compute_run_budget(selected_categories)
@@ -2521,6 +2546,12 @@ def main() -> int:
     if total_completed == 0:
         print("[done] no silos configured")
     else:
+        # Apply off-chain distributions only after every requested category has been
+        # fully merged. The cascade reads and updates Trevee, Pendle, and Stream
+        # together, and is idempotent across standalone and scanner-driven runs.
+        from apply_airdrops import apply_airdrops
+
+        apply_airdrops()
         print(f"[done] all categories complete: {total_completed} silo(s) total")
     return 0
 

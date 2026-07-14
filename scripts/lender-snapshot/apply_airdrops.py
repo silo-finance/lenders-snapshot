@@ -3,7 +3,8 @@
 
 The operation is deterministic and idempotent: configured airdrop rows are
 removed first, pending balances are recomputed from the remaining flows, and
-the CSV allocations are then applied again.
+the CSV allocations are then applied again across the configured category
+cascade.
 """
 
 from __future__ import annotations
@@ -23,25 +24,47 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR / "data"
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
-AIRDROPS: dict[str, list[dict[str, Any]]] = {
-    "trevee": [
-        {
-            "id": "eth-snapshot",
-            "csv": "airdrops/eth-snapshot-airdrops.csv",
-            "decimals": 18,
-            "silos": ["0x219656f33c58488d09d518badf50aa8cdcaca2aa"],  # WETH, silo_id=26
-        },
-        {
-            "id": "usdc-snapshot",
-            "csv": "airdrops/usdc-snapshot-airdrops.csv",
-            "decimals": 6,
-            "silos": [
-                "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de",  # USDC, silo_id=23
-                "0x4935fadb17df859667cc4f7bfe6a8cb24f86f8d0",  # USDC, silo_id=55
+CATEGORY_ORDER = ("trevee", "pendle", "stream")
+
+AIRDROPS: list[dict[str, Any]] = [
+    {
+        "id": "eth-snapshot",
+        "csv": "airdrops/eth-snapshot-airdrops.csv",
+        "decimals": 18,
+        "categories": {
+            "trevee": ["0x219656f33c58488d09d518badf50aa8cdcaca2aa"],  # WETH
+            "pendle": [
+                "0xcd95a588c0190bf9810381a19ecad8bc8306d7f2",  # WETH
+                "0x08c320a84a59c6f533e0dca655cf497594bca1f9",  # WETH
+                "0x24c74b30d1a4261608e84bf5a618693032681dac",  # scETH
             ],
         },
-    ],
-}
+    },
+    {
+        "id": "usdc-snapshot",
+        "csv": "airdrops/usdc-snapshot-airdrops.csv",
+        "decimals": 6,
+        "categories": {
+            "trevee": [
+                "0x5954ce6671d97d24b782920ddcdbb4b1e63ab2de",  # USDC
+                "0x4935fadb17df859667cc4f7bfe6a8cb24f86f8d0",  # USDC
+            ],
+            "pendle": [
+                "0x4f55e28d36b30a638c3aa1d5cbf9c4ccb3831506",  # USDC
+                "0x6030ad53d90ec2fb67f3805794dbb3fa5fd6eb64",  # USDC
+            ],
+            "stream": [
+                "0xacb7432a4bb15402ce2afe0a7c9d5b738604f6f9",  # Arbitrum USDC
+                "0x672b77f0538b53dc117c9ddfeb7377a678d321a6",  # Avalanche USDC
+                "0x9c4d4800b489d217724155399cd64d07eae603f3",  # Avalanche AUSD
+                "0xe0fc62e685e2b3183b4b88b1fe674cfec55a63f7",  # Avalanche USDt
+                "0x1de3ba67da79a81bc0c3922689c98550e4bd9bc2",  # Ethereum USDC
+                "0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1",  # Sonic USDC
+                "0xb1412442aa998950f2f652667d5eba35fe66e43f",  # Sonic scUSD
+            ],
+        },
+    },
+]
 
 
 @dataclass(frozen=True)
@@ -203,25 +226,37 @@ def _position_index(root: dict[str, Any], target_silos: set[str]) -> dict[str, l
     return index
 
 
-def _append_airdrop(position: Position, airdrop_id: str, amount: int) -> None:
+def _append_airdrop(
+    position: Position,
+    airdrop_id: str,
+    amount: int,
+    part: int | None = None,
+    parts: int | None = None,
+) -> None:
     rows = position.entry.get("airdrops")
     if not isinstance(rows, list):
         rows = []
         position.entry["airdrops"] = rows
-    rows.append(
-        {
-            "block_number": position.snapshot_block,
-            "block_timestamp": position.snapshot_block_timestamp,
-            "tx_hash": f"airdrop:{airdrop_id}",
-            "log_index": 0,
-            "assets": str(amount),
-            "shares": "0",
-        }
-    )
+    row = {
+        "block_number": position.snapshot_block,
+        "block_timestamp": position.snapshot_block_timestamp,
+        "tx_hash": f"airdrop:{airdrop_id}",
+        "log_index": 0,
+        "assets": str(amount),
+        "shares": "0",
+    }
+    if part is not None and parts is not None and parts > 1:
+        row["airdrop_part"] = part
+        row["airdrop_parts"] = parts
+    rows.append(row)
     _recompute_entry(position.entry)
 
 
-def _apply_allocation(positions: list[Position], airdrop_id: str, amount: int) -> dict[str, int]:
+def _plan_category_allocation(
+    positions: list[Position],
+    amount: int,
+    absorb_remainder: bool,
+) -> tuple[list[tuple[Position, int]], int]:
     ordered = sorted(
         positions,
         key=lambda position: (
@@ -231,20 +266,74 @@ def _apply_allocation(positions: list[Position], airdrop_id: str, amount: int) -
         ),
     )
     remaining = amount
-    applied_by_silo: dict[str, int] = {}
+    allocations: list[tuple[Position, int]] = []
     for index, position in enumerate(ordered):
         if remaining <= 0:
             break
-        is_last = index == len(ordered) - 1
-        allocation = remaining if is_last else min(remaining, max(_to_int(position.entry.get("pending_assets")), 0))
+        is_final_sink = absorb_remainder and index == len(ordered) - 1
+        allocation = (
+            remaining
+            if is_final_sink
+            else min(remaining, max(_to_int(position.entry.get("pending_assets")), 0))
+        )
         if allocation <= 0:
             continue
-        _append_airdrop(position, airdrop_id, allocation)
-        applied_by_silo[position.silo_address] = applied_by_silo.get(position.silo_address, 0) + allocation
+        allocations.append((position, allocation))
         remaining -= allocation
+    return allocations, remaining
+
+
+def _apply_address_allocation(
+    indexes: dict[str, dict[str, list[Position]]],
+    address: str,
+    airdrop_id: str,
+    amount: int,
+) -> tuple[list[dict[str, Any]], int]:
+    candidates = [
+        (category, indexes[category][address])
+        for category in CATEGORY_ORDER
+        if address in indexes.get(category, {})
+    ]
+    if not candidates:
+        return [], amount
+
+    remaining = amount
+    chunks: list[tuple[str, list[tuple[Position, int]]]] = []
+    for index, (category, positions) in enumerate(candidates):
+        allocations, remaining = _plan_category_allocation(
+            positions,
+            remaining,
+            absorb_remainder=index == len(candidates) - 1,
+        )
+        if allocations:
+            chunks.append((category, allocations))
+        if remaining <= 0:
+            break
+
     if remaining:
-        raise RuntimeError(f"Internal error: {remaining} airdrop units were not allocated")
-    return applied_by_silo
+        raise RuntimeError(f"Internal error: {remaining} airdrop units were not allocated for {address}")
+
+    total_parts = len(chunks)
+    applied: list[dict[str, Any]] = []
+    for part, (category, allocations) in enumerate(chunks, start=1):
+        for position, allocation in allocations:
+            _append_airdrop(
+                position,
+                airdrop_id,
+                allocation,
+                part=part if total_parts > 1 else None,
+                parts=total_parts if total_parts > 1 else None,
+            )
+            applied.append(
+                {
+                    "category": category,
+                    "silo": position.silo_address,
+                    "amount": allocation,
+                    "part": part,
+                    "parts": total_parts,
+                }
+            )
+    return applied, 0
 
 
 def _atomic_write_json(path: Path, root: dict[str, Any]) -> None:
@@ -265,62 +354,95 @@ def _atomic_write_json(path: Path, root: dict[str, Any]) -> None:
         raise
 
 
-def apply_category(slug: str, output_path: Path | None = None) -> dict[str, Any]:
-    configs = AIRDROPS.get(slug)
-    if not configs:
-        raise ValueError(f"No airdrops configured for category {slug!r}")
-    path = output_path or DATA_DIR / f"{slug}.json"
-    if not path.exists():
-        raise FileNotFoundError(f"Snapshot JSON not found: {path}")
-    root = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(root, dict):
-        raise ValueError(f"{path}: snapshot root must be an object")
+def _load_roots(data_dir: Path) -> tuple[dict[str, Path], dict[str, dict[str, Any]]]:
+    paths: dict[str, Path] = {}
+    roots: dict[str, dict[str, Any]] = {}
+    for category in CATEGORY_ORDER:
+        path = data_dir / f"{category}.json"
+        if not path.exists():
+            raise FileNotFoundError(f"Snapshot JSON not found: {path}")
+        root = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(root, dict):
+            raise ValueError(f"{path}: snapshot root must be an object")
+        paths[category] = path
+        roots[category] = root
+    return paths, roots
 
-    _strip_configured_airdrops(root, {str(config["id"]).lower() for config in configs})
-    report: dict[str, Any] = {"category": slug, "airdrops": []}
+
+def apply_airdrops(
+    data_dir: Path = DATA_DIR,
+    configs: list[dict[str, Any]] = AIRDROPS,
+) -> dict[str, Any]:
+    paths, roots = _load_roots(data_dir)
+    configured_ids = {str(config["id"]).lower() for config in configs}
+    for root in roots.values():
+        _strip_configured_airdrops(root, configured_ids)
+
+    report: dict[str, Any] = {"categories": list(CATEGORY_ORDER), "airdrops": []}
     for config in configs:
         airdrop_id = str(config["id"]).lower()
-        csv_path = SCRIPT_DIR / str(config["csv"])
+        csv_path = Path(str(config["csv"]))
+        if not csv_path.is_absolute():
+            csv_path = SCRIPT_DIR / csv_path
         allocations = _read_allocations(csv_path, int(config["decimals"]))
-        index = _position_index(root, {str(address).lower() for address in config["silos"]})
+        category_silos = config.get("categories")
+        if not isinstance(category_silos, dict):
+            raise ValueError(f"Airdrop {airdrop_id!r} must define category silo lists")
+        indexes = {
+            category: _position_index(
+                roots[category],
+                {str(address).lower() for address in category_silos.get(category, [])},
+            )
+            for category in CATEGORY_ORDER
+        }
         unmatched: list[str] = []
+        applied_by_category: dict[str, int] = {}
         applied_by_silo: dict[str, int] = {}
         matched = 0
         for address, amount in allocations:
-            positions = index.get(address)
-            if not positions:
+            applied, remaining = _apply_address_allocation(indexes, address, airdrop_id, amount)
+            if remaining:
                 unmatched.append(address)
                 continue
             matched += 1
-            for silo_address, applied in _apply_allocation(positions, airdrop_id, amount).items():
-                applied_by_silo[silo_address] = applied_by_silo.get(silo_address, 0) + applied
+            for item in applied:
+                category = str(item["category"])
+                silo_address = str(item["silo"])
+                applied_amount = int(item["amount"])
+                applied_by_category[category] = applied_by_category.get(category, 0) + applied_amount
+                silo_key = f"{category}:{silo_address}"
+                applied_by_silo[silo_key] = applied_by_silo.get(silo_key, 0) + applied_amount
         item = {
             "id": airdrop_id,
             "rows": len(allocations),
             "matched": matched,
             "unmatched": unmatched,
+            "applied_by_category": applied_by_category,
             "applied_by_silo": applied_by_silo,
         }
         report["airdrops"].append(item)
 
-    _atomic_write_json(path, root)
+    for category in CATEGORY_ORDER:
+        _atomic_write_json(paths[category], roots[category])
+
     for item in report["airdrops"]:
         print(
             f"[airdrop] {item['id']}: matched={item['matched']}/{item['rows']} "
             f"unmatched={len(item['unmatched'])}"
         )
-        for silo_address, amount in sorted(item["applied_by_silo"].items()):
-            print(f"[airdrop]   silo={silo_address} applied_raw={amount}")
+        for category, amount in sorted(item["applied_by_category"].items()):
+            print(f"[airdrop]   category={category} applied_raw={amount}")
+        for silo_key, amount in sorted(item["applied_by_silo"].items()):
+            print(f"[airdrop]   silo={silo_key} applied_raw={amount}")
         for address in item["unmatched"]:
             print(f"[airdrop]   unmatched={address}")
     return report
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Apply configured airdrops to a snapshot category.")
-    parser.add_argument("category", choices=sorted(AIRDROPS))
-    args = parser.parse_args()
-    apply_category(args.category)
+    parser = argparse.ArgumentParser(description="Apply configured airdrops across snapshot categories.")
+    parser.parse_args()
+    apply_airdrops()
     return 0
 
 

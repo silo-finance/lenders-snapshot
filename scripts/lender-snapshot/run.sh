@@ -25,6 +25,8 @@ docker build -t "$IMAGE" "$HERE" 1>&2
 ENV_ARGS=()
 if [ -n "${RPC_URL:-}" ]; then ENV_ARGS+=(-e "RPC_URL=${RPC_URL}"); fi
 if [ -n "${SONIC_RPC_URL:-}" ]; then ENV_ARGS+=(-e "SONIC_RPC_URL=${SONIC_RPC_URL}"); fi
+if [ -n "${ARBITRUM_RPC_URL:-}" ]; then ENV_ARGS+=(-e "ARBITRUM_RPC_URL=${ARBITRUM_RPC_URL}"); fi
+if [ -n "${AVALANCHE_RPC_URL:-}" ]; then ENV_ARGS+=(-e "AVALANCHE_RPC_URL=${AVALANCHE_RPC_URL}"); fi
 if [ -n "${ETHEREUM_RPC_URL:-}" ]; then ENV_ARGS+=(-e "ETHEREUM_RPC_URL=${ETHEREUM_RPC_URL}"); fi
 if [ -n "${THE_GRAPH_API_KEY:-}" ]; then ENV_ARGS+=(-e "THE_GRAPH_API_KEY=${THE_GRAPH_API_KEY}"); fi
 

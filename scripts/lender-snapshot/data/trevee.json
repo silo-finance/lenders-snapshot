@@ -813,18 +813,20 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "-172158187995735",
+            "pending_assets": "0",
             "airdrops": [
               {
                 "block_number": 54144258,
                 "block_timestamp": 1762515196,
                 "tx_hash": "airdrop:eth-snapshot",
                 "log_index": 0,
-                "assets": "683000000000000",
-                "shares": "0"
+                "assets": "510841812004265",
+                "shares": "0",
+                "airdrop_part": 1,
+                "airdrop_parts": 2
               }
             ],
-            "total_airdrops": "683000000000000"
+            "total_airdrops": "510841812004265"
           },
           "0xba1333333333a1ba1108e8412f11850a5c319ba9": {
             "address_type": "contract_other",
@@ -1077,18 +1079,20 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "-330549837310",
+            "pending_assets": "0",
             "airdrops": [
               {
                 "block_number": 54144258,
                 "block_timestamp": 1762515196,
                 "tx_hash": "airdrop:eth-snapshot",
                 "log_index": 0,
-                "assets": "2000000000000",
-                "shares": "0"
+                "assets": "1669450162690",
+                "shares": "0",
+                "airdrop_part": 1,
+                "airdrop_parts": 2
               }
             ],
-            "total_airdrops": "2000000000000"
+            "total_airdrops": "1669450162690"
           },
           "0xd77ba56bbfa57515e4eaa6b55225ca82b57b58d3": {
             "address_type": "eoa",
@@ -1177,18 +1181,20 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "-234409016844129336",
+            "pending_assets": "0",
             "airdrops": [
               {
                 "block_number": 54144258,
                 "block_timestamp": 1762515196,
                 "tx_hash": "airdrop:eth-snapshot",
                 "log_index": 0,
-                "assets": "939670000000000000",
-                "shares": "0"
+                "assets": "705260983155870664",
+                "shares": "0",
+                "airdrop_part": 1,
+                "airdrop_parts": 2
               }
             ],
-            "total_airdrops": "939670000000000000"
+            "total_airdrops": "705260983155870664"
           },
           "0xe99746a641dc877c5142f47d217d75bd53bbc402": {
             "address_type": "eoa",
@@ -1274,7 +1280,9 @@
                 "tx_hash": "airdrop:eth-snapshot",
                 "log_index": 0,
                 "assets": "450367909868",
-                "shares": "0"
+                "shares": "0",
+                "airdrop_part": 1,
+                "airdrop_parts": 2
               }
             ],
             "total_airdrops": "450367909868"
@@ -1470,18 +1478,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-3180000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "3180000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "3180000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x3bc92a01f6b7cb52ca1bb18078b0e72c97b898c0": {
                 "address_type": "eoa",
@@ -1495,18 +1494,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-127895000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "127895000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "127895000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x7720decec18d58307b2e0bbf8eb529a598a7d421": {
                 "address_type": "eoa",
@@ -1545,18 +1535,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-21455000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "21455000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "21455000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x9bb46e25b9701ef0674a068033b443434ab24596": {
                 "address_type": "eoa",
@@ -1570,18 +1551,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-396553000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "396553000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "396553000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xaba35edf7ba2756930cb8b03fdc7294933875922": {
                 "address_type": "eoa",
@@ -1595,18 +1567,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-2633000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "2633000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "2633000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xac207c599e4a07f9a8cc5e9cf49b02e20ab7ba69": {
                 "address_type": "eoa",
@@ -1620,18 +1583,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-1390858000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "1390858000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "1390858000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xbd2b82f10a13a43515553c394c951f2191cda70d": {
                 "address_type": "eoa",
@@ -1645,18 +1599,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-91174000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "91174000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "91174000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xd8454b3787c6aab1cf2846af7882f8c440c3903d": {
                 "address_type": "gnosis_safe",
@@ -1670,18 +1615,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-4195000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "4195000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "4195000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xdfcb6b1f3d6b671099ba0f483d2c6632ce3314c2": {
                 "address_type": "eoa",
@@ -1695,18 +1631,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-69557000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "69557000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "69557000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xeda49bce2f38d284f839be1f4f2e23e6c7cc7dbd": {
                 "address_type": "eoa",
@@ -1720,18 +1647,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-80549632090132",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "80549632090132",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "80549632090132"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xf29593ac58c78ecc0bf1d0e8b55e819c5b521ae4": {
                 "address_type": "eoa",
@@ -1745,18 +1663,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-2967673000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "2967673000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "2967673000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x1f80ad29759dff3133f49b077b920290552eee83": {
                 "address_type": "eoa",
@@ -1781,18 +1690,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-495706000000000000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:eth-snapshot",
-                    "log_index": 0,
-                    "assets": "495706000000000000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "495706000000000000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               }
             },
             "status": "ok"
@@ -19471,18 +19371,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-219100",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "219100",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "219100"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x216be7c987b81a71bc0198b98752bb4a51be18ec": {
                 "address_type": "eoa",
@@ -27815,18 +27706,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-110500",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "110500",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "110500"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xf3b8d66a259e3f2adfdf51913b553ae4d4215e06": {
                 "address_type": "eoa",
@@ -31050,18 +30932,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-1497000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "1497000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "1497000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x3b8d5ec7c29373bd03f43fe2257d73ccc7b0fa38": {
                 "address_type": "eoa",
@@ -31306,18 +31179,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-6688900",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "6688900",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "6688900"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x2ad09a2c059dc35ba16a16ac5ebbf37c62ec39e0": {
                 "address_type": "eoa",
@@ -33621,18 +33485,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-1470200",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "1470200",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "1470200"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x015f9945f2925a84073f13ae761f4da3fd91f33e": {
                 "address_type": "eoa",
@@ -34536,18 +34391,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-358800",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "358800",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "358800"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x04ba30128c1c3c544dfddf12516c80b4e9de34b9": {
                 "address_type": "contract_other",
@@ -36656,18 +36502,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-83300",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "83300",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "83300"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x22e916361cf092c02a12ffc57a55447ee1a6da3f": {
                 "address_type": "eoa",
@@ -37430,18 +37267,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-8273100",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "8273100",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "8273100"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x2c09e2377f651d19b081517bdf6dbca486af172f": {
                 "address_type": "eoa",
@@ -40123,18 +39951,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-102900",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "102900",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "102900"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x3cd789516fb5018770ae4e96b0e2ba4cbdd0911c": {
                 "address_type": "eoa",
@@ -40217,18 +40036,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-20200",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "20200",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "20200"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x3d7280047ff3c3937414f29debc7ae203240c22d": {
                 "address_type": "eoa",
@@ -69232,18 +69042,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-76500",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "76500",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "76500"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x6fb737d1ebb73cda6cfa36fd16d9273065d1b084": {
                 "address_type": "eoa",
@@ -73020,18 +72821,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-18030800",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "18030800",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "18030800"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x7f9c107f7502c7c22472e6dd1bc08ee3b01fc4d6": {
                 "address_type": "eoa",
@@ -73440,18 +73232,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-2058900",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "2058900",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "2058900"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x889fc25bf1568ba596f1c8d13690e66663716784": {
                 "address_type": "eoa",
@@ -73549,18 +73332,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-12105900",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "12105900",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "12105900"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x89add83aed3dcaedcfdda730ff25d8baf19471b9": {
                 "address_type": "eoa",
@@ -76023,18 +75797,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-21597100",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "21597100",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "21597100"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xa6e62f66c9033a5953882340a2a3d44f11974fad": {
                 "address_type": "eoa",
@@ -80289,18 +80054,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-563600",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "563600",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "563600"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xad5e854b314c6fc3d266bc8198f8a0e84b076067": {
                 "address_type": "eoa",
@@ -98450,18 +98206,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-50984600",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "50984600",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "50984600"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xbd354f0d38c6dfee793336cbef87e297965aa810": {
                 "address_type": "eoa",
@@ -99023,18 +98770,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-39400",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "39400",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "39400"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xc1abd0f6575343e5d66e8018f54a8ad73dd36da8": {
                 "address_type": "eoa",
@@ -99661,18 +99399,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-6054400",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "6054400",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "6054400"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xc8b96b28c8fb5ebeba10d837067b34eac96aae0c": {
                 "address_type": "eoa",
@@ -99994,18 +99723,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-98798300",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "98798300",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "98798300"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xccf9e823a068ace4c8e605a391f1d6acda7d407d": {
                 "address_type": "eoa",
@@ -103581,18 +103301,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-560600",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "560600",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "560600"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xf4d5c09d426d786eb4d375f896ac8423ff1c6254": {
                 "address_type": "eoa",
@@ -103998,18 +103709,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-7771200",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "7771200",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "7771200"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xfbef07ac09f48a8fa43fa86919fa7eec6c853539": {
                 "address_type": "eoa",
@@ -104229,18 +103931,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-793573700",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "793573700",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "793573700"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xffc5b2d63e36c5ab1e4a774c1b94ee3105dc3c69": {
                 "address_type": "eoa",
@@ -106095,18 +105788,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-353200",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "353200",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "353200"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xa6174cb9779661a182f8207dbdc1458bb653fdcc": {
                 "address_type": "eoa",
@@ -119286,18 +118970,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-348900",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "348900",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "348900"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x0f089078099748c8a196b52710b01d4cb404578d": {
                 "address_type": "eoa",
@@ -136477,18 +136152,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-119400",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "119400",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "119400"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x21f4dc67c1a49dd77a38f0d329f614d998b9bcb0": {
                 "address_type": "eoa",
@@ -136598,18 +136264,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-64600",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "64600",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "64600"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x893e2c8422970fff16601b47f2eeb074fd36c4e7": {
                 "address_type": "eoa",
@@ -140129,18 +139786,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-1350400",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "1350400",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "1350400"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x39c0282ee43fba5a91e0397e88add395e5e9f3fa": {
                 "address_type": "eoa",
@@ -140470,18 +140118,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-219700",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "219700",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "219700"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x4ffd0a59a26cb2aa76d403215e4cc2845c053994": {
                 "address_type": "eoa",
@@ -140506,18 +140145,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-400800",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "400800",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "400800"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x55e9877c8e66801313607396e7e563391753f800": {
                 "address_type": "eoa",
@@ -140542,18 +140172,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-321700",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "321700",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "321700"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xe602933d745d9a91be9a59877469e4e30b8a86a5": {
                 "address_type": "eoa",
@@ -141333,18 +140954,9 @@
                 ],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-34700",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "34700",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "34700"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xfe4dadb67e12111f1346c424bf12965bccfc60ac": {
                 "address_type": "eoa",
@@ -141536,18 +141148,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-18500",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "18500",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "18500"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0x25b0ab9c64733a22d90cffe9284373d7e9664141": {
                 "address_type": "eoa",
@@ -141589,18 +141192,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-13210700",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "13210700",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "13210700"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xa358d0bcedd6f16a5a6ac46c96d910179b94fcbc": {
                 "address_type": "eoa",
@@ -141614,18 +141208,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-18400",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "18400",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "18400"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xbffc429c38d2d597847608b2a5f3b2e090a12668": {
                 "address_type": "eoa",
@@ -141639,18 +141224,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-16824800",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "16824800",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "16824800"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xca82151688c91013b42efab54175f53de62d0fd6": {
                 "address_type": "eoa",
@@ -141664,18 +141240,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-22000",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "22000",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "22000"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xd0564bb97b8fd5c1e3944e29070e483d45005928": {
                 "address_type": "eoa",
@@ -141689,18 +141256,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-187818200",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "187818200",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "187818200"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xeb0e6ecd0e78b0a84ecd9663a041f453c454a99d": {
                 "address_type": "eoa",
@@ -141714,18 +141272,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-1075900",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "1075900",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "1075900"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xec88554f3a33f11912d000ee5d790166c08ceea0": {
                 "address_type": "eoa",
@@ -141739,18 +141288,9 @@
                 "transfers": [],
                 "total_transfers_in": "0",
                 "total_transfers_out": "0",
-                "pending_assets": "-21700",
-                "airdrops": [
-                  {
-                    "block_number": 54144258,
-                    "block_timestamp": 1762515196,
-                    "tx_hash": "airdrop:usdc-snapshot",
-                    "log_index": 0,
-                    "assets": "21700",
-                    "shares": "0"
-                  }
-                ],
-                "total_airdrops": "21700"
+                "pending_assets": "0",
+                "airdrops": [],
+                "total_airdrops": "0"
               },
               "0xeda49bce2f38d284f839be1f4f2e23e6c7cc7dbd": {
                 "address_type": "eoa",
