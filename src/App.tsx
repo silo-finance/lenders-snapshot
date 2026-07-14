@@ -2076,12 +2076,12 @@ function VaultCard({
         <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
           <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            This vault can lend into multiple silos. We do not determine which market funds a withdrawal or pending
-            balance for its depositors — any outstanding amount is treated as remaining through{" "}
+            This vault allocated funds across multiple Silos. Since withdrawals and outstanding balances cannot be
+            attributed to individual Silos, any remaining claim amount is assigned to{" "}
             <span className="font-semibold text-amber-100">
               Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
             </span>{" "}
-            (<AddressLink bareCopy address={silo.address} chain={chain} />) only.
+            (<AddressLink bareCopy address={silo.address} chain={chain} />) for calculation purposes only.
           </span>
         </p>
       ) : null}
