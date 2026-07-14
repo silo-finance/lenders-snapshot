@@ -7,12 +7,13 @@ Builds block-pinned snapshots of all lenders for configured Silos, splitting the
 
 Redeemable `assets` per address are computed purely via on-chain `previewRedeem` at the snapshot block. The subgraph is only used to enumerate addresses (lenders of the Silo and depositors of each vault).
 
-After the snapshot is assembled, the script also scans post-snapshot events (`snapshot_block + 1` to latest) on:
+After the snapshot is assembled, the script also scans post-snapshot events (`snapshot_block + 1` through the configured `events_to_block`) on:
 
 - the Silo contract (for direct lenders), and
-- each indexed vault contract (for vault depositors).
+- each indexed vault contract (for vault depositors), and
+- the paired borrow/repay Silo for configured two-sided markets.
 
-It records `Withdraw(...)`, `Deposit(...)`, and peer-to-peer share `Transfer(...)` events to reconcile post-snapshot position changes. These flows are merged into the same per-category `data/<slug>.json` consumed by the UI (`total_withdrawals`, `total_deposits`, `total_transfers_in`, `total_transfers_out`, `pending_assets`, and the per-event `withdrawals[]` / `deposits[]` / `transfers[]` breakdowns).
+It records `Withdraw(...)`, `Deposit(...)`, and peer-to-peer share `Transfer(...)` events to reconcile post-snapshot position changes. For two-sided markets it also records `Borrow(...)` and `Repay(...)` events and deducts the borrower's `debt_at_snapshot`. These flows are merged into the same per-category `data/<slug>.json` consumed by the UI (`total_withdrawals`, `total_deposits`, `total_transfers_in`, `total_transfers_out`, `total_borrows`, `total_repays`, `debt_at_snapshot`, `pending_assets`, and their per-event breakdowns).
 
 Withdrawal attribution differs by lender type:
 
@@ -42,28 +43,34 @@ Each category maps to a list of chain `targets`:
 
 - `chain`, `chain_id`, `subgraph_url`, `block` (the single snapshot block shared by every silo on that chain)
 - `events_to_block` (required): the single block up to which post-snapshot events are scanned on that chain. Declared per chain because block numbers are chain-specific, and timestamp-matched across chains so the post-snapshot window ends at the same wall-clock time everywhere. There is no per-silo or env override.
-- `block_chunk` (required): the number of blocks per `eth_getLogs` call, declared per chain because RPC range limits are chain-specific (some load balancers silently truncate oversized ranges). There is no per-silo or env override; the scanner still auto-halves the range on RPC rejection.
+- `block_chunk` (required): the number of blocks per `eth_getLogs` call. It is tuned per chain to stay within the provider's result-count and query-duration limits. There is no per-silo or env override; the scanner auto-halves the range on RPC rejection.
 - `silos[]` entries with:
   - `address`
   - optional `type` (`"silo"` default, or `"silo_vault"`)
+  - optional `borrow_repay_silo` for the paired debt Silo in a two-sided market
 
 A category may also set an explicit `output` filename (defaults to `<slug>.json`).
 
 `MULTICALL3` address / `MULTICALL_BATCH` and the per-category output directory (`data/`) are
 also defined near the top of the script.
 
-The `trevee`, `pendle`, and `stream` categories currently hold the Sonic silos/blocks.
+The `trevee` and `pendle` categories currently contain Sonic markets. The `stream`
+category contains markets on Sonic, Arbitrum, Avalanche, and Ethereum. Snapshot and
+event-window blocks are timestamp-matched across chains, so each chain has its own block
+numbers for the same wall-clock boundaries.
 
 Secrets are read **only** from the environment (or a local, gitignored `.env`):
 
 - `SONIC_RPC_URL` – archive RPC endpoint for Sonic (must support `eth_call` at the historical block).
-- `ETHEREUM_RPC_URL` – future archive RPC endpoint for Ethereum once Ethereum silos are configured.
+- `ARBITRUM_RPC_URL` – archive RPC endpoint for Arbitrum (set when scanning Stream unless `RPC_URL` is used).
+- `AVALANCHE_RPC_URL` – archive RPC endpoint for Avalanche (set when scanning Stream unless `RPC_URL` is used).
+- `ETHEREUM_RPC_URL` – archive RPC endpoint for Ethereum (set when scanning Stream unless `RPC_URL` is used).
 - `RPC_URL` – optional fallback used if a chain-specific URL is not set.
 - `THE_GRAPH_API_KEY` – The Graph gateway Bearer token.
 
 ```bash
 cp scripts/lender-snapshot/.env.example scripts/lender-snapshot/.env
-# edit .env and fill SONIC_RPC_URL and THE_GRAPH_API_KEY
+# edit .env and fill the RPC URLs required by the selected category, plus THE_GRAPH_API_KEY
 ```
 
 The script auto-loads `scripts/lender-snapshot/.env` if present; you can also export the variables in your shell.
@@ -131,6 +138,7 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
         "total_assets": "…",              // raw integer string from silo.totalAssets()
         "collateral_total_supply": "…",   // raw integer string
         "withdrawals_scanned_to_block": 55000000,
+        "borrow_repay_silo": "0x..",      // two-sided markets only
         "direct_lenders": {
           "<addr>": {
             "address_type": "eoa|silo_vault|gnosis_safe|erc4626_unresolved|contract_other",
@@ -138,9 +146,21 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
             "assets_collateral": "…",
             "total_assets": "…",
             // present for non-vault direct lenders:
+            "debt_at_snapshot": "…",      // two-sided markets only
             "total_withdrawals": "…",
+            "total_deposits": "…",
+            "total_transfers_in": "…",
+            "total_transfers_out": "…",
+            "total_borrows": "…",         // two-sided markets only
+            "total_repays": "…",          // two-sided markets only
+            "total_airdrops": "…",
             "pending_assets": "…",
-            "withdrawals": [ { "...": "..." } ]
+            "withdrawals": [ { "...": "..." } ],
+            "deposits": [ { "...": "..." } ],
+            "transfers": [ { "...": "..." } ],
+            "borrows": [ { "...": "..." } ],
+            "repays": [ { "...": "..." } ],
+            "airdrops": [ { "...": "..." } ]
           }
         },
         "vaults": {
@@ -158,6 +178,10 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
                 "fraction": "0.1234",
                 "attributed_silo_assets": "…",
                 "total_withdrawals": "…",
+                "total_deposits": "…",
+                "total_transfers_in": "…",
+                "total_transfers_out": "…",
+                "total_airdrops": "…",
                 "pending_assets": "…",
                 "withdrawals": [
                   {
@@ -168,7 +192,10 @@ All historical reads are batched through Multicall3 (`aggregate3` with `allowFai
                     "shares": "…",         // vault shares burned
                     "vault_assets": "…"    // raw vault underlying from the on-chain Withdraw event
                   }
-                ]
+                ],
+                "deposits": [ { "...": "..." } ],
+                "transfers": [ { "...": "..." } ],
+                "airdrops": [ { "...": "..." } ]
               }
             }
           }
