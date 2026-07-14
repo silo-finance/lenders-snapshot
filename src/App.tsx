@@ -390,7 +390,7 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
         <div className="flex items-start justify-between gap-x-10">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-              Total assets
+              Total Deposited
               {silo.snapshotBlock > 0 ? (
                 <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
                   at block <BlockLink block={silo.snapshotBlock} chainId={silo.chainId} />
@@ -403,7 +403,7 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
           </div>
           <div className="min-w-0 text-right">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-              Total pending assets
+              Total Net Claim Amount
               {eventsToBlock > 0 ? (
                 <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
                   at block <BlockLink block={eventsToBlock} chainId={silo.chainId} />
@@ -1567,7 +1567,7 @@ function HolderTable({
                   <ColumnHeaderSum
                     value={`${formatUnitsRounded(tableTotals.assets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                   />
-                  <SortHeader align="right" label="Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
+                  <SortHeader align="right" label="Net Deposited Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
                 </th>
                 {silo.isTwoSided ? (
                   <th className="px-5 py-3 text-right font-medium">
@@ -1583,7 +1583,7 @@ function HolderTable({
                   <ColumnHeaderSum
                     value={`${formatUnitsRounded(tableTotals.pending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                   />
-                  <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
+                  <SortHeader align="right" label="Claim Amount" sortKey="pending" sortState={sortState} onClick={onSort} />
                 </th>
                 <th className="w-16 px-2 py-3 font-medium" aria-label="Pending assets details" />
               </tr>
@@ -1791,7 +1791,7 @@ function DepositorTable({
                 <ColumnHeaderSum
                   value={`${formatUnitsRounded(tableTotals.pending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                 />
-                <SortHeader align="right" label="Pending assets" sortKey="pending" sortState={sortState} onClick={onSort} />
+                <SortHeader align="right" label="Claim Amount" sortKey="pending" sortState={sortState} onClick={onSort} />
               </th>
               <th className="w-16 px-2 py-3 font-medium" aria-label="Pending assets details" />
             </tr>
@@ -2076,12 +2076,12 @@ function VaultCard({
         <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
           <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            This vault can lend into multiple silos. We do not determine which market funds a withdrawal or pending
-            balance for its depositors — any outstanding amount is treated as remaining through{" "}
+            This vault allocated funds across multiple Silos. Since withdrawals and outstanding balances cannot be
+            attributed to individual Silos, any remaining claim amount is assigned to{" "}
             <span className="font-semibold text-amber-100">
               Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
             </span>{" "}
-            (<AddressLink bareCopy address={silo.address} chain={chain} />) only.
+            (<AddressLink bareCopy address={silo.address} chain={chain} />) for calculation purposes only.
           </span>
         </p>
       ) : null}
@@ -2357,7 +2357,7 @@ function SiloDetailPanel({
               <AddressLink address={silo.address} chain={chain.chain} />
             </div>
             <h2 className="mt-2 text-3xl font-semibold text-white">
-              {silo.isTwoSided ? "Silo lenders/borrowers details" : "Silo lenders details"}
+              {silo.isTwoSided ? "Lender/Borrower Snapshot Details" : "Lender Snapshot Details"}
             </h2>
             <p className="mt-2 text-sm">
               {eventsToBlock > snapshotBlock ? (
@@ -2884,6 +2884,32 @@ function categorySiloCount(category: SnapshotCategory): number {
   return category.data.chains.reduce((total, chain) => total + chain.silos.length, 0);
 }
 
+const COMPLETED_DISTRIBUTIONS = [
+  {
+    label: "Trevee Backing Distribution",
+    url: "https://silo-finance.github.io/trevee-lenders-snapshot",
+  },
+] as const;
+
+function LandingExternalCard({ label, url }: { label: string; url: string }) {
+  return (
+    <a
+      className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"
+      href={url}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-lg font-semibold text-white">{label}</span>
+        <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
+          ↗
+        </span>
+      </div>
+      <p className="mt-3 text-xs text-slate-400">Opens the separate snapshot deployment</p>
+    </a>
+  );
+}
+
 function LandingCategoryCard({ category }: { category: SnapshotCategory }) {
   const siloCount = categorySiloCount(category);
   const isExternal = Boolean(category.externalUrl);
@@ -2990,8 +3016,10 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
               Finished recovery payouts and distribution records will appear here once they are completed.
             </p>
           </div>
-          <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] px-5 py-8 text-center text-sm text-slate-500">
-            No completed distributions yet.
+          <div className="flex flex-col gap-4">
+            {COMPLETED_DISTRIBUTIONS.map((distribution) => (
+              <LandingExternalCard key={distribution.url} label={distribution.label} url={distribution.url} />
+            ))}
           </div>
         </div>
       </section>
