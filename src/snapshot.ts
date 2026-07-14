@@ -15,6 +15,7 @@ type RawDirectLender = {
   total_deposits?: RawAmount;
   total_transfers_in?: RawAmount;
   total_transfers_out?: RawAmount;
+  total_airdrops?: RawAmount;
   // Two-sided markets only: Borrow debits, Repay credits, in this silo's asset units.
   total_borrows?: RawAmount;
   total_repays?: RawAmount;
@@ -26,6 +27,7 @@ type RawDirectLender = {
   transfers?: RawTransferEntry[];
   borrows?: RawWithdrawalEntry[];
   repays?: RawWithdrawalEntry[];
+  airdrops?: RawWithdrawalEntry[];
 };
 
 type RawDepositor = {
@@ -37,10 +39,12 @@ type RawDepositor = {
   total_deposits?: RawAmount;
   total_transfers_in?: RawAmount;
   total_transfers_out?: RawAmount;
+  total_airdrops?: RawAmount;
   pending_assets?: RawAmount;
   withdrawals?: RawWithdrawalEntry[];
   deposits?: RawWithdrawalEntry[];
   transfers?: RawTransferEntry[];
+  airdrops?: RawWithdrawalEntry[];
 };
 
 type RawWithdrawalEntry = {
@@ -111,6 +115,7 @@ export type DirectLender = {
   totalDeposits: bigint;
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
+  totalAirdrops: bigint;
   // Two-sided markets only (0 otherwise): Borrow debits, Repay credits, in this silo's units.
   totalBorrows: bigint;
   totalRepays: bigint;
@@ -122,6 +127,7 @@ export type DirectLender = {
   transfers: TransferEntry[];
   borrows: WithdrawalEntry[];
   repays: WithdrawalEntry[];
+  airdrops: WithdrawalEntry[];
   isVault: boolean;
 };
 
@@ -135,10 +141,12 @@ export type VaultDepositor = {
   totalDeposits: bigint;
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
+  totalAirdrops: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
   transfers: TransferEntry[];
+  airdrops: WithdrawalEntry[];
 };
 
 export type WithdrawalEntry = {
@@ -315,6 +323,7 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
     const totalDeposits = toBigInt(entry.total_deposits);
     const totalTransfersIn = toBigInt(entry.total_transfers_in);
     const totalTransfersOut = toBigInt(entry.total_transfers_out);
+    const totalAirdrops = toBigInt(entry.total_airdrops);
     const totalBorrows = toBigInt(entry.total_borrows);
     const totalRepays = toBigInt(entry.total_repays);
     const debtAtSnapshot = toBigInt(entry.debt_at_snapshot);
@@ -333,6 +342,7 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
       totalDeposits,
       totalTransfersIn,
       totalTransfersOut,
+      totalAirdrops,
       totalBorrows,
       totalRepays,
       debtAtSnapshot,
@@ -342,6 +352,7 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
       transfers: parseTransfers(entry.transfers),
       borrows: parseFlows(entry.borrows),
       repays: parseFlows(entry.repays),
+      airdrops: parseFlows(entry.airdrops),
       isVault: entry.address_type === "silo_vault",
     };
   });
@@ -369,6 +380,7 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
         totalDeposits: toBigInt(depositor.total_deposits),
         totalTransfersIn: toBigInt(depositor.total_transfers_in),
         totalTransfersOut: toBigInt(depositor.total_transfers_out),
+        totalAirdrops: toBigInt(depositor.total_airdrops),
         pendingAssets:
           depositor.pending_assets === undefined || depositor.pending_assets === null || depositor.pending_assets === ""
             ? attributedSiloAssets
@@ -376,6 +388,7 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
         withdrawals: parseFlows(depositor.withdrawals),
         deposits: parseFlows(depositor.deposits),
         transfers: parseTransfers(depositor.transfers),
+        airdrops: parseFlows(depositor.airdrops),
       };
     }),
   }));

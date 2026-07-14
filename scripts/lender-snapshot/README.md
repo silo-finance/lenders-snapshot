@@ -24,6 +24,8 @@ For vault depositors, each `withdrawals[]` entry also keeps the raw on-chain amo
 ## Layout
 
 - `snapshot_lenders.py` – main script that produces one `data/<category>.json` per category.
+- `apply_airdrops.py` – idempotent post-processor that applies configured off-chain distributions to pending balances. The main scanner invokes it automatically for configured categories; it can also be run independently with `python3 apply_airdrops.py <category>`.
+- `airdrops/` – source CSV files for configured distributions. Only the `Amount sent` column is applied.
 - `qa_check.py` – pure-JSON validator (no RPC/graph) that asserts share-sum invariants against the stored total supplies.
 - `data/` – generated per-category snapshot files (e.g. `data/stream.json`), imported by the UI.
 - `requirements.txt` – Python dependencies (`web3`).
@@ -164,8 +166,8 @@ All share/supply amounts are raw integers (as strings, to preserve precision), e
 
 - `sum(direct_lenders[].collateral_shares) == collateral_total_supply`
 - for each indexed vault with `in_withdraw_queue == true`: `sum(depositors[].vault_shares) == vault_total_supply`
-- for each lender/depositor (exact, signed, NOT clamped to zero): `pending_assets == base_assets + total_deposits + total_transfers_in - total_withdrawals - total_transfers_out`
-- for each lender/depositor: `sum(withdrawals[].assets) == total_withdrawals`, `sum(deposits[].assets) == total_deposits`, `sum(transfers[in].assets) == total_transfers_in`, `sum(transfers[out].assets) == total_transfers_out`
+- for each lender/depositor (exact, signed, NOT clamped to zero): `pending_assets == base_assets - debt_at_snapshot + total_deposits + total_transfers_in + total_repays - total_withdrawals - total_transfers_out - total_borrows - total_airdrops`
+- for each lender/depositor: `sum(withdrawals[].assets) == total_withdrawals`, `sum(deposits[].assets) == total_deposits`, `sum(transfers[in].assets) == total_transfers_in`, `sum(transfers[out].assets) == total_transfers_out`, `sum(airdrops[].assets) == total_airdrops`
 
 Vaults with `status == vault_not_indexed` or `in_withdraw_queue == false` are reported as warnings (their depositors are intentionally not enumerated), not errors.
 
