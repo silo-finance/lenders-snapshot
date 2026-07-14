@@ -2884,6 +2884,32 @@ function categorySiloCount(category: SnapshotCategory): number {
   return category.data.chains.reduce((total, chain) => total + chain.silos.length, 0);
 }
 
+const COMPLETED_DISTRIBUTIONS = [
+  {
+    label: "Trevee Backing Distribution",
+    url: "https://silo-finance.github.io/trevee-lenders-snapshot",
+  },
+] as const;
+
+function LandingExternalCard({ label, url }: { label: string; url: string }) {
+  return (
+    <a
+      className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"
+      href={url}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-lg font-semibold text-white">{label}</span>
+        <span aria-hidden="true" className="text-slate-500 transition group-hover:text-emerald-200">
+          ↗
+        </span>
+      </div>
+      <p className="mt-3 text-xs text-slate-400">Opens the separate snapshot deployment</p>
+    </a>
+  );
+}
+
 function LandingCategoryCard({ category }: { category: SnapshotCategory }) {
   const siloCount = categorySiloCount(category);
   const isExternal = Boolean(category.externalUrl);
@@ -2990,8 +3016,10 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
               Finished recovery payouts and distribution records will appear here once they are completed.
             </p>
           </div>
-          <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] px-5 py-8 text-center text-sm text-slate-500">
-            No completed distributions yet.
+          <div className="flex flex-col gap-4">
+            {COMPLETED_DISTRIBUTIONS.map((distribution) => (
+              <LandingExternalCard key={distribution.url} label={distribution.label} url={distribution.url} />
+            ))}
           </div>
         </div>
       </section>
