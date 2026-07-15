@@ -1,4 +1,4 @@
-import { Fragment, createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { Fragment, createContext, useContext, useEffect, useId, useState, type ReactNode } from "react";
 import packageJson from "../package.json";
 import {
   buildExplorerSelectionUrl,
@@ -211,32 +211,66 @@ function buildExportCsv(
 function DecimalSeparatorRadio({
   decimal,
   onChange,
+  layout = "stacked",
 }: {
   decimal: CsvDecimal;
   onChange: (value: CsvDecimal) => void;
+  layout?: "stacked" | "inline";
 }) {
+  const radioName = useId();
   const options: { value: CsvDecimal; label: string }[] = [
     { value: ".", label: "Period (1234.56)" },
     { value: ",", label: "Comma (1234,56)" },
   ];
+  const controls = (
+    <div className={layout === "inline" ? "flex flex-wrap items-center gap-x-3 gap-y-1" : "mt-2 flex flex-wrap gap-x-4 gap-y-1"}>
+      {options.map((option) => (
+        <label key={option.value} className="inline-flex cursor-pointer items-center gap-2 text-xs text-slate-300">
+          <input
+            type="radio"
+            name={radioName}
+            className="h-3.5 w-3.5 accent-emerald-300"
+            checked={decimal === option.value}
+            onChange={() => onChange(option.value)}
+          />
+          {option.label}
+        </label>
+      ))}
+    </div>
+  );
+
+  if (layout === "inline") {
+    return (
+      <fieldset className="m-0 min-w-0 border-0 p-0">
+        <legend className="sr-only">Decimal separator</legend>
+        {controls}
+      </fieldset>
+    );
+  }
+
   return (
     <fieldset>
       <legend className="text-[0.7rem] uppercase tracking-[0.18em] text-slate-500">Decimal separator</legend>
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-        {options.map((option) => (
-          <label key={option.value} className="inline-flex cursor-pointer items-center gap-2 text-xs text-slate-300">
-            <input
-              type="radio"
-              name="csv-decimal-separator"
-              className="h-3.5 w-3.5 accent-emerald-300"
-              checked={decimal === option.value}
-              onChange={() => onChange(option.value)}
-            />
-            {option.label}
-          </label>
-        ))}
-      </div>
+      {controls}
     </fieldset>
+  );
+}
+
+function TableCsvExportControls({ onExport, disabled = false }: { onExport: () => void; disabled?: boolean }) {
+  const { decimal: csvDecimal, setDecimal: setCsvDecimal } = useCsvFormat();
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <DecimalSeparatorRadio decimal={csvDecimal} layout="inline" onChange={setCsvDecimal} />
+      <button
+        className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-500 disabled:hover:bg-transparent"
+        disabled={disabled}
+        type="button"
+        onClick={onExport}
+      >
+        Export CSV
+      </button>
+    </div>
   );
 }
 
@@ -1552,14 +1586,7 @@ function HolderTable({
   );
   const metaActions = (
     <>
-      <button
-        className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-slate-500 disabled:hover:bg-transparent"
-        disabled={rows.length === 0}
-        type="button"
-        onClick={onExport}
-      >
-        Export CSV
-      </button>
+      <TableCsvExportControls disabled={rows.length === 0} onExport={onExport} />
       {forceExpanded ? null : (
         <button
           className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10"
@@ -2029,10 +2056,8 @@ function VaultCard({
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {!hasWarning && vault.depositors.length > 0 ? (
-            <button
-              className="rounded-full border border-emerald-300/30 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-300/10"
-              type="button"
-              onClick={() => {
+            <TableCsvExportControls
+              onExport={() => {
                 downloadCsv(
                   `${chain}-${vault.address}-depositors.csv`,
                   buildExportCsv([{ chain: snapshotChain, silo }], csvDecimal, {
@@ -2041,9 +2066,7 @@ function VaultCard({
                   }),
                 );
               }}
-            >
-              Export CSV
-            </button>
+            />
           ) : null}
           {hasWarning ? (
             <span className="rounded-full bg-amber-300/20 px-3 py-1 text-sm text-amber-100">{warningLabel(vault)}</span>
