@@ -96,3 +96,12 @@ npm run dev
 ## Snapshot tooling
 
 Python tooling lives in `scripts/lender-snapshot/`.
+
+
+# Claims
+
+## Recovery Claims (Stream Finance)
+
+SiloDAO has submitted recovery claims through its legal counsel on behalf of affected lenders. Users do not need to submit individual claims. For transparency, all submitted Claim Amounts are publicly available through the Lender Snapshots UI and the exported claims spreadsheet:
+• Lender Snapshots UI: https://silo-finance.github.io/lenders-snapshot/
+• Claims Export: [stream-all-claims.csv](/csv/stream-all-claims.csv)
