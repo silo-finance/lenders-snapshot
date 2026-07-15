@@ -2933,7 +2933,28 @@ const COMPLETED_DISTRIBUTIONS = [
   },
 ] as const;
 
-function LandingExternalCard({ label, url }: { label: string; url: string }) {
+const METHODOLOGY_LINKS = [
+  {
+    label: "Technical",
+    description: "GitHub",
+    url: "https://github.com/silo-finance/lenders-snapshot/tree/master/scripts/lender-snapshot",
+  },
+  {
+    label: "Methodology Overview",
+    description: "Plain-language explanation",
+    url: "https://docs.google.com/document/d/1cbKHlkjCGiM5jcMx7LmSyxxCJkxNOVTfVcj6u6QdG38/edit?tab=t.0",
+  },
+] as const;
+
+function LandingExternalCard({
+  label,
+  url,
+  description = "Opens the separate snapshot deployment",
+}: {
+  label: string;
+  url: string;
+  description?: string;
+}) {
   return (
     <a
       className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-emerald-300/40 hover:bg-white/[0.06]"
@@ -2947,7 +2968,7 @@ function LandingExternalCard({ label, url }: { label: string; url: string }) {
           ↗
         </span>
       </div>
-      <p className="mt-3 text-xs text-slate-400">Opens the separate snapshot deployment</p>
+      <p className="mt-3 text-xs text-slate-400">{description}</p>
     </a>
   );
 }
@@ -3019,7 +3040,7 @@ function LandingCategoryCard({ category }: { category: SnapshotCategory }) {
 function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
-      <section className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
+      <section className="mx-auto w-full max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-baseline gap-3">
           <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Lender Snapshots</h1>
           <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sm font-semibold text-slate-400">
@@ -3036,24 +3057,44 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
           </p>
         ) : null}
 
-        <div className="mt-10 space-y-4">
+        <div className="mt-10 space-y-4 rounded-[2rem] border border-emerald-300/20 bg-emerald-400/[0.05] p-5 shadow-xl shadow-emerald-950/20 sm:p-6">
           <div>
-            <h2 className="text-xl font-semibold text-white">Defaulted Loan Claims Explorer</h2>
+            <h2 className="text-xl font-semibold text-emerald-100">Defaulted Loan Claims Explorer</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
               Look up your historical lending balances across Stream, Trevee, and Pendle-related markets. These balances
               will be used to prepare and submit recovery claims for unpaid loans.
             </p>
           </div>
-          <div className="flex flex-col gap-4">
+          <div className="grid gap-4 md:grid-cols-3">
             {SNAPSHOT_CATEGORIES.map((category) => (
               <LandingCategoryCard key={category.slug} category={category} />
             ))}
           </div>
         </div>
 
-        <div className="mt-12 space-y-4">
+        <div className="mt-8 space-y-4 rounded-[2rem] border border-sky-300/20 bg-sky-400/[0.05] p-5 shadow-xl shadow-sky-950/20 sm:p-6">
           <div>
-            <h2 className="text-xl font-semibold text-white">Completed Distributions</h2>
+            <h2 className="text-xl font-semibold text-sky-100">Methodology</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+              Learn how claim amounts were calculated and independently verify the methodology used to reconstruct lender
+              balances.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {METHODOLOGY_LINKS.map((link) => (
+              <LandingExternalCard
+                key={link.url}
+                description={link.description}
+                label={link.label}
+                url={link.url}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-8 space-y-4 rounded-[2rem] border border-amber-300/20 bg-amber-300/[0.05] p-5 shadow-xl shadow-amber-950/20 sm:p-6">
+          <div>
+            <h2 className="text-xl font-semibold text-amber-100">Completed Distributions</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
               Finished recovery payouts and distribution records will appear here once they are completed.
             </p>
