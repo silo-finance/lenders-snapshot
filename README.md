@@ -6,17 +6,17 @@ The app performs no runtime RPC, subgraph, or API calls. Snapshot data is import
 
 ## Overview
 
-This application helps lenders review balances used to prepare recovery claims related to the Stream Finance default. It covers three claim categories: Stream, Trevee, and Pendle. SiloDAO uses the Stream balances to submit claims on behalf of affected lenders, while Trevee and Pendle lenders should use the relevant project instructions for their claim process.
+This application helps lenders review balances used to prepare recovery claims related to the Stream Finance default. It covers three claim categories that correspond to different collateral families: Stream-issued assets (such as xUSD and xBTC), Trevee-issued assets, and Pendle-issued assets. SiloDAO uses the Stream balances to submit claims on behalf of affected lenders. Trevee and Pendle lenders should use the balances shown here to verify their positions and follow each project's instructions for its recovery process.
 
-For each lender, the application starts with the value of their position at a fixed snapshot moment. It then accounts for later deposits, withdrawals, transfers, borrowing activity, repayments, and any distributions already received. The result is shown as the **Claim Amount**.
+For each lender, the application starts with the value of their position at a fixed snapshot moment. It then accounts for later deposits, withdrawals, transfers, borrowing activity, repayments, and any distributions already received through the end of a defined review period. The result is shown as the **Claim Amount**.
 
-The calculations are prepared before the application is built. The browser only displays the resulting snapshot files and does not fetch live blockchain data. The detailed methodology and its important limitations are described below.
+The calculations are prepared before the application is built. The browser only displays the resulting snapshot files and does not fetch live blockchain data. The [full methodology document](Methodology%20for%20Calculating%20Stream%20Finance%20Recovery%20Claims%20for%20Silo%20Lenders.docx.md) and the [affected markets list](https://docs.google.com/spreadsheets/d/12KokCexdD5ON2tG8mfpHakpkV5V0Lt43/edit?gid=749859997#gid=749859997) provide additional detail. A summary of how claim amounts are calculated and the important limitations are described below.
 
 ## How claim amounts are calculated
 
 ### 1. Starting balance
 
-Each market is measured at a fixed snapshot moment. Markets on different networks use different block numbers matched to the same point in time.
+All markets share a common snapshot moment: **7 November 2025, 11:33:16 UTC**. Because the affected markets operate on different networks, each network uses the block that corresponds to that moment (for example, Sonic block 54,144,258). The UI shows the snapshot block for each market.
 
 For a direct lender, the starting balance is the value that could have been redeemed from their collateral position at that moment. For someone who deposited through a managed vault, it is their proportional share of the amount that the vault had lent into that market.
 
@@ -24,13 +24,17 @@ Vault contracts are not treated as claim recipients. Their balances are assigned
 
 ### 2. Activity after the snapshot
 
-The starting balance is adjusted for activity between the snapshot and the end of the review period:
+The starting balance is adjusted for activity from the block after the snapshot through the end of a fixed review period, matched to the same moment in time on every network (Sonic reference block 75,700,045). **Claim Amount therefore reflects balances at the end of this review period, not the snapshot moment alone.**
+
+During that period:
 
 - deposits and incoming transfers increase the claim amount;
 - withdrawals and outgoing transfers reduce it;
-- in markets that also include borrowing, outstanding debt at the snapshot and later borrows reduce the claim amount, while repayments increase it.
+- in three Stream markets that allowed xUSD borrowing, outstanding debt at the snapshot and later borrows reduce the claim amount, while repayments increase it.
 
-Deposits, withdrawals, borrows, and repayments use the asset amounts recorded in their transactions. Transfers between wallets contain only a number of shares, so they are converted to an asset value using the exchange rate from the snapshot moment.
+Deposits, withdrawals, borrows, and repayments use the asset amounts recorded in their transactions. Transfers between wallets contain only a number of shares, so they are converted to an asset value using the exchange rate from the snapshot moment. Interest and vault fees are not added as separate lines, but the transaction amounts above can still reflect activity that occurred after the snapshot.
+
+In the three xUSD borrowing markets, borrowed amounts are converted into the lender asset's units on a one-to-one value basis. Where post-incident borrowing exceeded the value of the snapshot position, the result may be a large negative claim amount.
 
 In simple terms:
 
@@ -43,17 +47,26 @@ Claim Amount =
   - distributions already received
 ```
 
-Debt, borrowing, and repayment adjustments apply only to the relevant Stream markets.
+The result is signed: it is not reduced to zero when the calculation produces a negative amount.
 
 ### 3. Distributions already received
 
-If a lender has already received an eligible distribution, that amount is deducted to avoid counting the same value twice. These deductions are applied across the Trevee, Pendle, and Stream categories in that order. The final applicable category absorbs any remaining deduction, which can produce a negative claim amount.
+If a lender has already received an eligible distribution through Silo, that amount is deducted to avoid counting the same value twice. Deductions are applied across compatible positions in the order **Trevee → Pendle → Stream**. Each category before the last compatible one is reduced only up to its positive claim balance; the final compatible category absorbs any remainder and may therefore show a negative claim amount. Each deduction appears as a distribution entry in the lender's operation history in the UI.
 
 ### 4. What the application shows
 
-**Net Deposited Assets** is the lender's starting balance at the snapshot moment. **Claim Amount** is the final value after all tracked adjustments. Expanding a lender row shows the individual operations used in the calculation.
+Select a category (Stream, Trevee, or Pendle), choose a market, and filter by wallet address to review your position. The UI displays:
+
+- **Net Deposited Assets** — starting balance at the snapshot moment, before debt and later activity;
+- **Debt** — outstanding xUSD debt at the snapshot, for the three borrowing markets only (later borrows and repayments appear in the breakdown);
+- **Claim Amount** — final value after all tracked adjustments through the end of the review period;
+- **Calculation breakdown** — deposits, withdrawals, transfers, debt, borrows, repayments, and distributions, in chronological order.
 
 The generated data stores Claim Amount under the internal name `pending_assets`. Both names refer to the same value.
+
+### 5. Verifying the calculations
+
+Anyone may review the figures in the public UI, export CSVs, inspect the [open-source calculation scripts](scripts/lender-snapshot/), or read the [full methodology document](Methodology%20for%20Calculating%20Stream%20Finance%20Recovery%20Claims%20for%20Silo%20Lenders.docx.md). Regenerating the snapshot from on-chain data requires historical network access and credentials described in the script documentation. Published snapshot files are checked by an automated quality-assurance process that verifies exact accounting for every lender and vault depositor.
 
 ### Important limitations and disclaimers
 
