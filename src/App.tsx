@@ -299,7 +299,7 @@ function ExportAllPanel({
             const pairs = chains.flatMap((snapshotChain) =>
               snapshotChain.silos.map((snapshotSilo) => ({ chain: snapshotChain, silo: snapshotSilo })),
             );
-            downloadCsv(`${slug}-all-pending.csv`, buildExportCsv(pairs, csvDecimal));
+            downloadCsv(`${slug}-all-claims.csv`, buildExportCsv(pairs, csvDecimal));
           }}
         >
           Export all (CSV)
@@ -493,7 +493,7 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
         </p>
       </div>
       <MetricCard
-        label="Vaults assets"
+        label="Vault Total Deposited"
         value={`${formatUnitsRounded(
           silo.vaults.reduce((sum, vault) => sum + vault.vaultSiloAssets, 0n),
           silo.inputToken.decimals,
@@ -524,9 +524,9 @@ function NegativePendingDisclaimer({ silo, className = "" }: { silo: SiloSnapsho
   const borrowSymbol = silo.borrowRepayToken?.symbol || "borrowed asset";
   return (
     <DisclaimerNote className={className}>
-      <span className="font-semibold text-amber-100">Note on negative pending assets.</span> After the {borrowSymbol}{" "}
+      <span className="font-semibold text-amber-100">Note on negative claim amounts.</span> After the {borrowSymbol}{" "}
       depeg, sharply higher interest rates inflated collateral values, letting positions borrow far more {borrowSymbol}{" "}
-      than their snapshot-time collateral was worth. This surfaces as a large negative pending — a valuation-timing
+      than their snapshot-time collateral was worth. This surfaces as a large negative claim amount — a valuation-timing
       effect, not missing data or an under-collateralized loan.
     </DisclaimerNote>
   );
@@ -538,7 +538,7 @@ function FeeShareTransferDisclaimer({ className = "" }: { className?: string }) 
       <span className="font-semibold text-amber-100">Note on fee-related vault transfers.</span> Silos do not have
       fee-related share transfers; vaults may. Accrued vault fees/interest are not tracked as a standalone flow, but they
       can be included in vault share-token transfers. Such transfers may increase other wallets&rsquo; balances while
-      leaving the vault fee recipient with a negative pending balance — an accounting artifact, not missing funds.
+      leaving the vault fee recipient with a negative claim amount — an accounting artifact, not missing funds.
     </DisclaimerNote>
   );
 }
@@ -561,7 +561,7 @@ function AirdropDisclaimer({ className = "" }: { className?: string }) {
   return (
     <DisclaimerNote className={className}>
       <span className="font-semibold text-amber-100">Note on airdrop deductions.</span> Lenders in this category received
-      a distribution airdrop. Each recipient&rsquo;s pending assets shown here are reduced by the amount they received,
+      a distribution airdrop. Each recipient&rsquo;s claim amount shown here is reduced by the amount they received,
       and the deduction appears as an &ldquo;airdrop&rdquo; entry in their operation history.
     </DisclaimerNote>
   );
@@ -1174,7 +1174,7 @@ function countLendersFiltered(silos: SiloSnapshot[], context: LenderFilterContex
 const ROW_VIEW_FILTER_OPTIONS: Array<{ key: keyof RowViewFilters; label: string; activeClass: string }> = [
   { key: "details", label: "Details", activeClass: "font-semibold text-emerald-200" },
   { key: "borrower", label: "Borrower", activeClass: "font-semibold text-amber-300" },
-  { key: "negative", label: "Negative", activeClass: "font-semibold text-rose-300" },
+  { key: "negative", label: "Negative claim", activeClass: "font-semibold text-rose-300" },
   { key: "airdrop", label: "Airdrop", activeClass: "font-semibold text-fuchsia-300" },
 ];
 
@@ -1398,7 +1398,7 @@ function PendingAssetsBreakdown({
   return (
     <div className="rounded-xl border border-white/10 bg-slate-950/80 p-4 font-mono text-xs text-slate-300">
       <div className="flex justify-between gap-3">
-        <span className="text-slate-400">snapshot assets</span>
+        <span className="text-slate-400">Net Deposited Assets</span>
         <AmountWithSymbol symbol={symbol} value={formatUnitsFixed(baseAssets, decimals)} />
       </div>
       {flows.length === 0 ? (
@@ -1527,7 +1527,7 @@ function PendingAssetsBreakdown({
           </div>
         ) : null}
         <div className={`mt-1 flex justify-between gap-3 ${pendingNegative ? "text-rose-300" : "text-emerald-200"}`}>
-          <span>= pending assets</span>
+          <span>= Claim Amount</span>
           <AmountWithSymbol symbol={symbol} value={formatUnitsFixed(pendingAssets, decimals)} />
         </div>
       </div>
@@ -1639,7 +1639,7 @@ function HolderTable({
                   />
                   <SortHeader align="right" label="Claim Amount" sortKey="pending" sortState={sortState} onClick={onSort} />
                 </th>
-                <th className="w-16 px-2 py-3 font-medium" aria-label="Pending assets details" />
+                <th className="w-16 px-2 py-3 font-medium" aria-label="Claim amount details" />
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 text-slate-200">
@@ -1719,7 +1719,7 @@ function HolderTable({
                               onClick={() => toggleBreakdown(row.address)}
                             >
                               <span aria-hidden="true">±</span>
-                              <span className="sr-only">Toggle pending assets calculation details</span>
+                              <span className="sr-only">Toggle claim amount calculation details</span>
                             </button>
                           ) : null}
                         </td>
@@ -1839,7 +1839,7 @@ function DepositorTable({
                 <ColumnHeaderSum
                   value={`${formatUnitsRounded(tableTotals.assets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                 />
-                <SortHeader align="right" label="Vault assets" sortKey="assets" sortState={sortState} onClick={onSort} />
+                <SortHeader align="right" label="Net Deposited Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
               </th>
               <th className="px-5 py-3 text-right font-medium">
                 <ColumnHeaderSum
@@ -1847,7 +1847,7 @@ function DepositorTable({
                 />
                 <SortHeader align="right" label="Claim Amount" sortKey="pending" sortState={sortState} onClick={onSort} />
               </th>
-              <th className="w-16 px-2 py-3 font-medium" aria-label="Pending assets details" />
+              <th className="w-16 px-2 py-3 font-medium" aria-label="Claim amount details" />
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10 text-slate-200">
@@ -1892,7 +1892,7 @@ function DepositorTable({
                             onClick={() => toggleBreakdown(row.address)}
                           >
                             <span aria-hidden="true">±</span>
-                            <span className="sr-only">Toggle pending assets calculation details</span>
+                            <span className="sr-only">Toggle claim amount calculation details</span>
                           </button>
                         ) : null}
                       </td>
@@ -2087,7 +2087,8 @@ function VaultCard({
         }`}
       >
         <span>
-          Vault assets: {formatUnitsRounded(vault.vaultSiloAssets, silo.inputToken.decimals, 2)} {silo.inputToken.symbol}
+          Net Deposited Assets: {formatUnitsRounded(vault.vaultSiloAssets, silo.inputToken.decimals, 2)}{" "}
+          {silo.inputToken.symbol}
         </span>
         {vault.vaultTotalSupply !== null ? (
           <span className="inline-flex flex-wrap items-center gap-x-2 font-mono">
@@ -2130,8 +2131,8 @@ function VaultCard({
       {hasWarning ? (
         <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
           <p>
-            Depositors cannot be enumerated for this vault. Its assets are shown here so the non-attributable amount is
-            still surfaced.
+            Depositors cannot be enumerated for this vault. Its net deposited assets are shown here so the
+            non-attributable amount is still surfaced.
           </p>
         </div>
       ) : isExpanded ? (
