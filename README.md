@@ -70,7 +70,7 @@ The generated data stores Claim Amount under the internal name `pending_assets`.
 ## Features
 
 - Chain and silo browsing for bundled snapshot data.
-- Direct lender and vault depositor tables with address filtering and sortable shares/assets.
+- Direct lender and vault depositor tables with address filtering and sortable shares, net deposited assets, and claim amounts.
 - Explorer links for supported chains.
 - Vault warning cards when depositors cannot be enumerated.
 - CSV export for lenders and vault depositors.
