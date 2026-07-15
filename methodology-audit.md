@@ -88,25 +88,3 @@ pending_assets = base_assets − debt_at_snapshot
 ### 10. Missing valuation and negative-balance caveats
 
 **Where:** absent from the document. Share transfers are valued at the snapshot exchange rate; claims are signed and can be negative; multi-market vault attribution is a calculation convention; mint/burn share events are not double-counted; a few immaterial contract positions carry pinned QA residuals. **Fix applied:** new "Important Limitations" section added.
-
----
-
-## Requires external confirmation (not resolvable from the code)
-
-### 11. Legal and claim-process statements
-
-Statements that counsel prepared a specific submission, that users never need to act individually, that Trevee has already submitted its claim, and that Silo will distribute any recovery in a particular way cannot be verified from the repository. The current UI instructs Trevee users to follow Trevee's instructions, which should be kept consistent with Section 8. **Action:** confirm with legal counsel and the Trevee/Pendle teams before publication. The applied wording keeps the intent but avoids asserting facts the repository cannot support.
-
-### 12. The affected-collateral list
-
-The named collateral assets and maturity dates must be checked against the authoritative affected-market schedule; the calculation repository stores only the lender-side Silo targets. **Action:** verify against the published spreadsheet before release.
-
----
-
-## Statements confirmed accurate
-
-- The UI supports wallet search, balance review, Claim Amount display, and an operation-level breakdown.
-- Both direct Silo lenders and underlying Managed Vault depositors are included.
-- Exactly three configured Stream markets use paired xUSD borrow/repay adjustments.
-- The Pendle section matches the current process: balances are reconstructed for verification and Pendle coordinates its own recovery.
-- The repository contains the scanner, QA script, snapshot data, and distribution inputs.
