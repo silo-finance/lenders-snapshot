@@ -130,9 +130,9 @@ const EXPORT_CSV_HEADER = [
   "Vault",
   "Address",
   "Type",
-  "Net Deposited Assets",
+  "Deposited Assets",
   "Debt",
-  "Claim Amount",
+  "Net Deposited Assets",
   "Symbol",
 ];
 
@@ -299,7 +299,7 @@ function ExportAllPanel({
             const pairs = chains.flatMap((snapshotChain) =>
               snapshotChain.silos.map((snapshotSilo) => ({ chain: snapshotChain, silo: snapshotSilo })),
             );
-            downloadCsv(`${slug}-all-claims.csv`, buildExportCsv(pairs, csvDecimal));
+            downloadCsv(`${slug}-all-balances.csv`, buildExportCsv(pairs, csvDecimal));
           }}
         >
           Export all (CSV)
@@ -465,7 +465,7 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
           </div>
           <div className="min-w-0 text-right">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-              Total Net Claim Amount
+              Total Net Deposited Assets
               {eventsToBlock > 0 ? (
                 <span className="ml-2 font-normal italic normal-case tracking-normal text-slate-500">
                   at block <BlockLink block={eventsToBlock} chainId={silo.chainId} />
@@ -524,9 +524,9 @@ function NegativePendingDisclaimer({ silo, className = "" }: { silo: SiloSnapsho
   const borrowSymbol = silo.borrowRepayToken?.symbol || "borrowed asset";
   return (
     <DisclaimerNote className={className}>
-      <span className="font-semibold text-amber-100">Note on negative claim amounts.</span> After the {borrowSymbol}{" "}
+      <span className="font-semibold text-amber-100">Note on negative net deposited assets.</span> After the {borrowSymbol}{" "}
       depeg, sharply higher interest rates inflated collateral values, letting positions borrow far more {borrowSymbol}{" "}
-      than their snapshot-time collateral was worth. This surfaces as a large negative claim amount — a valuation-timing
+      than their snapshot-time collateral was worth. This surfaces as large negative net deposited assets — a valuation-timing
       effect, not missing data or an under-collateralized loan.
     </DisclaimerNote>
   );
@@ -538,7 +538,7 @@ function FeeShareTransferDisclaimer({ className = "" }: { className?: string }) 
       <span className="font-semibold text-amber-100">Note on fee-related vault transfers.</span> Silos do not have
       fee-related share transfers; vaults may. Accrued vault fees/interest are not tracked as a standalone flow, but they
       can be included in vault share-token transfers. Such transfers may increase other wallets&rsquo; balances while
-      leaving the vault fee recipient with a negative claim amount — an accounting artifact, not missing funds.
+      leaving the vault fee recipient with negative net deposited assets — an accounting artifact, not missing funds.
     </DisclaimerNote>
   );
 }
@@ -561,7 +561,7 @@ function AirdropDisclaimer({ className = "" }: { className?: string }) {
   return (
     <DisclaimerNote className={className}>
       <span className="font-semibold text-amber-100">Note on airdrop deductions.</span> Lenders in this category received
-      a distribution airdrop. Each recipient&rsquo;s claim amount shown here is reduced by the amount they received,
+      a distribution airdrop. Each recipient&rsquo;s net deposited assets shown here are reduced by the amount they received,
       and the deduction appears as an &ldquo;airdrop&rdquo; entry in their operation history.
     </DisclaimerNote>
   );
@@ -1174,7 +1174,7 @@ function countLendersFiltered(silos: SiloSnapshot[], context: LenderFilterContex
 const ROW_VIEW_FILTER_OPTIONS: Array<{ key: keyof RowViewFilters; label: string; activeClass: string }> = [
   { key: "details", label: "Details", activeClass: "font-semibold text-emerald-200" },
   { key: "borrower", label: "Borrower", activeClass: "font-semibold text-amber-300" },
-  { key: "negative", label: "Negative claim", activeClass: "font-semibold text-rose-300" },
+  { key: "negative", label: "Negative net", activeClass: "font-semibold text-rose-300" },
   { key: "airdrop", label: "Airdrop", activeClass: "font-semibold text-fuchsia-300" },
 ];
 
@@ -1398,7 +1398,7 @@ function PendingAssetsBreakdown({
   return (
     <div className="rounded-xl border border-white/10 bg-slate-950/80 p-4 font-mono text-xs text-slate-300">
       <div className="flex justify-between gap-3">
-        <span className="text-slate-400">Net Deposited Assets</span>
+        <span className="text-slate-400">Deposited Assets</span>
         <AmountWithSymbol symbol={symbol} value={formatUnitsFixed(baseAssets, decimals)} />
       </div>
       {flows.length === 0 ? (
@@ -1527,7 +1527,7 @@ function PendingAssetsBreakdown({
           </div>
         ) : null}
         <div className={`mt-1 flex justify-between gap-3 ${pendingNegative ? "text-rose-300" : "text-emerald-200"}`}>
-          <span>= Claim Amount</span>
+          <span>= Net Deposited Assets</span>
           <AmountWithSymbol symbol={symbol} value={formatUnitsFixed(pendingAssets, decimals)} />
         </div>
       </div>
@@ -1621,7 +1621,7 @@ function HolderTable({
                   <ColumnHeaderSum
                     value={`${formatUnitsRounded(tableTotals.assets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                   />
-                  <SortHeader align="right" label="Net Deposited Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
+                  <SortHeader align="right" label="Deposited Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
                 </th>
                 {silo.isTwoSided ? (
                   <th className="px-5 py-3 text-right font-medium">
@@ -1637,9 +1637,9 @@ function HolderTable({
                   <ColumnHeaderSum
                     value={`${formatUnitsRounded(tableTotals.pending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                   />
-                  <SortHeader align="right" label="Claim Amount" sortKey="pending" sortState={sortState} onClick={onSort} />
+                  <SortHeader align="right" label="Net Deposited Assets" sortKey="pending" sortState={sortState} onClick={onSort} />
                 </th>
-                <th className="w-16 px-2 py-3 font-medium" aria-label="Claim amount details" />
+                <th className="w-16 px-2 py-3 font-medium" aria-label="Net deposited assets details" />
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 text-slate-200">
@@ -1719,7 +1719,7 @@ function HolderTable({
                               onClick={() => toggleBreakdown(row.address)}
                             >
                               <span aria-hidden="true">±</span>
-                              <span className="sr-only">Toggle claim amount calculation details</span>
+                              <span className="sr-only">Toggle net deposited assets calculation details</span>
                             </button>
                           ) : null}
                         </td>
@@ -1839,15 +1839,15 @@ function DepositorTable({
                 <ColumnHeaderSum
                   value={`${formatUnitsRounded(tableTotals.assets, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                 />
-                <SortHeader align="right" label="Net Deposited Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
+                <SortHeader align="right" label="Deposited Assets" sortKey="assets" sortState={sortState} onClick={onSort} />
               </th>
               <th className="px-5 py-3 text-right font-medium">
                 <ColumnHeaderSum
                   value={`${formatUnitsRounded(tableTotals.pending, silo.inputToken.decimals, 2)} ${silo.inputToken.symbol}`}
                 />
-                <SortHeader align="right" label="Claim Amount" sortKey="pending" sortState={sortState} onClick={onSort} />
+                <SortHeader align="right" label="Net Deposited Assets" sortKey="pending" sortState={sortState} onClick={onSort} />
               </th>
-              <th className="w-16 px-2 py-3 font-medium" aria-label="Claim amount details" />
+              <th className="w-16 px-2 py-3 font-medium" aria-label="Net deposited assets details" />
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10 text-slate-200">
@@ -1892,7 +1892,7 @@ function DepositorTable({
                             onClick={() => toggleBreakdown(row.address)}
                           >
                             <span aria-hidden="true">±</span>
-                            <span className="sr-only">Toggle claim amount calculation details</span>
+                            <span className="sr-only">Toggle net deposited assets calculation details</span>
                           </button>
                         ) : null}
                       </td>
@@ -2087,7 +2087,7 @@ function VaultCard({
         }`}
       >
         <span>
-          Net Deposited Assets: {formatUnitsRounded(vault.vaultSiloAssets, silo.inputToken.decimals, 2)}{" "}
+          Deposited Assets: {formatUnitsRounded(vault.vaultSiloAssets, silo.inputToken.decimals, 2)}{" "}
           {silo.inputToken.symbol}
         </span>
         {vault.vaultTotalSupply !== null ? (
@@ -2120,7 +2120,7 @@ function VaultCard({
           <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
             This vault allocated funds across multiple Silos. Since withdrawals and outstanding balances cannot be
-            attributed to individual Silos, any remaining claim amount is assigned to{" "}
+            attributed to individual Silos, any remaining net deposited assets are assigned to{" "}
             <span className="font-semibold text-amber-100">
               Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
             </span>{" "}
@@ -2131,7 +2131,7 @@ function VaultCard({
       {hasWarning ? (
         <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
           <p>
-            Depositors cannot be enumerated for this vault. Its net deposited assets are shown here so the
+            Depositors cannot be enumerated for this vault. Its deposited assets are shown here so the
             non-attributable amount is still surfaced.
           </p>
         </div>
@@ -2228,7 +2228,7 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
             <span className="font-semibold text-amber-100">Recovery calculations</span> use chain-specific snapshot
             blocks aligned to the same moment in time. The category reference block is{" "}
             <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest accrued
-            after the snapshot is not included. Negative claim amounts may reflect unaccounted post-snapshot interest
+            after the snapshot is not included. Negative net deposited assets may reflect unaccounted post-snapshot interest
             or interest over-accrual related to the Stream Finance incident.
           </DisclaimerNote>
           <FeeShareTransferDisclaimer />
@@ -3059,10 +3059,10 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
 
         <div className="mt-10 space-y-4 rounded-[2rem] border border-emerald-300/20 bg-emerald-400/[0.05] p-5 shadow-xl shadow-emerald-950/20 sm:p-6">
           <div>
-            <h2 className="text-xl font-semibold text-emerald-100">Defaulted Loan Claims Explorer</h2>
+            <h2 className="text-xl font-semibold text-emerald-100">Defaulted Loan Recovery Explorer</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
               Look up your historical lending balances across Stream, Trevee, and Pendle-related markets. These balances
-              will be used to prepare and submit recovery claims for unpaid loans.
+              will be used to prepare and submit recovery submissions for unpaid loans.
             </p>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
@@ -3076,7 +3076,7 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
           <div>
             <h2 className="text-xl font-semibold text-sky-100">Methodology</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-              Learn how claim amounts were calculated and independently verify the methodology used to reconstruct lender
+              Learn how net deposited assets were calculated and independently verify the methodology used to reconstruct lender
               balances.
             </p>
           </div>
