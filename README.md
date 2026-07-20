@@ -30,7 +30,16 @@ The starting balance is adjusted for activity between the snapshot and the end o
 - withdrawals and outgoing transfers reduce it;
 - in markets that also include borrowing, outstanding debt at the snapshot and later borrows reduce the net deposited assets, while repayments increase it.
 
-Deposits, withdrawals, borrows, and repayments use the asset amounts recorded in their transactions. Transfers between wallets contain only a number of shares, so they are converted to an asset value using the exchange rate from the snapshot moment.
+Deposits, withdrawals, borrows, and repayments use the asset amounts recorded in their transactions. Peer-to-peer share transfers are different: the on-chain `Transfer` event records only a share quantity (no asset amount), so the scanner converts those shares to assets manually at the **snapshot-block exchange rate** — not at the rate on the transfer's own block.
+
+- For a direct lender (silo collateral shares):
+  `assets = silo.total_assets × shares ÷ silo.collateral_total_supply`
+  using the silo's `total_assets` and `collateral_total_supply` stored at the snapshot block.
+- For a vault depositor (vault shares attributed to this silo):
+  `assets = vault.vault_silo_assets × shares ÷ vault.vault_total_supply`
+  using that vault's snapshot position in this silo and its total share supply at the snapshot block.
+
+Mint and burn transfers (`from` or `to` is the zero address) are not counted as transfers; they accompany deposits and withdrawals and are already covered by those events.
 
 In simple terms:
 
@@ -42,6 +51,8 @@ Net Deposited Assets =
     - withdrawals - outgoing transfers - new borrows
     - distributions already received
 ```
+
+where deposits / withdrawals / borrows / repayments come from event asset amounts, and incoming / outgoing transfers are the share amounts converted with the snapshot-rate formulas above.
 
 Debt, borrowing, and repayment adjustments apply only to the relevant Stream markets.
 
@@ -60,7 +71,7 @@ The generated data stores Net Deposited Assets under the internal name `pending_
 - Interest earned after the snapshot moment is not included. Negative net deposited assets may therefore reflect interest timing or over-accrual related to the Stream Finance incident.
 - In some borrowing markets, an asset depeg and sharply higher interest rates allowed borrowers to take out more than their snapshot collateral was worth. A negative result can therefore be a valuation-timing effect rather than evidence of missing data.
 - Managed vaults may issue or transfer fee-related shares. Because accrued vault fees and interest are not tracked as separate operations, a fee recipient can show negative net deposited assets as an accounting artifact.
-- Transfers are valued using the exchange rate at the snapshot moment. Deposits, withdrawals, borrows, and repayments use the actual asset amounts recorded in their transactions.
+- Transfers are valued with the snapshot-block share-to-asset formulas above (not the exchange rate at the transfer's block). Deposits, withdrawals, borrows, and repayments use the actual asset amounts recorded in their transactions.
 - When a vault lends into several markets, its remaining net deposited assets may be assigned to one market for calculation purposes only.
 - Some vaults cannot provide a complete depositor list. Their assets are still displayed, but individual depositors may not be shown.
 - Share creation and removal that happen as part of deposits and withdrawals are not counted as separate transfers, which prevents the same activity from being applied twice.
