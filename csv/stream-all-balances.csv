@@ -1,4 +1,4 @@
-Network;Silo;Vault;Address;Type;Net Deposited Assets;Debt;Claim Amount;Symbol
+Network;Silo;Vault;Address;Type;Deposited Assets;Debt;Net Deposited Assets;Symbol
 Sonic;0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1;;0x1597e4b7cf6d2877a1d690b6088668afdb045763;eoa;505857,957484;0;505857,957484;USDC
 Sonic;0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1;;0x3e85eb8a90f909e84e01cc5b8a603a54effde8fd;Gnosis Safe;173567,85665;124883,713799;-907126,857149;USDC
 Sonic;0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1;;0x43e1ccfe765f6c2a09bbe63d456bcb1e85835fe5;eoa;132085,824404;87842,063144;44243,76126;USDC
