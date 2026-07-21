@@ -89,6 +89,7 @@ export type SnapshotViewParams = {
   borrower?: boolean;
   negative?: boolean;
   airdrop?: boolean;
+  fee?: boolean;
 };
 
 export function parseSnapshotViewParamsFromUrl(): SnapshotViewParams {
@@ -102,6 +103,7 @@ export function parseSnapshotViewParamsFromUrl(): SnapshotViewParams {
     borrower: params.get("borrower") === "1",
     negative: params.get("negative") === "1",
     airdrop: params.get("airdrop") === "1",
+    fee: params.get("fee") === "1",
   };
 }
 
@@ -127,6 +129,9 @@ function appendSnapshotViewParams(params: URLSearchParams, view: SnapshotViewPar
   }
   if (view.airdrop) {
     params.set("airdrop", "1");
+  }
+  if (view.fee) {
+    params.set("fee", "1");
   }
 }
 
