@@ -1551,6 +1551,51 @@ def _flow_block_numbers_in_entry(entry: dict[str, Any]) -> set[int]:
     return blocks
 
 
+def _timestamp_cache_from_silo(silo_entry: Any) -> dict[int, int]:
+    """Collect trustworthy block timestamps already persisted for one silo."""
+    if not isinstance(silo_entry, dict):
+        return {}
+
+    cache: dict[int, int] = {}
+    conflicted: set[int] = set()
+
+    def remember(block_value: Any, timestamp_value: Any) -> None:
+        try:
+            block_number = int(block_value or 0)
+            timestamp = int(timestamp_value or 0)
+        except (TypeError, ValueError):
+            return
+        if block_number <= 0 or timestamp <= 0 or block_number in conflicted:
+            return
+        previous = cache.get(block_number)
+        if previous is not None and previous != timestamp:
+            cache.pop(block_number, None)
+            conflicted.add(block_number)
+            return
+        cache[block_number] = timestamp
+
+    remember(silo_entry.get("snapshot_block"), silo_entry.get("snapshot_block_timestamp"))
+    direct_lenders = silo_entry.get("direct_lenders")
+    if isinstance(direct_lenders, dict):
+        entries = [entry for entry in direct_lenders.values() if isinstance(entry, dict)]
+    else:
+        entries = []
+    vaults = silo_entry.get("vaults")
+    if isinstance(vaults, dict):
+        for vault in vaults.values():
+            if not isinstance(vault, dict):
+                continue
+            depositors = vault.get("depositors")
+            if isinstance(depositors, dict):
+                entries.extend(entry for entry in depositors.values() if isinstance(entry, dict))
+    for entry in entries:
+        for key in FLOW_LIST_KEYS:
+            for row in entry.get(key) or []:
+                if isinstance(row, dict):
+                    remember(row.get("block_number"), row.get("block_timestamp"))
+    return cache
+
+
 def fetch_block_timestamp_cache(
     rpc: RpcClient,
     blocks: set[int],
@@ -1558,10 +1603,17 @@ def fetch_block_timestamp_cache(
 ) -> dict[int, int]:
     """Fetch eth_getBlockByNumber.timestamp once per unique block; merge into cache."""
     out = dict(cache) if cache else {}
-    needed = sorted(block for block in blocks if block > 0 and block not in out)
+    valid_blocks = {block for block in blocks if block > 0}
+    cached_count = len(valid_blocks.intersection(out))
+    needed = sorted(block for block in valid_blocks if block not in out)
     if not needed:
+        if valid_blocks:
+            print(f"[info] reusing cached block timestamps for all {cached_count} unique block(s)")
         return out
-    print(f"[info] fetching block timestamps for {len(needed)} unique block(s) ...")
+    print(
+        f"[info] fetching block timestamps for {len(needed)} unique block(s); "
+        f"reusing {cached_count} cached"
+    )
     for index, block in enumerate(needed):
         if index == 0 or index == len(needed) - 1 or (index + 1) % 500 == 0:
             print(f"[info]   block timestamp progress: {index + 1}/{len(needed)}")
@@ -1782,6 +1834,7 @@ def enrich_snapshot_with_flows(
     from_block: int,
     to_block: int,
     block_chunk: int,
+    timestamp_cache: dict[int, int] | None = None,
 ) -> None:
     """Apply post-snapshot collateral Deposit (+) and Withdraw (-) flows to each position.
 
@@ -2140,7 +2193,7 @@ def enrich_snapshot_with_flows(
 
     # eth_getLogs has no block timestamp; fetch once per unique block after every lender and
     # depositor is final (incl. mid-scan discoveries).
-    stamp_silo_flow_timestamps(silo_entry, rpc, BLOCK)
+    stamp_silo_flow_timestamps(silo_entry, rpc, BLOCK, timestamp_cache)
 
 
 def expand_vault(
@@ -2221,6 +2274,7 @@ def build_snapshot(
     withdrawals_block_chunk: int,
     withdrawals_to_block: int | None = None,
     latest_block: int | None = None,
+    timestamp_cache: dict[int, int] | None = None,
 ) -> dict[str, Any]:
     rpc = RpcClient(rpc_url, BLOCK)
     mc = Multicall(rpc, MULTICALL3, MULTICALL_BATCH)
@@ -2316,10 +2370,26 @@ def build_snapshot(
     )
     if scan_to >= scan_from:
         print(f"[info] fetching Deposit + Withdraw events from blocks {scan_from}..{scan_to} ...")
-        enrich_snapshot_with_flows(silo_entry, rpc, mc, scan_from, scan_to, withdrawals_block_chunk)
+        enrich_snapshot_with_flows(
+            silo_entry,
+            rpc,
+            mc,
+            scan_from,
+            scan_to,
+            withdrawals_block_chunk,
+            timestamp_cache,
+        )
     else:
         print(f"[info] skipping flow scan: target block {scan_to} is before {scan_from}")
-        enrich_snapshot_with_flows(silo_entry, rpc, mc, scan_from, scan_from - 1, withdrawals_block_chunk)
+        enrich_snapshot_with_flows(
+            silo_entry,
+            rpc,
+            mc,
+            scan_from,
+            scan_from - 1,
+            withdrawals_block_chunk,
+            timestamp_cache,
+        )
     silo_entry["withdrawals_scanned_to_block"] = scan_to
     return silo_entry
 
@@ -2489,6 +2559,43 @@ def _merge_silo_entry(old_silo: Any, new_silo: dict[str, Any]) -> dict[str, Any]
     return merged
 
 
+def load_existing_chain_timestamp_cache(
+    output_path: Path,
+    chain: str,
+) -> dict[int, int]:
+    """Load reusable block timestamps for every persisted silo on one chain."""
+    path = Path(output_path)
+    if not path.exists():
+        return {}
+    try:
+        root = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Existing output {path} is not valid JSON; cannot reuse timestamps: {exc}") from exc
+    if not isinstance(root, dict):
+        raise RuntimeError(f"Existing output {path} is not a JSON object; cannot reuse timestamps.")
+    chain_obj = root.get(chain)
+    if not isinstance(chain_obj, dict):
+        return {}
+    silos = chain_obj.get("silos")
+    if not isinstance(silos, dict):
+        return {}
+    cache: dict[int, int] = {}
+    conflicted: set[int] = set()
+    for silo_entry in silos.values():
+        for block_number, timestamp in _timestamp_cache_from_silo(silo_entry).items():
+            if block_number in conflicted:
+                continue
+            previous = cache.get(block_number)
+            if previous is not None and previous != timestamp:
+                cache.pop(block_number, None)
+                conflicted.add(block_number)
+                continue
+            cache[block_number] = timestamp
+    if cache:
+        print(f"[info] loaded {len(cache)} existing block timestamp(s) for chain={chain} from {path}")
+    return cache
+
+
 def write_output(
     silo_entry: dict[str, Any], chain: str, chain_id: int, silo_address: str, output_path: Path
 ) -> None:
@@ -2549,6 +2656,7 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
         chain_block_chunk = resolve_block_chunk(target)
         chain_events_to_block = resolve_events_to_block(target)
         chain_latest_block = RpcClient(rpc_url, 0).eth_block_number()
+        chain_timestamp_cache = load_existing_chain_timestamp_cache(output_path, str(target["chain"]))
         print(
             f"[info] chain={target['chain']} latest block={chain_latest_block} "
             f"events_to_block={chain_events_to_block} block_chunk={chain_block_chunk} "
@@ -2572,7 +2680,9 @@ def run_category(slug: str, category: dict[str, Any]) -> int:
                 withdrawals_to_block=withdrawals_to_block,
                 withdrawals_block_chunk=withdrawals_block_chunk,
                 latest_block=chain_latest_block,
+                timestamp_cache=chain_timestamp_cache,
             )
+            chain_timestamp_cache.update(_timestamp_cache_from_silo(silo_entry))
             write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS, output_path)
             direct = len(silo_entry["direct_lenders"])
             vaults = len(silo_entry["vaults"])
