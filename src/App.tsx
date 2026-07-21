@@ -15,6 +15,7 @@ import {
 import {
   type ChainSnapshot,
   type DirectLender,
+  type FeeEntry,
   type SiloSnapshot,
   type TransferEntry,
   type VaultDepositor,
@@ -535,10 +536,9 @@ function NegativePendingDisclaimer({ silo, className = "" }: { silo: SiloSnapsho
 function FeeShareTransferDisclaimer({ className = "" }: { className?: string }) {
   return (
     <DisclaimerNote className={className}>
-      <span className="font-semibold text-amber-100">Note on fee-related vault transfers.</span> Silos do not have
-      fee-related share transfers; vaults may. Accrued vault fees/interest are not tracked as a standalone flow, but they
-      can be included in vault share-token transfers. Such transfers may increase other wallets&rsquo; balances while
-      leaving the vault fee recipient with negative net deposited assets — an accounting artifact, not missing funds.
+      <span className="font-semibold text-amber-100">Note on vault fees.</span> Silos do not mint fee shares; vaults may.
+      Fee share mints are credited as received fee (and fee in when forwarded), then subtracted once at the end as fee
+      compensation, clamped so that subtraction alone cannot create a negative net deposited assets balance.
     </DisclaimerNote>
   );
 }
@@ -1050,6 +1050,10 @@ function hasFlowActivity(row: {
   totalBorrows?: bigint;
   totalRepays?: bigint;
   debtAtSnapshot?: bigint;
+  totalReceivedFees?: bigint;
+  totalFeeIn?: bigint;
+  feeCompensation?: bigint;
+  fees?: FeeEntry[];
 }): boolean {
   return (
     row.totalWithdrawals > ZERO ||
@@ -1059,13 +1063,35 @@ function hasFlowActivity(row: {
     (row.totalAirdrops ?? ZERO) > ZERO ||
     (row.totalBorrows ?? ZERO) > ZERO ||
     (row.totalRepays ?? ZERO) > ZERO ||
-    (row.debtAtSnapshot ?? ZERO) > ZERO
+    (row.debtAtSnapshot ?? ZERO) > ZERO ||
+    (row.totalReceivedFees ?? ZERO) > ZERO ||
+    (row.totalFeeIn ?? ZERO) > ZERO ||
+    (row.feeCompensation ?? ZERO) > ZERO ||
+    (row.fees?.length ?? 0) > 0
+  );
+}
+
+function hasFeeHistory(row: DirectLender | VaultDepositor): boolean {
+  if (!("fees" in row)) {
+    return false;
+  }
+  return (
+    row.fees.length > 0 ||
+    row.totalReceivedFees > ZERO ||
+    row.totalFeeIn > ZERO ||
+    row.feeCompensation > ZERO
   );
 }
 
 // Row-level view filters toggled from the last table column. Combined with AND: a row is
 // shown only if it satisfies every enabled filter.
-export type RowViewFilters = { details: boolean; borrower: boolean; negative: boolean; airdrop: boolean };
+export type RowViewFilters = {
+  details: boolean;
+  borrower: boolean;
+  negative: boolean;
+  airdrop: boolean;
+  fee: boolean;
+};
 
 // A borrower is a direct lender/borrower with any debt exposure: an initial DEBT baseline at
 // the snapshot block or at least one Borrow after it. Vault depositors carry no borrow/debt
@@ -1093,6 +1119,9 @@ function matchesRowViewFilters(row: DirectLender | VaultDepositor, filters: RowV
   if (filters.airdrop && row.totalAirdrops <= ZERO) {
     return false;
   }
+  if (filters.fee && !hasFeeHistory(row)) {
+    return false;
+  }
   return true;
 }
 
@@ -1104,7 +1133,7 @@ type LenderFilterContext = {
 };
 
 function anyRowViewFilterActive(filters: RowViewFilters): boolean {
-  return filters.details || filters.borrower || filters.negative || filters.airdrop;
+  return filters.details || filters.borrower || filters.negative || filters.airdrop || filters.fee;
 }
 
 function matchesAddressAndType(
@@ -1170,12 +1199,13 @@ function countLendersFiltered(silos: SiloSnapshot[], context: LenderFilterContex
 }
 
 // Each filter's active highlight matches the color it represents elsewhere in the UI:
-// deposits/positive green, borrower amber, negative balances red, and airdrops fuchsia.
+// deposits/positive green, borrower amber, negative balances red, airdrops fuchsia, fees orange.
 const ROW_VIEW_FILTER_OPTIONS: Array<{ key: keyof RowViewFilters; label: string; activeClass: string }> = [
   { key: "details", label: "Details", activeClass: "font-semibold text-emerald-200" },
   { key: "borrower", label: "Borrower", activeClass: "font-semibold text-amber-300" },
   { key: "negative", label: "Negative net", activeClass: "font-semibold text-rose-300" },
   { key: "airdrop", label: "Airdrop", activeClass: "font-semibold text-fuchsia-300" },
+  { key: "fee", label: "Fee", activeClass: "font-semibold text-orange-300" },
 ];
 
 // Clickable, borderless row-filter toggles rendered in the silo filter toolbar. These are
@@ -1250,6 +1280,9 @@ function PendingAssetsBreakdown({
   totalTransfersIn,
   totalTransfersOut,
   totalAirdrops = ZERO,
+  totalReceivedFees = ZERO,
+  totalFeeIn = ZERO,
+  feeCompensation = ZERO,
   totalBorrows = ZERO,
   totalRepays = ZERO,
   debtAtSnapshot = ZERO,
@@ -1262,6 +1295,7 @@ function PendingAssetsBreakdown({
   borrows = [],
   repays = [],
   airdrops = [],
+  fees = [],
   decimals,
   symbol,
   borrowRepaySymbol,
@@ -1273,6 +1307,9 @@ function PendingAssetsBreakdown({
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
   totalAirdrops?: bigint;
+  totalReceivedFees?: bigint;
+  totalFeeIn?: bigint;
+  feeCompensation?: bigint;
   totalBorrows?: bigint;
   totalRepays?: bigint;
   debtAtSnapshot?: bigint;
@@ -1285,6 +1322,7 @@ function PendingAssetsBreakdown({
   borrows?: WithdrawalEntry[];
   repays?: WithdrawalEntry[];
   airdrops?: WithdrawalEntry[];
+  fees?: FeeEntry[];
   decimals: number;
   symbol: string;
   borrowRepaySymbol?: string;
@@ -1292,6 +1330,7 @@ function PendingAssetsBreakdown({
   // Two-sided markets add Borrow (debit, like a withdrawal), Repay (credit, like a deposit)
   // and an initial DEBT baseline (debit at the snapshot block); all kinds share one
   // chronological timeline. Borrow/repay/debt are denominated in the paired (debt) asset.
+  // Vault fee credits sort with other events; fee compensation uses a trailing synthetic block.
   type FlowKind =
     | "deposit"
     | "withdrawal"
@@ -1300,11 +1339,28 @@ function PendingAssetsBreakdown({
     | "borrow"
     | "repay"
     | "airdrop"
+    | "received-fee"
+    | "fee-in"
+    | "fee-compensation"
     | "debt";
-  const isCredit = (kind: FlowKind) => kind === "deposit" || kind === "transfer-in" || kind === "repay";
+  const isCredit = (kind: FlowKind) =>
+    kind === "deposit" ||
+    kind === "transfer-in" ||
+    kind === "repay" ||
+    kind === "received-fee" ||
+    kind === "fee-in";
   const pairedSymbol = borrowRepaySymbol && borrowRepaySymbol.length > 0 ? borrowRepaySymbol : symbol;
   const symbolFor = (kind: FlowKind) =>
     kind === "borrow" || kind === "repay" || kind === "debt" ? pairedSymbol : symbol;
+  const feeFlowKind = (kind: FeeEntry["kind"]): FlowKind => {
+    if (kind === "received_fee") {
+      return "received-fee";
+    }
+    if (kind === "fee_in") {
+      return "fee-in";
+    }
+    return "fee-compensation";
+  };
   const flows: Array<{ event: WithdrawalEntry; kind: FlowKind; counterparty?: string }> = [
     // Pre-snapshot debt sorts first (snapshotBlock <= all event blocks, logIndex -1).
     ...(debtAtSnapshot > ZERO
@@ -1333,6 +1389,11 @@ function PendingAssetsBreakdown({
     ...borrows.map((event) => ({ event, kind: "borrow" as FlowKind })),
     ...repays.map((event) => ({ event, kind: "repay" as FlowKind })),
     ...airdrops.map((event) => ({ event, kind: "airdrop" as FlowKind })),
+    ...fees.map((event) => ({
+      event,
+      kind: feeFlowKind(event.kind),
+      counterparty: event.counterparty,
+    })),
   ].sort(
     (a, b) =>
       a.event.blockNumber - b.event.blockNumber ||
@@ -1340,8 +1401,8 @@ function PendingAssetsBreakdown({
       a.event.txHash.localeCompare(b.event.txHash),
   );
 
-  // Running balance is signed (no clamp) so the final value equals
-  // base + deposits + transfers_in - withdrawals - transfers_out.
+  // Running balance is signed (no clamp) so the final value equals pending_assets
+  // (fee compensation sorts last via its synthetic block number).
   const flowRows = flows.reduce<Array<{ event: WithdrawalEntry; kind: FlowKind; counterparty?: string; next: bigint }>>(
     (acc, row) => {
       const previous = acc.length > 0 ? acc[acc.length - 1].next : baseAssets;
@@ -1369,6 +1430,10 @@ function PendingAssetsBreakdown({
         return "text-violet-300/80";
       case "airdrop":
         return "text-fuchsia-300/80";
+      case "received-fee":
+      case "fee-in":
+      case "fee-compensation":
+        return "text-orange-300/80";
       case "borrow":
       case "debt":
         return "text-amber-300/80";
@@ -1388,12 +1453,17 @@ function PendingAssetsBreakdown({
         return "text-violet-300";
       case "airdrop":
         return "text-fuchsia-300";
+      case "received-fee":
+      case "fee-in":
+      case "fee-compensation":
+        return "text-orange-300";
       case "borrow":
       case "debt":
         return "text-amber-300";
     }
   };
   const pendingNegative = pendingAssets < ZERO;
+  const totalFeeCredits = totalReceivedFees + totalFeeIn;
 
   return (
     <div className="rounded-xl border border-white/10 bg-slate-950/80 p-4 font-mono text-xs text-slate-300">
@@ -1408,6 +1478,8 @@ function PendingAssetsBreakdown({
           totalTransfersIn > ZERO ||
           totalTransfersOut > ZERO ||
           totalAirdrops > ZERO ||
+          totalFeeCredits > ZERO ||
+          feeCompensation > ZERO ||
           totalBorrows > ZERO ||
           totalRepays > ZERO ||
           debtAtSnapshot > ZERO
@@ -1439,6 +1511,19 @@ function PendingAssetsBreakdown({
                         {event.airdropPart && event.airdropParts && event.airdropParts > 1
                           ? ` ${event.airdropPart} of ${event.airdropParts}`
                           : ""}
+                      </>
+                    ) : kind === "fee-compensation" ? (
+                      <>{sign} fee compensation</>
+                    ) : kind === "received-fee" || kind === "fee-in" ? (
+                      <>
+                        {sign} {kind === "received-fee" ? "received fee" : "fee in"} (block {event.blockNumber}, tx{" "}
+                        <TransactionLink chain={chain} txHash={event.txHash} />
+                        {counterparty ? (
+                          <>
+                            , from <AddressLink bareCopy address={counterparty} chain={chain} />
+                          </>
+                        ) : null}
+                        ){daysLabel ? <span className="text-slate-500"> {daysLabel}</span> : null}
                       </>
                     ) : (
                       <>
@@ -1499,6 +1584,28 @@ function PendingAssetsBreakdown({
             <AmountWithSymbol className="text-violet-300" sign="-" symbol={symbol} value={formatUnitsFixed(totalTransfersOut, decimals)} />
           </div>
         ) : null}
+        {totalReceivedFees > ZERO ? (
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-slate-400">total received fees</span>
+            <AmountWithSymbol
+              className="text-orange-300"
+              sign="+"
+              symbol={symbol}
+              value={formatUnitsFixed(totalReceivedFees, decimals)}
+            />
+          </div>
+        ) : null}
+        {totalFeeIn > ZERO ? (
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-slate-400">total fee in</span>
+            <AmountWithSymbol
+              className="text-orange-300"
+              sign="+"
+              symbol={symbol}
+              value={formatUnitsFixed(totalFeeIn, decimals)}
+            />
+          </div>
+        ) : null}
         {totalAirdrops > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total airdrops</span>
@@ -1507,6 +1614,17 @@ function PendingAssetsBreakdown({
               sign="-"
               symbol={symbol}
               value={formatUnitsFixed(totalAirdrops, decimals)}
+            />
+          </div>
+        ) : null}
+        {feeCompensation > ZERO ? (
+          <div className="mt-1 flex justify-between gap-3">
+            <span className="text-slate-400">fee compensation</span>
+            <AmountWithSymbol
+              className="text-orange-300"
+              sign="-"
+              symbol={symbol}
+              value={formatUnitsFixed(feeCompensation, decimals)}
             />
           </div>
         ) : null}
@@ -1906,12 +2024,16 @@ function DepositorTable({
                             decimals={silo.inputToken.decimals}
                             deposits={row.deposits}
                             airdrops={row.airdrops}
+                            fees={row.fees}
+                            feeCompensation={row.feeCompensation}
                             pendingAssets={row.pendingAssets}
                             snapshotBlock={silo.snapshotBlock}
                             snapshotBlockTimestamp={silo.snapshotBlockTimestamp}
                             symbol={silo.inputToken.symbol}
                             totalDeposits={row.totalDeposits}
                             totalAirdrops={row.totalAirdrops}
+                            totalReceivedFees={row.totalReceivedFees}
+                            totalFeeIn={row.totalFeeIn}
                             totalTransfersIn={row.totalTransfersIn}
                             totalTransfersOut={row.totalTransfersOut}
                             totalWithdrawals={row.totalWithdrawals}
@@ -2355,6 +2477,7 @@ function SiloDetailPanel({
     borrower: rowViewFilters.borrower,
     negative: rowViewFilters.negative,
     airdrop: rowViewFilters.airdrop,
+    fee: rowViewFilters.fee,
   };
 
   const lenderNeedle = addressFilter.trim().toLowerCase();
@@ -2611,6 +2734,7 @@ function ExplorerView() {
     borrower: Boolean(initialView.borrower),
     negative: Boolean(initialView.negative),
     airdrop: Boolean(initialView.airdrop),
+    fee: Boolean(initialView.fee),
   }));
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
@@ -2651,6 +2775,7 @@ function ExplorerView() {
     borrower: rowViewFilters.borrower,
     negative: rowViewFilters.negative,
     airdrop: rowViewFilters.airdrop,
+    fee: rowViewFilters.fee,
   };
 
   function syncSelectionUrl(chainName: string, siloAddress: string, view: SnapshotViewParams, replace = false) {
@@ -2697,6 +2822,7 @@ function ExplorerView() {
         borrower: Boolean(view.borrower),
         negative: Boolean(view.negative),
         airdrop: Boolean(view.airdrop),
+        fee: Boolean(view.fee),
       });
     }
     window.addEventListener("popstate", handlePopState);
@@ -2717,6 +2843,7 @@ function ExplorerView() {
       borrower: rowViewFilters.borrower,
       negative: rowViewFilters.negative,
       airdrop: rowViewFilters.airdrop,
+      fee: rowViewFilters.fee,
     });
   }
 
@@ -2841,6 +2968,7 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
     borrower: Boolean(initialView.borrower),
     negative: Boolean(initialView.negative),
     airdrop: Boolean(initialView.airdrop),
+    fee: Boolean(initialView.fee),
   }));
   const [directSort, setDirectSort] = useState<TableSortState>({ key: "assets", direction: "desc" });
   const [directExpanded, setDirectExpanded] = useState(true);
@@ -2854,6 +2982,7 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
     borrower: rowViewFilters.borrower,
     negative: rowViewFilters.negative,
     airdrop: rowViewFilters.airdrop,
+    fee: rowViewFilters.fee,
   };
 
   // Reflect every filter in the URL so the exact filtered silo view is shareable.

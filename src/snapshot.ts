@@ -30,6 +30,11 @@ type RawDirectLender = {
   airdrops?: RawWithdrawalEntry[];
 };
 
+type RawFeeEntry = RawWithdrawalEntry & {
+  kind?: string;
+  counterparty?: string;
+};
+
 type RawDepositor = {
   address_type?: string;
   vault_shares?: RawAmount;
@@ -40,11 +45,16 @@ type RawDepositor = {
   total_transfers_in?: RawAmount;
   total_transfers_out?: RawAmount;
   total_airdrops?: RawAmount;
+  total_received_fees?: RawAmount;
+  total_fee_in?: RawAmount;
+  total_fee_credits?: RawAmount;
+  fee_compensation?: RawAmount;
   pending_assets?: RawAmount;
   withdrawals?: RawWithdrawalEntry[];
   deposits?: RawWithdrawalEntry[];
   transfers?: RawTransferEntry[];
   airdrops?: RawWithdrawalEntry[];
+  fees?: RawFeeEntry[];
 };
 
 type RawWithdrawalEntry = {
@@ -134,6 +144,13 @@ export type DirectLender = {
   isVault: boolean;
 };
 
+export type FeeKind = "received_fee" | "fee_in" | "fee_compensation";
+
+export type FeeEntry = WithdrawalEntry & {
+  kind: FeeKind;
+  counterparty?: string;
+};
+
 export type VaultDepositor = {
   address: string;
   addressType: string;
@@ -145,11 +162,16 @@ export type VaultDepositor = {
   totalTransfersIn: bigint;
   totalTransfersOut: bigint;
   totalAirdrops: bigint;
+  totalReceivedFees: bigint;
+  totalFeeIn: bigint;
+  totalFeeCredits: bigint;
+  feeCompensation: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
   transfers: TransferEntry[];
   airdrops: WithdrawalEntry[];
+  fees: FeeEntry[];
 };
 
 export type WithdrawalEntry = {
@@ -326,6 +348,35 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
       .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex || a.txHash.localeCompare(b.txHash));
   };
 
+  const parseFees = (entries: RawFeeEntry[] | undefined): FeeEntry[] => {
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+    const kinds = new Set<FeeKind>(["received_fee", "fee_in", "fee_compensation"]);
+    return entries
+      .map((entry) => {
+        const kind = entry.kind;
+        if (!kind || !kinds.has(kind as FeeKind)) {
+          return null;
+        }
+        const assets = toBigInt(entry.assets);
+        const counterparty = (entry.counterparty ?? "").toLowerCase();
+        return {
+          blockNumber: toNumber(entry.block_number, 0),
+          blockTimestamp: toNumber(entry.block_timestamp, 0),
+          txHash: (entry.tx_hash ?? "").toLowerCase(),
+          logIndex: toNumber(entry.log_index, 0),
+          assets,
+          shares: toBigInt(entry.shares),
+          eventAssets: assets,
+          kind: kind as FeeKind,
+          ...(counterparty ? { counterparty } : {}),
+        };
+      })
+      .filter((entry): entry is FeeEntry => entry !== null)
+      .sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex || a.txHash.localeCompare(b.txHash));
+  };
+
   const directLenders = Object.entries(raw.direct_lenders ?? {}).map(([lenderAddress, entry]) => {
     const collateralShares = toBigInt(entry.collateral_shares);
     const assetsCollateral = toBigInt(entry.assets_collateral);
@@ -381,6 +432,8 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
         : toBigInt(entry.vault_total_supply),
     depositors: Object.entries(entry.depositors ?? {}).map(([depositorAddress, depositor]) => {
       const attributedSiloAssets = toBigInt(depositor.attributed_silo_assets);
+      const totalReceivedFees = toBigInt(depositor.total_received_fees);
+      const totalFeeIn = toBigInt(depositor.total_fee_in);
       return {
         address: depositorAddress,
         addressType: displayAddressType(depositor.address_type),
@@ -392,6 +445,10 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
         totalTransfersIn: toBigInt(depositor.total_transfers_in),
         totalTransfersOut: toBigInt(depositor.total_transfers_out),
         totalAirdrops: toBigInt(depositor.total_airdrops),
+        totalReceivedFees,
+        totalFeeIn,
+        totalFeeCredits: toBigInt(depositor.total_fee_credits) || totalReceivedFees + totalFeeIn,
+        feeCompensation: toBigInt(depositor.fee_compensation),
         pendingAssets:
           depositor.pending_assets === undefined || depositor.pending_assets === null || depositor.pending_assets === ""
             ? attributedSiloAssets
@@ -400,6 +457,7 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
         deposits: parseFlows(depositor.deposits),
         transfers: parseTransfers(depositor.transfers),
         airdrops: parseFlows(depositor.airdrops),
+        fees: parseFees(depositor.fees),
       };
     }),
   }));
@@ -448,6 +506,7 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
       considerBlocks(depositor.withdrawals);
       considerBlocks(depositor.deposits);
       considerBlocks(depositor.transfers);
+      considerBlocks(depositor.fees.filter((fee) => fee.kind !== "fee_compensation"));
     }
   }
   const scannedToBlock = toNumber(raw.withdrawals_scanned_to_block, 0);
@@ -533,6 +592,7 @@ function maxFlowEventBlock(chains: ChainSnapshot[]): number {
           consider(depositor.withdrawals);
           consider(depositor.deposits);
           consider(depositor.transfers);
+          consider(depositor.fees.filter((fee) => fee.kind !== "fee_compensation"));
         }
       }
     }
