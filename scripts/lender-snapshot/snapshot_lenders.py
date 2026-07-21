@@ -1303,12 +1303,14 @@ def fetch_transfer_events(
     to_block: int,
     block_chunk: int,
     label: str = "",
+    include_mints: bool = False,
 ) -> list[dict[str, Any]]:
-    """Scan peer-to-peer ERC20 Transfer logs for one share token.
+    """Scan ERC20 Transfer logs for one share token.
 
-    Returns {block_number, tx_hash, log_index, from, to, value(shares)}. Mint (from==0x0)
-    and burn (to==0x0) transfers are skipped: they accompany Deposit/Withdraw and are already
-    counted by those scans, so including them here would double-count.
+    Returns {block_number, tx_hash, log_index, from, to, value(shares)}. Burns (to==0x0)
+    are always skipped (covered by Withdraw). Mints (from==0x0) are skipped by default
+    (covered by Deposit); pass include_mints=True for vault scans that classify fee mints.
+    Mint rows include is_mint=True so callers can split them from peer transfers.
     """
     if to_block < from_block:
         return []
@@ -1319,6 +1321,7 @@ def fetch_transfer_events(
     next_progress_at = from_block + progress_step
 
     events: list[dict[str, Any]] = []
+    mint_count = 0
     start = from_block
     chunk = block_chunk
     print(
@@ -1359,8 +1362,25 @@ def fetch_transfer_events(
                 )
             sender = dec_event_topic_address(topics[1])
             receiver = dec_event_topic_address(topics[2])
-            if sender == ZERO_ADDRESS or receiver == ZERO_ADDRESS:
-                # Mint / burn: already represented by Deposit / Withdraw scans.
+            if receiver == ZERO_ADDRESS:
+                # Burn: already represented by Withdraw scans.
+                continue
+            if sender == ZERO_ADDRESS:
+                if not include_mints:
+                    continue
+                value = int(str(log.get("data", "0x")), 16)
+                events.append(
+                    {
+                        "block_number": int(str(log.get("blockNumber", "0x0")), 16),
+                        "tx_hash": str(log.get("transactionHash", "")).lower(),
+                        "log_index": int(str(log.get("logIndex", "0x0")), 16),
+                        "from": sender,
+                        "to": receiver,
+                        "value": value,
+                        "is_mint": True,
+                    }
+                )
+                mint_count += 1
                 continue
             value = int(str(log.get("data", "0x")), 16)
             event = {
@@ -1376,8 +1396,53 @@ def fetch_transfer_events(
         start = end + 1
 
     events.sort(key=lambda item: (item["block_number"], item["log_index"], item["tx_hash"]))
-    print(f"[info]   [{_scan_display_tag(tag)}] done: {len(events)} peer Transfer event(s) found")
+    peer_count = len(events) - mint_count
+    if include_mints:
+        print(
+            f"[info]   [{_scan_display_tag(tag)}] done: {peer_count} peer Transfer(s), "
+            f"{mint_count} mint Transfer(s) found"
+        )
+    else:
+        print(f"[info]   [{_scan_display_tag(tag)}] done: {peer_count} peer Transfer event(s) found")
     return events
+
+
+def classify_fee_mints(
+    deposits: list[dict[str, Any]],
+    mint_transfers: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return mint Transfers that are not 1:1 matched to a Deposit by owner+shares.
+
+    Per tx_hash: each Deposit claims any unmatched mint with the same shares and
+    to == Deposit.owner. Unmatched mints are vault fee mints (AccrueInterest path).
+    """
+    mints_by_tx: dict[str, list[dict[str, Any]]] = {}
+    for mint in mint_transfers:
+        tx = str(mint.get("tx_hash", "")).lower()
+        mints_by_tx.setdefault(tx, []).append(mint)
+
+    unmatched: list[dict[str, Any]] = []
+    for tx, mints in mints_by_tx.items():
+        available = list(mints)
+        for deposit in deposits:
+            if str(deposit.get("tx_hash", "")).lower() != tx:
+                continue
+            owner = str(deposit.get("owner", "")).lower()
+            shares = int(deposit.get("shares", 0))
+            match_idx = next(
+                (
+                    i
+                    for i, mint in enumerate(available)
+                    if str(mint.get("to", "")).lower() == owner and int(mint.get("value", 0)) == shares
+                ),
+                None,
+            )
+            if match_idx is not None:
+                available.pop(match_idx)
+        unmatched.extend(available)
+
+    unmatched.sort(key=lambda item: (item["block_number"], item["log_index"], item["tx_hash"]))
+    return unmatched
 
 
 def resolve_events_to_block(target: dict[str, Any]) -> int:
@@ -1470,7 +1535,8 @@ FLOW_FIELD_KEYS = (
 )
 
 # Flow event lists that carry a block_number (used for timestamp stamping).
-FLOW_LIST_KEYS = ("withdrawals", "deposits", "transfers", "airdrops", "borrows", "repays")
+# fee_mints: vault share mints not matched to Deposit (scanner raw; pending applied later).
+FLOW_LIST_KEYS = ("withdrawals", "deposits", "transfers", "airdrops", "borrows", "repays", "fee_mints")
 
 
 def _flow_block_numbers_in_entry(entry: dict[str, Any]) -> set[int]:
@@ -1636,6 +1702,23 @@ def _append_transfer(
     )
     total_key = "total_transfers_in" if direction == "in" else "total_transfers_out"
     entry[total_key] = str(int(entry.get(total_key, 0)) + assets)
+
+
+def _append_fee_mint(entry: dict[str, Any], event: dict[str, Any], assets: int) -> None:
+    """Record a vault fee mint (scanner only; does not change pending_assets)."""
+    rows = entry.get("fee_mints")
+    if not isinstance(rows, list):
+        rows = []
+        entry["fee_mints"] = rows
+    rows.append(
+        {
+            "block_number": event["block_number"],
+            "tx_hash": event["tx_hash"],
+            "log_index": event["log_index"],
+            "assets": str(assets),
+            "shares": str(event["value"]),
+        }
+    )
 
 
 def _finalize_pending(entry: dict[str, Any], base_assets: int) -> None:
@@ -1945,9 +2028,17 @@ def enrich_snapshot_with_flows(
         vault_deposits = fetch_deposit_events(
             rpc, vault_addr, from_block, to_block, label=vault_label, block_chunk=block_chunk
         )
-        vault_transfers = fetch_transfer_events(
-            rpc, vault_addr, from_block, to_block, label=vault_label, block_chunk=block_chunk
+        vault_transfer_logs = fetch_transfer_events(
+            rpc,
+            vault_addr,
+            from_block,
+            to_block,
+            label=vault_label,
+            block_chunk=block_chunk,
+            include_mints=True,
         )
+        vault_mints = [e for e in vault_transfer_logs if e.get("is_mint")]
+        vault_transfers = [e for e in vault_transfer_logs if not e.get("is_mint")]
         # A SiloVault can lend into multiple silos, and a vault Withdraw/Deposit moves vault
         # shares for the vault's *total* underlying across all of them. Attributing the raw
         # event assets to every silo entry would both double-count across silos and credit
@@ -1964,7 +2055,9 @@ def enrich_snapshot_with_flows(
         def vault_shares_to_assets(shares: int, _sa: int = vault_silo_assets, _ts: int = vault_total_supply) -> int:
             return (_sa * shares) // _ts if _ts else 0
 
-        # Add depositors that first appear via a post-snapshot deposit or transfer.
+        fee_mint_events = classify_fee_mints(vault_deposits, vault_mints)
+
+        # Add depositors that first appear via a post-snapshot deposit, transfer, or fee mint.
         existing_depositors = set(depositors.keys())
         candidate_dep: list[str] = []
         seen_dep: set[str] = set()
@@ -1980,6 +2073,8 @@ def enrich_snapshot_with_flows(
         for event in vault_transfers:
             _consider_dep(event["from"])
             _consider_dep(event["to"])
+        for event in fee_mint_events:
+            _consider_dep(event["to"])
         if candidate_dep:
             dep_types, _dep_incentives = classify_addresses(candidate_dep, rpc, mc)
             for owner in candidate_dep:
@@ -1988,6 +2083,7 @@ def enrich_snapshot_with_flows(
         matched_dep_withdraws = 0
         matched_dep_deposits = 0
         matched_dep_transfers = 0
+        matched_fee_mints = 0
         for event in vault_withdraws:
             depositor = depositors.get(event["owner"])
             if not isinstance(depositor, dict):
@@ -2023,6 +2119,12 @@ def enrich_snapshot_with_flows(
                 counterparty = event["from"] if direction == "in" else event["to"]
                 _append_transfer(depositor, event, assets, direction, counterparty)
                 matched_dep_transfers += 1
+        for event in fee_mint_events:
+            depositor = depositors.get(event["to"])
+            if not isinstance(depositor, dict):
+                continue
+            _append_fee_mint(depositor, event, vault_shares_to_assets(int(event["value"])))
+            matched_fee_mints += 1
 
         for depositor in depositors.values():
             if not isinstance(depositor, dict):
@@ -2031,7 +2133,8 @@ def enrich_snapshot_with_flows(
 
         print(
             f"[info]   [{vault_label}] matched {matched_dep_deposits} deposit(s), "
-            f"{matched_dep_withdraws} withdrawal(s), {matched_dep_transfers} transfer-side(s); "
+            f"{matched_dep_withdraws} withdrawal(s), {matched_dep_transfers} transfer-side(s), "
+            f"{matched_fee_mints} fee mint(s); "
             f"added {len(depositors) - len(existing_depositors)} new depositor(s)"
         )
 
@@ -2305,7 +2408,7 @@ def _merge_flow_entry(old_entry: Any, new_entry: Any) -> Any:
         return new_entry
     if not isinstance(new_entry, dict):
         return old_entry
-    flow_lists = ("withdrawals", "deposits", "transfers", "airdrops", "borrows", "repays")
+    flow_lists = ("withdrawals", "deposits", "transfers", "airdrops", "borrows", "repays", "fee_mints")
     has_flows = any(k in old_entry for k in flow_lists) or any(k in new_entry for k in flow_lists)
     if not has_flows:
         # e.g. a silo_vault direct-lender entry: flow fields are intentionally absent.
@@ -2314,8 +2417,8 @@ def _merge_flow_entry(old_entry: Any, new_entry: Any) -> Any:
     for list_key in flow_lists:
         old_list = old_entry.get(list_key)
         new_list = new_entry.get(list_key)
-        # borrows/repays exist only for two-sided markets; skip if neither side has them so we
-        # do not materialize empty lists on one-sided silos.
+        # borrows/repays exist only for two-sided markets; fee_mints only on vault depositors.
+        # Skip if neither side has them so we do not materialize empty lists elsewhere.
         if old_list is None and new_list is None:
             continue
         merged[list_key] = _merge_event_list(old_list, new_list, list_key)
