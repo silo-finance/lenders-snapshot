@@ -11,8 +11,10 @@ share-sum invariants against the stored total supplies, with ZERO tolerance
         sum(depositors[].vault_shares) == vault_total_supply
   - for each lender/depositor (exact, signed, NOT clamped to zero):
     pending_assets == base_assets - debt_at_snapshot + total_deposits + total_transfers_in
-                      + total_repays - total_withdrawals - total_transfers_out - total_borrows
-                      - total_airdrops
+                      + total_fee_credits + total_repays - total_withdrawals - total_transfers_out
+                      - total_borrows - total_airdrops - fee_compensation
+    where total_fee_credits = total_received_fees + total_fee_in (vault depositors; else 0)
+    and fee_compensation == min(max(pending_before_compensation, 0), total_fee_credits)
     (total_borrows/total_repays/debt_at_snapshot are 0 except on two-sided-market lenders)
   - for each lender/depositor:
     sum(withdrawals[].assets) == total_withdrawals
@@ -205,11 +207,20 @@ def check_transfer_sums(
     report.check_equal(f"{label} transfers_out_sum vs total_transfers_out", expected_out, summed_out)
 
 
-def share_residual(base_shares: int, deposits: Any, withdrawals: Any, transfers: Any) -> int:
+def share_residual(
+    base_shares: int,
+    deposits: Any,
+    withdrawals: Any,
+    transfers: Any,
+    fee_mints: Any = None,
+    fees: Any = None,
+) -> int:
     """Net shares still held per the recorded flows: base + in - out.
 
     Complete data yields residual >= 0 (the account cannot move out more shares than it ever
     held). A negative residual means an inflow (deposit / transfer-in) was missed upstream.
+
+    Vault fee_mints / fee_in are share inflows (received_fee duplicates fee_mints and is ignored).
     """
 
     def _sum_shares(items: Any) -> int:
@@ -225,10 +236,18 @@ def share_residual(base_shares: int, deposits: Any, withdrawals: Any, transfers:
                 continue
             (transfers_out if t.get("direction") == "out" else transfers_in).append(t)
 
+    fee_in_shares = 0
+    if isinstance(fees, list):
+        for row in fees:
+            if isinstance(row, dict) and row.get("kind") == "fee_in":
+                fee_in_shares += to_int(row.get("shares", 0))
+
     return (
         base_shares
         + _sum_shares(deposits)
         + _sum_shares(transfers_in)
+        + _sum_shares(fee_mints)
+        + fee_in_shares
         - _sum_shares(withdrawals)
         - _sum_shares(transfers_out)
     )
@@ -319,24 +338,32 @@ def check_pending(
     total_repays: int = 0,
     debt_at_snapshot: int = 0,
     total_airdrops: int = 0,
+    total_fee_credits: int = 0,
+    fee_compensation: int = 0,
 ) -> None:
     """Exact signed pending invariant plus the share-based negative-pending policy.
 
     Borrows/repays and debt_at_snapshot are only present for two-sided markets (converted to
     this silo's asset decimals). They are debt-side quantities and deliberately do NOT enter
     `residual_shares` (which conserves collateral shares).
+
+    Vault fee credits (received_fee + fee_in) and fee_compensation come from apply_vault_fees.
     """
-    expected = (
+    pending_before = (
         base_assets
         - debt_at_snapshot
         + total_deposits
         + total_transfers_in
+        + total_fee_credits
         + total_repays
         - total_withdrawals
         - total_transfers_out
         - total_borrows
         - total_airdrops
     )
+    expected_compensation = min(max(pending_before, 0), total_fee_credits)
+    report.check_equal(f"{label} fee_compensation", expected_compensation, fee_compensation)
+    expected = pending_before - fee_compensation
     report.check_equal(f"{label} pending_assets consistency", expected, pending_assets)
     if residual_shares < -SHARE_DUST:
         # More shares left the account than it ever held: an inflow was missed upstream.
@@ -561,12 +588,18 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
             total_transfers_in = to_int(depositor.get("total_transfers_in", 0))
             total_transfers_out = to_int(depositor.get("total_transfers_out", 0))
             total_airdrops = to_int(depositor.get("total_airdrops", 0))
+            total_received_fees = to_int(depositor.get("total_received_fees", 0))
+            total_fee_in = to_int(depositor.get("total_fee_in", 0))
+            total_fee_credits = to_int(depositor.get("total_fee_credits", total_received_fees + total_fee_in))
+            fee_compensation = to_int(depositor.get("fee_compensation", 0))
             pending_assets = to_int(depositor.get("pending_assets", base_assets))
             residual_shares = share_residual(
                 to_int(depositor.get("vault_shares", 0)),
                 depositor.get("deposits", []),
                 depositor.get("withdrawals", []),
                 depositor.get("transfers", []),
+                fee_mints=depositor.get("fee_mints", []),
+                fees=depositor.get("fees", []),
             )
             check_pending(
                 f"{vlabel} depositor {depositor_addr}",
@@ -580,6 +613,8 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
                 report,
                 (chain.lower(), silo_addr.lower(), vault_addr.lower(), depositor_addr.lower()),
                 total_airdrops=total_airdrops,
+                total_fee_credits=total_fee_credits,
+                fee_compensation=fee_compensation,
             )
             check_flow_sum(
                 f"{vlabel} depositor {depositor_addr} withdrawals_sum vs total_withdrawals",
