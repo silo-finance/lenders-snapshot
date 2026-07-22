@@ -86,48 +86,12 @@ SHARE_DUST = int(os.environ.get("QA_SHARE_DUST", "0"))
 
 # Known, accepted fee-mint unreconciled-share residuals: protocol fee shares minted straight
 # to a recipient (Transfer from 0x0) with no paired Deposit, so the flow scan does not credit
-# them. Deliberately not fixed upstream because these are fee receivers rather than lender
-# inflows. Each exception is pinned to the exact identity (chain, silo, vault-or-None, account,
+# them. Each exception is pinned to the exact identity (chain, silo, vault-or-None, account,
 # all lowercase) AND the exact share_residual, so any change (different silo/account, or a
 # different share amount after regeneration) fails to match and the hard error returns.
-KNOWN_FEE_MINT_RESIDUALS: dict[tuple[str, str, str | None, str], int] = {
-    (
-        "sonic",
-        "0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1",
-        "0xf6bc16b79c469b94cdd25f3e2334dd4fee47a581",
-        "0x1b35727072435bb97fbe8cc378eb6973c98faab3",
-    ): -5250149604623349357212505126,
-    (
-        "sonic",
-        "0xb1412442aa998950f2f652667d5eba35fe66e43f",
-        "0x61e175f91f017987c421e0731d6baa0594eca6eb",
-        "0x1b35727072435bb97fbe8cc378eb6973c98faab3",
-    ): -23205876274247,
-    (
-        "avalanche",
-        "0x7437ac81457fa98ffb2d0c8f9943ecfe4813e2f1",
-        "0x1f8e769b5b6010b2c2bbcd68629ea1a0a0eda7e3",
-        "0x50de2fb5cd259c1b99dbd3bb4e7aac76be7288fc",
-    ): -1388386071610574,
-    (
-        "avalanche",
-        "0x672b77f0538b53dc117c9ddfeb7377a678d321a6",
-        "0x36e2aa296e798ca6262dc5fad5f5660e638d5402",
-        "0xf163d77b8efc151757fecba3d463f3bac7a4d808",
-    ): -1396309184981017,
-    (
-        "avalanche",
-        "0x672b77f0538b53dc117c9ddfeb7377a678d321a6",
-        "0x4dc1ce9b9f9ef00c144bfad305f16c62293dc0e8",
-        "0x50de2fb5cd259c1b99dbd3bb4e7aac76be7288fc",
-    ): -2917607491430712395,
-    (
-        "arbitrum",
-        "0xacb7432a4bb15402ce2afe0a7c9d5b738604f6f9",
-        "0xac69cfe6bb269cebf8ab4764d7e678c3658b99f2",
-        "0xf163d77b8efc151757fecba3d463f3bac7a4d808",
-    ): -20841354193825729,
-}
+# Currently empty: apply_vault_fees tags fee mints and applies fee_compensation, so the
+# previously pinned residuals reconcile and no longer need exceptions.
+KNOWN_FEE_MINT_RESIDUALS: dict[tuple[str, str, str | None, str], int] = {}
 
 # Filled in as exceptions are matched, so a stale (no-longer-present) exception can be flagged.
 _matched_fee_mint_keys: set[tuple[str, str, str | None, str]] = set()
