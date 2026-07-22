@@ -14,7 +14,7 @@ This document explains:
  • Which lenders are included.  
  • How balances were reconstructed.  
  • How claim amounts were calculated.  
- • Adjustments made for borrowers and for recovery distributions already received.  
+ • Adjustments made for borrowers, managed-vault fee share flows, and recovery distributions already received.  
  • How users can verify their balances.  
  • How anyone can reproduce the calculations using the public UI and open-source scripts.
 
@@ -62,33 +62,42 @@ The calculations use a common snapshot moment of November 7, 2025, 11:33:16 UTC.
 All affected Stream, Trevee, and Pendle collateral markets were identified using the published market list. 
 
 **Step 3 – Reconstruct Lender Balances**  
-Each position is first valued at the snapshot block for its network. The calculation then accounts for activity from the next block through a fixed end block for that network, timestamp-matched to Sonic block 75700045\. Deposits, incoming transfers, and loan repayments increase the claim amount. Withdrawals, outgoing transfers, new borrows, outstanding debt at the snapshot, and recovery distributions already received reduce it. The published claim amounts therefore reflect balances as of the end of this review window, not the snapshot block alone.
+Each position is first valued at the snapshot block for its network. The calculation then accounts for activity from the next block through a fixed end block for that network, timestamp-matched to Sonic block 75700045\. Deposits, incoming transfers, loan repayments, and managed-vault fee share credits increase the claim amount. Withdrawals, outgoing transfers, new borrows, outstanding debt at the snapshot, recovery distributions already received, and fee compensation reduce it. The published claim amounts therefore reflect balances as of the end of this review window, not the snapshot block alone.
 
-Interest accrued after the snapshot and DAO or Managed Vault fees are not added as separate calculation entries. Deposits, withdrawals, borrows, and repayments use the asset amounts recorded in the relevant transactions. Peer-to-peer share transfers are different: the on-chain Transfer event records only a share quantity (no asset amount), so those shares are converted to assets manually at the snapshot-block exchange rate — not at the rate on the transfer's own block.
+Interest accrued after the snapshot is not added as a separate calculation entry. Deposits, withdrawals, borrows, and repayments use the asset amounts recorded in the relevant transactions. Peer-to-peer share transfers are different: the on-chain Transfer event records only a share quantity (no asset amount), so those shares are converted to assets manually at the snapshot-block exchange rate — not at the rate on the transfer's own block.
 
  • For a direct lender (silo collateral shares): assets \= silo.total\_assets × shares ÷ silo.collateral\_total\_supply, using the silo's total\_assets and collateral\_total\_supply stored at the snapshot block.  
  • For a Managed Vault depositor (vault shares attributed to this silo): assets \= vault.vault\_silo\_assets × shares ÷ vault.vault\_total\_supply, using that vault's snapshot position in this silo and its total share supply at the snapshot block.
 
-Mint and burn transfers (from or to the zero address) are not counted as transfers; they accompany deposits and withdrawals and are already covered by those events. Incoming and outgoing transfers in the claim formula below are therefore these share amounts converted with the snapshot-rate formulas above.
+Mint and burn transfers (from or to the zero address) are not counted as ordinary transfers; they accompany deposits and withdrawals and are already covered by those events. On Managed Vaults, a mint that does not pair with a deposit is treated as a fee share mint instead (Step 5). Incoming and outgoing transfers in the claim formula below are therefore ordinary peer share amounts converted with the snapshot-rate formulas above.
 
  **Step 4 – Borrow Adjustment**  
 Three Stream markets allowed users to borrow xUSD against their lending position. Because interest continued accruing after the Stream incident, collateral values increased significantly, allowing some users to borrow amounts exceeding their original deposits. To avoid double recovery, each user's claim amount is reduced by the outstanding xUSD debt at the snapshot and by any xUSD borrowed after the snapshot, while repayments made after the snapshot are added back. The xUSD amounts are converted into the lending asset's units on a one-to-one value basis. This treatment may produce a negative claim amount where post-incident borrowing exceeded the value of the snapshot position. The public UI provides a transparent breakdown of deposits, debt, borrows, repayments, and the resulting claim amount. 
 
-**Step 5 – Trevee Distribution Adjustment**  
+**Step 5 – Managed Vault Fee Share Adjustment**  
+Silos do not mint fee shares; Managed Vaults may. A vault fee mint is a share mint to a recipient with no paired deposit. Those shares may later be forwarded to another vault depositor through an ordinary peer transfer.
+
+The calculation credits each fee mint as a received-fee entry and reclassifies peer transfers that consume those fee shares as fee-in entries (instead of ordinary incoming transfers). The same fee credit amount is then subtracted once as fee compensation, clamped so that this subtraction alone cannot create a negative claim amount:
+
+fee compensation \= min(max(claim balance before compensation, 0), received fees \+ fee in)
+
+Fee rows appear in the lender's operation history in the UI. Accrued vault interest itself is still not added as a separate positive entry; only this fee-share bookkeeping is tracked.
+
+**Step 6 – Trevee Distribution Adjustment**  
 Users who had already received a recovery distribution through SiloDAO have that amount deducted to prevent double recovery. Each distribution is applied across the recipient's compatible positions in the order Trevee, Pendle, and then Stream. A category before the final compatible one is reduced only up to its positive claim balance; the final compatible category absorbs any remainder and may therefore show a negative claim amount. For example, a lender with a reconstructed claim of 100 USDC who previously received 5 USDC from Trevee's backing reserves has a final claim of 95 USDC. Each deduction appears as a distribution entry in the lender's operation history in the UI.
 
-**Step 6 – Pendle Markets**  
+**Step 7 – Pendle Markets**  
 For Pendle-issued collateral, Silo reconstructs lender balances, while Pendle coordinates its own recovery process. Users should follow Pendle's guidance regarding claim submission.
 
  
 
 # 5\. Claim Amount Definition
 
-Claim Amount \= Starting Balance at the Snapshot − Outstanding Debt at the Snapshot \+ Deposits \+ Incoming Transfers \+ Repayments − Withdrawals − Outgoing Transfers − New Borrows − Distributions Already Received
+Claim Amount \= Starting Balance at the Snapshot − Outstanding Debt at the Snapshot \+ Deposits \+ Incoming Transfers \+ Repayments \+ Received Fees \+ Fee In − Withdrawals − Outgoing Transfers − New Borrows − Distributions Already Received − Fee Compensation
 
  
 
-Debt, borrowing, and repayment adjustments apply only to the three Stream markets that allowed borrowing. The result is a signed value: it is not reduced to zero when the calculation produces a negative amount, and negative values are shown as such in the UI.
+Debt, borrowing, and repayment adjustments apply only to the three Stream markets that allowed borrowing. Fee credits and fee compensation apply only to Managed Vault depositors. The result is a signed value: it is not reduced to zero when the calculation produces a negative amount, and negative values are shown as such in the UI.
 
  
 
@@ -108,7 +117,7 @@ The UI displays:
  • Net Deposited Assets – The lender's starting balance at the relevant snapshot block, before debt and later activity are applied.  
  • Debt – Outstanding xUSD debt at the snapshot block, for the markets that allowed borrowing. Borrows and repayments made after the snapshot appear in the calculation breakdown.  
  • Claim Amount – The final amount after all tracked adjustments through the end of the review window.  
- • Calculation Breakdown – The deposits, withdrawals, transfers, debt, borrows, repayments, and distributions used to derive the final claim amount, in chronological order.
+ • Calculation Breakdown – The deposits, withdrawals, transfers, debt, borrows, repayments, managed-vault fee rows, and distributions used to derive the final claim amount, in chronological order.
 
  
 
@@ -120,14 +129,15 @@ Users and third parties may verify the calculations by:
  • Reproducing the calculations from on-chain data.  
  • Comparing the exported claim spreadsheets with the published methodology.
 
-The repository contains the calculation scripts, the configured market list, the generated snapshot data, and the distribution inputs used for the deductions described in Step 5\. Reproducing the scan requires historical (archive) blockchain access for each covered network and a Graph gateway credential. Published snapshot data is checked by an automated quality-assurance script that enforces exact accounting invariants for every lender and vault depositor.
+The repository contains the calculation scripts, the configured market list, the generated snapshot data, and the distribution inputs used for the deductions described in Step 6\. Reproducing the scan requires historical (archive) blockchain access for each covered network and a Graph gateway credential. Published snapshot data is checked by an automated quality-assurance script that enforces exact accounting invariants for every lender and vault depositor, including the fee-credit and fee-compensation terms described in Step 5\.
 
  
 
 # 8\. Important Limitations
 
 • Share transfers are converted into asset values with the snapshot-block share-to-asset formulas in Step 3 (not the exchange rate at the transfer's block). Deposits, withdrawals, borrows, and repayments use the actual asset amounts recorded in their transactions.  
- • Claim amounts may be negative because of interest timing, post-incident borrowing, fee-share accounting within vaults, or distribution deductions.  
+ • Managed Vault fee share mints and fee-forwarding transfers are tagged and compensated as described in Step 5\. Accrued vault interest is still not added as its own positive operation.  
+ • Claim amounts may be negative because of interest timing, post-incident borrowing, or distribution deductions. Fee compensation is clamped so that the fee adjustment alone cannot create a negative claim amount.  
  • Where a Managed Vault supplied several markets, the attribution of its remaining claim to an individual market is a calculation convention and does not change the vault's aggregate ownership.  
  • Some vaults cannot be fully enumerated; their assets remain visible in the UI even when individual depositors cannot be listed.  
  • Share creation and removal associated with deposits and withdrawals are not counted again as transfers, which prevents double counting.  

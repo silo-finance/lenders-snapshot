@@ -8,7 +8,7 @@ The app performs no runtime RPC, subgraph, or API calls. Snapshot data is import
 
 This application helps lenders review balances used to prepare recovery submissions related to the Stream Finance default. It covers three snapshot categories: Stream, Trevee, and Pendle. SiloDAO uses the Stream balances to submit recovery positions on behalf of affected lenders, while Trevee and Pendle lenders should use the relevant project instructions for their recovery process.
 
-For each lender, the application starts with the value of their position at a fixed snapshot moment. It then accounts for later deposits, withdrawals, transfers, borrowing activity, repayments, and any distributions already received. The result is shown as the **Net Deposited Assets**.
+For each lender, the application starts with the value of their position at a fixed snapshot moment. It then accounts for later deposits, withdrawals, transfers, borrowing activity, repayments, managed-vault fee share flows, and any distributions already received. The result is shown as the **Net Deposited Assets**.
 
 The calculations are prepared before the application is built. The browser only displays the resulting snapshot files and does not fetch live blockchain data. The detailed methodology and its important limitations are described below.
 
@@ -39,7 +39,7 @@ Deposits, withdrawals, borrows, and repayments use the asset amounts recorded in
   `assets = vault.vault_silo_assets × shares ÷ vault.vault_total_supply`
   using that vault's snapshot position in this silo and its total share supply at the snapshot block.
 
-Mint and burn transfers (`from` or `to` is the zero address) are not counted as transfers; they accompany deposits and withdrawals and are already covered by those events.
+Mint and burn transfers (`from` or `to` is the zero address) are not counted as ordinary transfers; they accompany deposits and withdrawals and are already covered by those events. On managed vaults, a mint that does not pair with a deposit is treated as a fee share mint instead (see below).
 
 In simple terms:
 
@@ -48,21 +48,35 @@ Net Deposited Assets =
   starting balance
     - outstanding debt at the snapshot
     + deposits + incoming transfers + repayments
+    + received fees + fee in
     - withdrawals - outgoing transfers - new borrows
     - distributions already received
+    - fee compensation
 ```
 
-where deposits / withdrawals / borrows / repayments come from event asset amounts, and incoming / outgoing transfers are the share amounts converted with the snapshot-rate formulas above.
+where deposits / withdrawals / borrows / repayments come from event asset amounts, and incoming / outgoing transfers are the share amounts converted with the snapshot-rate formulas above. Fee credits and fee compensation apply only to managed-vault depositors.
 
 Debt, borrowing, and repayment adjustments apply only to the relevant Stream markets.
 
-### 3. Distributions already received
+### 3. Managed vault fee shares
+
+Silos do not mint fee shares; managed vaults may. A vault fee mint is a share mint to a recipient with no paired deposit. Those shares may later be forwarded to another address via an ordinary peer transfer.
+
+The calculation credits fee share mints as **received fee**, and reclassifies peer transfers that consume those fee shares as **fee in** (instead of ordinary transfer in). The same fee credit amount is then subtracted once as **fee compensation**, clamped so that this subtraction alone cannot create a negative net deposited assets balance:
+
+```text
+fee compensation = min(max(balance before compensation, 0), received fees + fee in)
+```
+
+Fee rows appear in the lender's operation history. Accrued vault interest itself is still not added as a separate positive entry; only the fee-share bookkeeping described above is tracked.
+
+### 4. Distributions already received
 
 If a lender has already received an eligible distribution, that amount is deducted to avoid counting the same value twice. These deductions are applied across the Trevee, Pendle, and Stream categories in that order. The final applicable category absorbs any remaining deduction, which can produce negative net deposited assets.
 
-### 4. What the application shows
+### 5. What the application shows
 
-**Deposited Assets** is the lender's starting balance at the snapshot moment. **Net Deposited Assets** is the final value after all tracked adjustments. Expanding a lender row shows the individual operations used in the calculation.
+**Deposited Assets** is the lender's starting balance at the snapshot moment. **Net Deposited Assets** is the final value after all tracked adjustments. Expanding a lender row shows the individual operations used in the calculation, including fee rows where applicable.
 
 The generated data stores Net Deposited Assets under the internal name `pending_assets`. Both names refer to the same value.
 
@@ -70,7 +84,7 @@ The generated data stores Net Deposited Assets under the internal name `pending_
 
 - Interest earned after the snapshot moment is not included. Negative net deposited assets may therefore reflect interest timing or over-accrual related to the Stream Finance incident.
 - In some borrowing markets, an asset depeg and sharply higher interest rates allowed borrowers to take out more than their snapshot collateral was worth. A negative result can therefore be a valuation-timing effect rather than evidence of missing data.
-- Managed vaults may issue or transfer fee-related shares. Because accrued vault fees and interest are not tracked as separate operations, a fee recipient can show negative net deposited assets as an accounting artifact.
+- Managed vault fee share mints and fee-forwarding transfers are tagged and compensated as described above. Accrued vault interest is still not added as its own operation.
 - Transfers are valued with the snapshot-block share-to-asset formulas above (not the exchange rate at the transfer's block). Deposits, withdrawals, borrows, and repayments use the actual asset amounts recorded in their transactions.
 - When a vault lends into several markets, its remaining net deposited assets may be assigned to one market for calculation purposes only.
 - Some vaults cannot provide a complete depositor list. Their assets are still displayed, but individual depositors may not be shown.
@@ -82,6 +96,7 @@ The generated data stores Net Deposited Assets under the internal name `pending_
 
 - Chain and silo browsing for bundled snapshot data.
 - Direct lender and vault depositor tables with address filtering and sortable shares, deposited assets, and net deposited assets.
+- Operation breakdown with fee rows (`received fee`, `fee in`, `fee compensation`) and a Fee filter where applicable.
 - Explorer links for supported chains.
 - Vault warning cards when depositors cannot be enumerated.
 - CSV export for lenders and vault depositors.
