@@ -26,6 +26,7 @@ For vault depositors, each `withdrawals[]` entry also keeps the raw on-chain amo
 
 - `snapshot_lenders.py` – main script that produces one `data/<category>.json` per category.
 - `apply_airdrops.py` – idempotent post-processor that applies configured off-chain distributions to pending balances across Trevee, Pendle, and Stream. The main scanner invokes it after all requested categories are scanned; it can also be run independently with `python3 apply_airdrops.py`.
+- `apply_vault_fees.py` – tags vault fee mints / fee-forwarding transfers and applies fee compensation. The main scanner invokes it after the airdrop cascade; it can also be run independently with `python3 apply_vault_fees.py`.
 - `airdrops/` – source CSV files for configured distributions. Only the `Amount sent` column is applied.
 - `qa_check.py` – pure-JSON validator (no RPC/graph) that asserts share-sum invariants against the stored total supplies.
 - `data/` – generated per-category snapshot files (e.g. `data/stream.json`), imported by the UI.
