@@ -124,6 +124,8 @@ metadata, so the UI displays simply `airdrop` rather than `airdrop 1 of 1`.
 
 All historical reads are batched through Multicall3 (`aggregate3` with `allowFailure=true`) via `eth_call` pinned at `BLOCK`. `eth_getCode` (used for contract detection) cannot go through Multicall3 and is issued in JSON-RPC batches instead.
 
+Transient RPC/subgraph failures (`RemoteDisconnected`, connection resets, 429/502/503/504) are retried inside `_http_post_json` with exponential backoff before the scanner aborts.
+
 Before fetching block timestamps, a rescan loads timestamps already stored for all
 silos on the same chain in `data/<category>.json`. Only unique blocks without a
 valid persisted timestamp trigger `eth_getBlockByNumber`; cached timestamps are

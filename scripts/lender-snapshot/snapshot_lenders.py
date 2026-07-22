@@ -23,6 +23,7 @@ A category slug is required (scanning is per-category, never implicitly all):
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import sys
@@ -472,23 +473,43 @@ def cs(addr: str) -> str:
 # --------------------------------------------------------------------------------------
 # Raw JSON-RPC client
 # --------------------------------------------------------------------------------------
+_HTTP_RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
+_HTTP_TRANSIENT_ERRORS = (
+    urllib.error.URLError,
+    TimeoutError,
+    json.JSONDecodeError,
+    http.client.RemoteDisconnected,
+    http.client.IncompleteRead,
+    ConnectionResetError,
+    BrokenPipeError,
+)
+
+
 def _http_post_json(url: str, payload: Any, headers: dict[str, str]) -> Any:
+    """POST JSON with retries for transient RPC/subgraph disconnects and gateway errors."""
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     last_err: Exception | None = None
-    backoff = 4
-    for attempt in range(5):
+    attempts = 5
+    backoff = 2.0
+    for attempt in range(attempts):
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 return json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:  # noqa: PERF203
+        except urllib.error.HTTPError as exc:  # noqa: PERF203
             last_err = exc
-            if attempt == 4:
-                break
-            import time
-
-            time.sleep(backoff)
-            backoff *= 2
+            if exc.code not in _HTTP_RETRYABLE_STATUS:
+                raise RuntimeError(f"HTTP POST to {url} failed: {last_err}") from exc
+        except _HTTP_TRANSIENT_ERRORS as exc:  # noqa: PERF203
+            last_err = exc
+        if attempt == attempts - 1:
+            break
+        print(
+            f"[warn] HTTP POST retry {attempt + 1}/{attempts} after {last_err!r}; "
+            f"sleeping {backoff:g}s"
+        )
+        time.sleep(backoff)
+        backoff *= 2
     raise RuntimeError(f"HTTP POST to {url} failed: {last_err}")
 
 
