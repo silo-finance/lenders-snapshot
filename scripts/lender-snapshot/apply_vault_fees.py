@@ -12,6 +12,9 @@ Two passes (no nested accounting while tagging):
 
 Idempotent: previous fee annotations are cleared before pass 1.
 Run after ``apply_airdrops.py`` when both are used.
+
+usage:
+    python3 scripts/lender-snapshot/apply_vault_fees.py
 """
 
 from __future__ import annotations
@@ -397,19 +400,18 @@ def apply_vault_fees_to_file(path: Path) -> int:
     return nested_errors
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "categories",
-        nargs="*",
-        help="Category slugs (default: all data/<slug>.json except *.bak)",
-    )
-    args = parser.parse_args(argv)
+def apply_vault_fees(
+    data_dir: Path = DATA_DIR,
+    categories: list[str] | None = None,
+) -> int:
+    """Tag fee flows and recompute pending for snapshot JSON files.
 
-    if args.categories:
-        paths = [DATA_DIR / f"{slug}.json" for slug in args.categories]
+    Returns the number of nested fee-forward errors (non-fatal).
+    """
+    if categories:
+        paths = [data_dir / f"{slug}.json" for slug in categories]
     else:
-        paths = sorted(p for p in DATA_DIR.glob("*.json") if not p.name.endswith(".bak.json"))
+        paths = sorted(p for p in data_dir.glob("*.json") if not p.name.endswith(".bak.json"))
 
     total_errors = 0
     for path in paths:
@@ -420,6 +422,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if total_errors:
         print(f"[warn] finished with {total_errors} nested fee-forward error(s) (non-fatal)")
+    return total_errors
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "categories",
+        nargs="*",
+        help="Category slugs (default: all data/<slug>.json except *.bak)",
+    )
+    args = parser.parse_args(argv)
+    apply_vault_fees(categories=list(args.categories) or None)
     return 0
 
 

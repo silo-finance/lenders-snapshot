@@ -2784,9 +2784,14 @@ def main() -> int:
         # fully merged. The cascade reads and updates Trevee, Pendle, and Stream
         # together, and is idempotent across standalone and scanner-driven runs.
         from apply_airdrops import apply_airdrops
+        from apply_vault_fees import apply_vault_fees
 
         apply_airdrops()
-        print(f"[done] all categories complete: {total_completed} silo(s) total")
+        apply_vault_fees()
+        print(
+            f"[done] all categories complete: {total_completed} silo(s) total; "
+            "airdrop cascade and vault fees applied"
+        )
     return 0
 
 
