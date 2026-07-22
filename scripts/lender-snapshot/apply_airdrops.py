@@ -5,6 +5,9 @@ The operation is deterministic and idempotent: configured airdrop rows are
 removed first, pending balances are recomputed from the remaining flows, and
 the CSV allocations are then applied again across the configured category
 cascade.
+
+usage: 
+    python3 scripts/lender-snapshot/apply_airdrops.py
 """
 
 from __future__ import annotations
@@ -209,6 +212,14 @@ def _read_allocations(path: Path, decimals: int) -> list[tuple[str, int]]:
     return allocations
 
 
+def _format_token_amount(amount: int, decimals: int) -> str:
+    value = Decimal(amount).scaleb(-decimals)
+    formatted = format(value, "f")
+    if "." in formatted:
+        formatted = formatted.rstrip("0").rstrip(".")
+    return formatted
+
+
 def _position_index(root: dict[str, Any], target_silos: set[str]) -> dict[str, list[Position]]:
     index: dict[str, list[Position]] = {}
     for silo_address, address, location, silo, entry in _iter_recipient_entries(root):
@@ -388,14 +399,19 @@ def apply_airdrops(
         category_silos = config.get("categories")
         if not isinstance(category_silos, dict):
             raise ValueError(f"Airdrop {airdrop_id!r} must define category silo lists")
+        normalized_category_silos = {
+            category: [str(address).lower() for address in category_silos.get(category, [])]
+            for category in CATEGORY_ORDER
+        }
         indexes = {
             category: _position_index(
                 roots[category],
-                {str(address).lower() for address in category_silos.get(category, [])},
+                set(normalized_category_silos[category]),
             )
             for category in CATEGORY_ORDER
         }
         unmatched: list[str] = []
+        unmatched_allocations: list[dict[str, Any]] = []
         applied_by_category: dict[str, int] = {}
         applied_by_silo: dict[str, int] = {}
         matched = 0
@@ -403,6 +419,7 @@ def apply_airdrops(
             applied, remaining = _apply_address_allocation(indexes, address, airdrop_id, amount)
             if remaining:
                 unmatched.append(address)
+                unmatched_allocations.append({"address": address, "amount": amount})
                 continue
             matched += 1
             for item in applied:
@@ -417,8 +434,12 @@ def apply_airdrops(
             "rows": len(allocations),
             "matched": matched,
             "unmatched": unmatched,
+            "unmatched_allocations": unmatched_allocations,
             "applied_by_category": applied_by_category,
             "applied_by_silo": applied_by_silo,
+            "csv": str(csv_path),
+            "decimals": int(config["decimals"]),
+            "target_silos": normalized_category_silos,
         }
         report["airdrops"].append(item)
 
@@ -426,16 +447,44 @@ def apply_airdrops(
         _atomic_write_json(paths[category], roots[category])
 
     for item in report["airdrops"]:
+        decimals = int(item["decimals"])
+        unmatched_count = len(item["unmatched"])
+        print(f"[airdrop] Distribution: {item['id']}")
+        print(f"[airdrop]   Source CSV: {item['csv']}")
         print(
-            f"[airdrop] {item['id']}: matched={item['matched']}/{item['rows']} "
-            f"unmatched={len(item['unmatched'])}"
+            f"[airdrop]   Recipients: {item['rows']} total, "
+            f"{item['matched']} matched, {unmatched_count} unmatched"
         )
+        print("[airdrop]   Applied by category:")
         for category, amount in sorted(item["applied_by_category"].items()):
-            print(f"[airdrop]   category={category} applied_raw={amount}")
+            print(
+                f"[airdrop]     - {category}: {_format_token_amount(amount, decimals)} "
+                f"(raw units: {amount})"
+            )
+        print("[airdrop]   Applied by silo:")
         for silo_key, amount in sorted(item["applied_by_silo"].items()):
-            print(f"[airdrop]   silo={silo_key} applied_raw={amount}")
-        for address in item["unmatched"]:
-            print(f"[airdrop]   unmatched={address}")
+            print(
+                f"[airdrop]     - {silo_key}: {_format_token_amount(amount, decimals)} "
+                f"(raw units: {amount})"
+            )
+        if unmatched_count:
+            print(
+                "[airdrop]   WARNING: unmatched recipients were not found as direct lenders "
+                "or vault depositors in any configured target silo."
+            )
+            print("[airdrop]   Searched target silos:")
+            for category, silos in item["target_silos"].items():
+                if silos:
+                    print(f"[airdrop]     - {category}: {', '.join(silos)}")
+            print("[airdrop]   Unmatched CSV rows (no claim balance was adjusted):")
+            for unmatched in item["unmatched_allocations"]:
+                amount = int(unmatched["amount"])
+                print(
+                    f"[airdrop]     - address={unmatched['address']} "
+                    f"amount={_format_token_amount(amount, decimals)} "
+                    f"(raw units: {amount})"
+                )
+        print("[airdrop]")
     return report
 
 

@@ -11,8 +11,10 @@ share-sum invariants against the stored total supplies, with ZERO tolerance
         sum(depositors[].vault_shares) == vault_total_supply
   - for each lender/depositor (exact, signed, NOT clamped to zero):
     pending_assets == base_assets - debt_at_snapshot + total_deposits + total_transfers_in
-                      + total_repays - total_withdrawals - total_transfers_out - total_borrows
-                      - total_airdrops
+                      + total_fee_credits + total_repays - total_withdrawals - total_transfers_out
+                      - total_borrows - total_airdrops - fee_compensation
+    where total_fee_credits = total_received_fees + total_fee_in (vault depositors; else 0)
+    and fee_compensation == min(max(pending_before_compensation, 0), total_fee_credits)
     (total_borrows/total_repays/debt_at_snapshot are 0 except on two-sided-market lenders)
   - for each lender/depositor:
     sum(withdrawals[].assets) == total_withdrawals
@@ -84,48 +86,12 @@ SHARE_DUST = int(os.environ.get("QA_SHARE_DUST", "0"))
 
 # Known, accepted fee-mint unreconciled-share residuals: protocol fee shares minted straight
 # to a recipient (Transfer from 0x0) with no paired Deposit, so the flow scan does not credit
-# them. Deliberately not fixed upstream because these are fee receivers rather than lender
-# inflows. Each exception is pinned to the exact identity (chain, silo, vault-or-None, account,
+# them. Each exception is pinned to the exact identity (chain, silo, vault-or-None, account,
 # all lowercase) AND the exact share_residual, so any change (different silo/account, or a
 # different share amount after regeneration) fails to match and the hard error returns.
-KNOWN_FEE_MINT_RESIDUALS: dict[tuple[str, str, str | None, str], int] = {
-    (
-        "sonic",
-        "0xa1627a0e1d0ebca9326d2219b84df0c600bed4b1",
-        "0xf6bc16b79c469b94cdd25f3e2334dd4fee47a581",
-        "0x1b35727072435bb97fbe8cc378eb6973c98faab3",
-    ): -5250149604623349357212505126,
-    (
-        "sonic",
-        "0xb1412442aa998950f2f652667d5eba35fe66e43f",
-        "0x61e175f91f017987c421e0731d6baa0594eca6eb",
-        "0x1b35727072435bb97fbe8cc378eb6973c98faab3",
-    ): -23205876274247,
-    (
-        "avalanche",
-        "0x7437ac81457fa98ffb2d0c8f9943ecfe4813e2f1",
-        "0x1f8e769b5b6010b2c2bbcd68629ea1a0a0eda7e3",
-        "0x50de2fb5cd259c1b99dbd3bb4e7aac76be7288fc",
-    ): -1388386071610574,
-    (
-        "avalanche",
-        "0x672b77f0538b53dc117c9ddfeb7377a678d321a6",
-        "0x36e2aa296e798ca6262dc5fad5f5660e638d5402",
-        "0xf163d77b8efc151757fecba3d463f3bac7a4d808",
-    ): -1396309184981017,
-    (
-        "avalanche",
-        "0x672b77f0538b53dc117c9ddfeb7377a678d321a6",
-        "0x4dc1ce9b9f9ef00c144bfad305f16c62293dc0e8",
-        "0x50de2fb5cd259c1b99dbd3bb4e7aac76be7288fc",
-    ): -2917607491430712395,
-    (
-        "arbitrum",
-        "0xacb7432a4bb15402ce2afe0a7c9d5b738604f6f9",
-        "0xac69cfe6bb269cebf8ab4764d7e678c3658b99f2",
-        "0xf163d77b8efc151757fecba3d463f3bac7a4d808",
-    ): -20841354193825729,
-}
+# Currently empty: apply_vault_fees tags fee mints and applies fee_compensation, so the
+# previously pinned residuals reconcile and no longer need exceptions.
+KNOWN_FEE_MINT_RESIDUALS: dict[tuple[str, str, str | None, str], int] = {}
 
 # Filled in as exceptions are matched, so a stale (no-longer-present) exception can be flagged.
 _matched_fee_mint_keys: set[tuple[str, str, str | None, str]] = set()
@@ -205,11 +171,20 @@ def check_transfer_sums(
     report.check_equal(f"{label} transfers_out_sum vs total_transfers_out", expected_out, summed_out)
 
 
-def share_residual(base_shares: int, deposits: Any, withdrawals: Any, transfers: Any) -> int:
+def share_residual(
+    base_shares: int,
+    deposits: Any,
+    withdrawals: Any,
+    transfers: Any,
+    fee_mints: Any = None,
+    fees: Any = None,
+) -> int:
     """Net shares still held per the recorded flows: base + in - out.
 
     Complete data yields residual >= 0 (the account cannot move out more shares than it ever
     held). A negative residual means an inflow (deposit / transfer-in) was missed upstream.
+
+    Vault fee_mints / fee_in are share inflows (received_fee duplicates fee_mints and is ignored).
     """
 
     def _sum_shares(items: Any) -> int:
@@ -225,10 +200,18 @@ def share_residual(base_shares: int, deposits: Any, withdrawals: Any, transfers:
                 continue
             (transfers_out if t.get("direction") == "out" else transfers_in).append(t)
 
+    fee_in_shares = 0
+    if isinstance(fees, list):
+        for row in fees:
+            if isinstance(row, dict) and row.get("kind") == "fee_in":
+                fee_in_shares += to_int(row.get("shares", 0))
+
     return (
         base_shares
         + _sum_shares(deposits)
         + _sum_shares(transfers_in)
+        + _sum_shares(fee_mints)
+        + fee_in_shares
         - _sum_shares(withdrawals)
         - _sum_shares(transfers_out)
     )
@@ -319,24 +302,32 @@ def check_pending(
     total_repays: int = 0,
     debt_at_snapshot: int = 0,
     total_airdrops: int = 0,
+    total_fee_credits: int = 0,
+    fee_compensation: int = 0,
 ) -> None:
     """Exact signed pending invariant plus the share-based negative-pending policy.
 
     Borrows/repays and debt_at_snapshot are only present for two-sided markets (converted to
     this silo's asset decimals). They are debt-side quantities and deliberately do NOT enter
     `residual_shares` (which conserves collateral shares).
+
+    Vault fee credits (received_fee + fee_in) and fee_compensation come from apply_vault_fees.
     """
-    expected = (
+    pending_before = (
         base_assets
         - debt_at_snapshot
         + total_deposits
         + total_transfers_in
+        + total_fee_credits
         + total_repays
         - total_withdrawals
         - total_transfers_out
         - total_borrows
         - total_airdrops
     )
+    expected_compensation = min(max(pending_before, 0), total_fee_credits)
+    report.check_equal(f"{label} fee_compensation", expected_compensation, fee_compensation)
+    expected = pending_before - fee_compensation
     report.check_equal(f"{label} pending_assets consistency", expected, pending_assets)
     if residual_shares < -SHARE_DUST:
         # More shares left the account than it ever held: an inflow was missed upstream.
@@ -561,12 +552,18 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
             total_transfers_in = to_int(depositor.get("total_transfers_in", 0))
             total_transfers_out = to_int(depositor.get("total_transfers_out", 0))
             total_airdrops = to_int(depositor.get("total_airdrops", 0))
+            total_received_fees = to_int(depositor.get("total_received_fees", 0))
+            total_fee_in = to_int(depositor.get("total_fee_in", 0))
+            total_fee_credits = to_int(depositor.get("total_fee_credits", total_received_fees + total_fee_in))
+            fee_compensation = to_int(depositor.get("fee_compensation", 0))
             pending_assets = to_int(depositor.get("pending_assets", base_assets))
             residual_shares = share_residual(
                 to_int(depositor.get("vault_shares", 0)),
                 depositor.get("deposits", []),
                 depositor.get("withdrawals", []),
                 depositor.get("transfers", []),
+                fee_mints=depositor.get("fee_mints", []),
+                fees=depositor.get("fees", []),
             )
             check_pending(
                 f"{vlabel} depositor {depositor_addr}",
@@ -580,6 +577,8 @@ def check_silo(chain: str, silo_addr: str, silo: dict[str, Any], report: Report)
                 report,
                 (chain.lower(), silo_addr.lower(), vault_addr.lower(), depositor_addr.lower()),
                 total_airdrops=total_airdrops,
+                total_fee_credits=total_fee_credits,
+                fee_compensation=fee_compensation,
             )
             check_flow_sum(
                 f"{vlabel} depositor {depositor_addr} withdrawals_sum vs total_withdrawals",

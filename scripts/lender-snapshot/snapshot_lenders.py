@@ -18,11 +18,18 @@ or a local gitignored `.env` next to this script. They must never be committed.
 
 A category slug is required (scanning is per-category, never implicitly all):
 
+categories:
+    pendle
+    trevee
+    stream
+
     python3 scripts/lender-snapshot/snapshot_lenders.py <category-slug>
+    python3 scripts/lender-snapshot/snapshot_lenders.py stream --resume-from 4
 """
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import sys
@@ -218,6 +225,126 @@ def category_output_path(slug: str, category: dict[str, Any]) -> Path:
     """Resolve the output JSON path for a category (defaults to `data/<slug>.json`)."""
     filename = str(category.get("output") or f"{slug}.json")
     return DATA_DIR / filename
+
+
+def parse_cli_args(argv: list[str]) -> tuple[list[str], int | None]:
+    """Parse category slugs and optional --resume-from N. Reject unknown flags."""
+    categories: list[str] = []
+    resume_from: int | None = None
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg in ("-h", "--help"):
+            available = ", ".join(sorted(CATEGORIES)) or "(none)"
+            print(
+                "Usage: snapshot_lenders.py <category-slug> [category-slug ...] [--resume-from N]\n"
+                "\n"
+                "  --resume-from N  Skip silos with flat index 0..N-1 (0-based, config order)\n"
+                "                   and continue from index N. Assumes an unchanged silo list.\n"
+                f"\nAvailable categories: {available}"
+            )
+            raise SystemExit(0)
+        if arg == "--resume-from":
+            if index + 1 >= len(argv):
+                raise SystemExit("--resume-from requires a non-negative integer argument")
+            raw = argv[index + 1]
+            try:
+                resume_from = int(raw)
+            except ValueError as exc:
+                raise SystemExit(f"--resume-from expects a non-negative integer, got {raw!r}") from exc
+            if resume_from < 0:
+                raise SystemExit(f"--resume-from must be >= 0, got {resume_from}")
+            index += 2
+            continue
+        if arg.startswith("--resume-from="):
+            raw = arg.split("=", 1)[1]
+            try:
+                resume_from = int(raw)
+            except ValueError as exc:
+                raise SystemExit(f"--resume-from expects a non-negative integer, got {raw!r}") from exc
+            if resume_from < 0:
+                raise SystemExit(f"--resume-from must be >= 0, got {resume_from}")
+            index += 1
+            continue
+        if arg.startswith("-"):
+            raise SystemExit(f"Unknown flag: {arg}. Use --help for usage.")
+        categories.append(arg)
+        index += 1
+    return categories, resume_from
+
+
+def load_output_root(path: Path) -> dict[str, Any] | None:
+    """Load an existing category JSON object, or None if the file is absent."""
+    if not path.exists():
+        return None
+    try:
+        root = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Existing output {path} is not valid JSON: {exc}") from exc
+    if not isinstance(root, dict):
+        raise RuntimeError(f"Existing output {path} is not a JSON object.")
+    return root
+
+
+def silo_is_complete(
+    root: dict[str, Any] | None,
+    chain: str,
+    silo_address: str,
+    events_to_block: int,
+) -> bool:
+    """True when the silo exists on disk and was scanned at least through events_to_block."""
+    if not isinstance(root, dict):
+        return False
+    chain_obj = root.get(str(chain).lower())
+    if not isinstance(chain_obj, dict):
+        return False
+    silos = chain_obj.get("silos")
+    if not isinstance(silos, dict):
+        return False
+    silo_entry = silos.get(norm(silo_address))
+    if not isinstance(silo_entry, dict):
+        return False
+    scanned = silo_entry.get("withdrawals_scanned_to_block")
+    try:
+        scanned_to = int(scanned)
+    except (TypeError, ValueError):
+        return False
+    return scanned_to >= int(events_to_block)
+
+
+def list_incomplete_configured_silos(
+    categories: dict[str, dict[str, Any]],
+) -> list[tuple[str, int, str, str]]:
+    """Return (category, flat_index, chain, silo_address) for every incomplete configured silo."""
+    incomplete: list[tuple[str, int, str, str]] = []
+    for slug, category in categories.items():
+        root = load_output_root(category_output_path(slug, category))
+        flat_index = 0
+        for target in category.get("targets") or []:
+            chain = str(target["chain"]).lower()
+            events_to_block = resolve_events_to_block(target)
+            for silo in target.get("silos") or []:
+                address = norm(str(silo["address"]))
+                if not silo_is_complete(root, chain, address, events_to_block):
+                    incomplete.append((slug, flat_index, chain, address))
+                flat_index += 1
+    return incomplete
+
+
+def print_resume_with(
+    *,
+    slug: str,
+    next_index: int,
+    total_silos: int,
+    chain: str,
+    silo_address: str,
+) -> None:
+    """Emit a hard-to-miss checkpoint line after each successfully written silo."""
+    print(
+        f">>>>>>>>>> RESUME WITH: --resume-from {next_index}  "
+        f"(category={slug} next={next_index}/{total_silos} chain={chain} silo={silo_address}) "
+        f"<<<<<<<<<<"
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -472,23 +599,43 @@ def cs(addr: str) -> str:
 # --------------------------------------------------------------------------------------
 # Raw JSON-RPC client
 # --------------------------------------------------------------------------------------
+_HTTP_RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
+_HTTP_TRANSIENT_ERRORS = (
+    urllib.error.URLError,
+    TimeoutError,
+    json.JSONDecodeError,
+    http.client.RemoteDisconnected,
+    http.client.IncompleteRead,
+    ConnectionResetError,
+    BrokenPipeError,
+)
+
+
 def _http_post_json(url: str, payload: Any, headers: dict[str, str]) -> Any:
+    """POST JSON with retries for transient RPC/subgraph disconnects and gateway errors."""
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     last_err: Exception | None = None
-    backoff = 4
-    for attempt in range(5):
+    attempts = 5
+    backoff = 2.0
+    for attempt in range(attempts):
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 return json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:  # noqa: PERF203
+        except urllib.error.HTTPError as exc:  # noqa: PERF203
             last_err = exc
-            if attempt == 4:
-                break
-            import time
-
-            time.sleep(backoff)
-            backoff *= 2
+            if exc.code not in _HTTP_RETRYABLE_STATUS:
+                raise RuntimeError(f"HTTP POST to {url} failed: {last_err}") from exc
+        except _HTTP_TRANSIENT_ERRORS as exc:  # noqa: PERF203
+            last_err = exc
+        if attempt == attempts - 1:
+            break
+        print(
+            f"[warn] HTTP POST retry {attempt + 1}/{attempts} after {last_err!r}; "
+            f"sleeping {backoff:g}s"
+        )
+        time.sleep(backoff)
+        backoff *= 2
     raise RuntimeError(f"HTTP POST to {url} failed: {last_err}")
 
 
@@ -1303,12 +1450,14 @@ def fetch_transfer_events(
     to_block: int,
     block_chunk: int,
     label: str = "",
+    include_mints: bool = False,
 ) -> list[dict[str, Any]]:
-    """Scan peer-to-peer ERC20 Transfer logs for one share token.
+    """Scan ERC20 Transfer logs for one share token.
 
-    Returns {block_number, tx_hash, log_index, from, to, value(shares)}. Mint (from==0x0)
-    and burn (to==0x0) transfers are skipped: they accompany Deposit/Withdraw and are already
-    counted by those scans, so including them here would double-count.
+    Returns {block_number, tx_hash, log_index, from, to, value(shares)}. Burns (to==0x0)
+    are always skipped (covered by Withdraw). Mints (from==0x0) are skipped by default
+    (covered by Deposit); pass include_mints=True for vault scans that classify fee mints.
+    Mint rows include is_mint=True so callers can split them from peer transfers.
     """
     if to_block < from_block:
         return []
@@ -1319,6 +1468,7 @@ def fetch_transfer_events(
     next_progress_at = from_block + progress_step
 
     events: list[dict[str, Any]] = []
+    mint_count = 0
     start = from_block
     chunk = block_chunk
     print(
@@ -1359,8 +1509,25 @@ def fetch_transfer_events(
                 )
             sender = dec_event_topic_address(topics[1])
             receiver = dec_event_topic_address(topics[2])
-            if sender == ZERO_ADDRESS or receiver == ZERO_ADDRESS:
-                # Mint / burn: already represented by Deposit / Withdraw scans.
+            if receiver == ZERO_ADDRESS:
+                # Burn: already represented by Withdraw scans.
+                continue
+            if sender == ZERO_ADDRESS:
+                if not include_mints:
+                    continue
+                value = int(str(log.get("data", "0x")), 16)
+                events.append(
+                    {
+                        "block_number": int(str(log.get("blockNumber", "0x0")), 16),
+                        "tx_hash": str(log.get("transactionHash", "")).lower(),
+                        "log_index": int(str(log.get("logIndex", "0x0")), 16),
+                        "from": sender,
+                        "to": receiver,
+                        "value": value,
+                        "is_mint": True,
+                    }
+                )
+                mint_count += 1
                 continue
             value = int(str(log.get("data", "0x")), 16)
             event = {
@@ -1376,8 +1543,53 @@ def fetch_transfer_events(
         start = end + 1
 
     events.sort(key=lambda item: (item["block_number"], item["log_index"], item["tx_hash"]))
-    print(f"[info]   [{_scan_display_tag(tag)}] done: {len(events)} peer Transfer event(s) found")
+    peer_count = len(events) - mint_count
+    if include_mints:
+        print(
+            f"[info]   [{_scan_display_tag(tag)}] done: {peer_count} peer Transfer(s), "
+            f"{mint_count} mint Transfer(s) found"
+        )
+    else:
+        print(f"[info]   [{_scan_display_tag(tag)}] done: {peer_count} peer Transfer event(s) found")
     return events
+
+
+def classify_fee_mints(
+    deposits: list[dict[str, Any]],
+    mint_transfers: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return mint Transfers that are not 1:1 matched to a Deposit by owner+shares.
+
+    Per tx_hash: each Deposit claims any unmatched mint with the same shares and
+    to == Deposit.owner. Unmatched mints are vault fee mints (AccrueInterest path).
+    """
+    mints_by_tx: dict[str, list[dict[str, Any]]] = {}
+    for mint in mint_transfers:
+        tx = str(mint.get("tx_hash", "")).lower()
+        mints_by_tx.setdefault(tx, []).append(mint)
+
+    unmatched: list[dict[str, Any]] = []
+    for tx, mints in mints_by_tx.items():
+        available = list(mints)
+        for deposit in deposits:
+            if str(deposit.get("tx_hash", "")).lower() != tx:
+                continue
+            owner = str(deposit.get("owner", "")).lower()
+            shares = int(deposit.get("shares", 0))
+            match_idx = next(
+                (
+                    i
+                    for i, mint in enumerate(available)
+                    if str(mint.get("to", "")).lower() == owner and int(mint.get("value", 0)) == shares
+                ),
+                None,
+            )
+            if match_idx is not None:
+                available.pop(match_idx)
+        unmatched.extend(available)
+
+    unmatched.sort(key=lambda item: (item["block_number"], item["log_index"], item["tx_hash"]))
+    return unmatched
 
 
 def resolve_events_to_block(target: dict[str, Any]) -> int:
@@ -1470,7 +1682,8 @@ FLOW_FIELD_KEYS = (
 )
 
 # Flow event lists that carry a block_number (used for timestamp stamping).
-FLOW_LIST_KEYS = ("withdrawals", "deposits", "transfers", "airdrops", "borrows", "repays")
+# fee_mints: vault share mints not matched to Deposit (scanner raw; pending applied later).
+FLOW_LIST_KEYS = ("withdrawals", "deposits", "transfers", "airdrops", "borrows", "repays", "fee_mints")
 
 
 def _flow_block_numbers_in_entry(entry: dict[str, Any]) -> set[int]:
@@ -1485,6 +1698,51 @@ def _flow_block_numbers_in_entry(entry: dict[str, Any]) -> set[int]:
     return blocks
 
 
+def _timestamp_cache_from_silo(silo_entry: Any) -> dict[int, int]:
+    """Collect trustworthy block timestamps already persisted for one silo."""
+    if not isinstance(silo_entry, dict):
+        return {}
+
+    cache: dict[int, int] = {}
+    conflicted: set[int] = set()
+
+    def remember(block_value: Any, timestamp_value: Any) -> None:
+        try:
+            block_number = int(block_value or 0)
+            timestamp = int(timestamp_value or 0)
+        except (TypeError, ValueError):
+            return
+        if block_number <= 0 or timestamp <= 0 or block_number in conflicted:
+            return
+        previous = cache.get(block_number)
+        if previous is not None and previous != timestamp:
+            cache.pop(block_number, None)
+            conflicted.add(block_number)
+            return
+        cache[block_number] = timestamp
+
+    remember(silo_entry.get("snapshot_block"), silo_entry.get("snapshot_block_timestamp"))
+    direct_lenders = silo_entry.get("direct_lenders")
+    if isinstance(direct_lenders, dict):
+        entries = [entry for entry in direct_lenders.values() if isinstance(entry, dict)]
+    else:
+        entries = []
+    vaults = silo_entry.get("vaults")
+    if isinstance(vaults, dict):
+        for vault in vaults.values():
+            if not isinstance(vault, dict):
+                continue
+            depositors = vault.get("depositors")
+            if isinstance(depositors, dict):
+                entries.extend(entry for entry in depositors.values() if isinstance(entry, dict))
+    for entry in entries:
+        for key in FLOW_LIST_KEYS:
+            for row in entry.get(key) or []:
+                if isinstance(row, dict):
+                    remember(row.get("block_number"), row.get("block_timestamp"))
+    return cache
+
+
 def fetch_block_timestamp_cache(
     rpc: RpcClient,
     blocks: set[int],
@@ -1492,10 +1750,17 @@ def fetch_block_timestamp_cache(
 ) -> dict[int, int]:
     """Fetch eth_getBlockByNumber.timestamp once per unique block; merge into cache."""
     out = dict(cache) if cache else {}
-    needed = sorted(block for block in blocks if block > 0 and block not in out)
+    valid_blocks = {block for block in blocks if block > 0}
+    cached_count = len(valid_blocks.intersection(out))
+    needed = sorted(block for block in valid_blocks if block not in out)
     if not needed:
+        if valid_blocks:
+            print(f"[info] reusing cached block timestamps for all {cached_count} unique block(s)")
         return out
-    print(f"[info] fetching block timestamps for {len(needed)} unique block(s) ...")
+    print(
+        f"[info] fetching block timestamps for {len(needed)} unique block(s); "
+        f"reusing {cached_count} cached"
+    )
     for index, block in enumerate(needed):
         if index == 0 or index == len(needed) - 1 or (index + 1) % 500 == 0:
             print(f"[info]   block timestamp progress: {index + 1}/{len(needed)}")
@@ -1638,6 +1903,23 @@ def _append_transfer(
     entry[total_key] = str(int(entry.get(total_key, 0)) + assets)
 
 
+def _append_fee_mint(entry: dict[str, Any], event: dict[str, Any], assets: int) -> None:
+    """Record a vault fee mint (scanner only; does not change pending_assets)."""
+    rows = entry.get("fee_mints")
+    if not isinstance(rows, list):
+        rows = []
+        entry["fee_mints"] = rows
+    rows.append(
+        {
+            "block_number": event["block_number"],
+            "tx_hash": event["tx_hash"],
+            "log_index": event["log_index"],
+            "assets": str(assets),
+            "shares": str(event["value"]),
+        }
+    )
+
+
 def _finalize_pending(entry: dict[str, Any], base_assets: int) -> None:
     """pending = base - debt + deposits + transfers_in + repays - withdrawals - transfers_out - borrows - airdrops.
 
@@ -1699,6 +1981,7 @@ def enrich_snapshot_with_flows(
     from_block: int,
     to_block: int,
     block_chunk: int,
+    timestamp_cache: dict[int, int] | None = None,
 ) -> None:
     """Apply post-snapshot collateral Deposit (+) and Withdraw (-) flows to each position.
 
@@ -1945,9 +2228,17 @@ def enrich_snapshot_with_flows(
         vault_deposits = fetch_deposit_events(
             rpc, vault_addr, from_block, to_block, label=vault_label, block_chunk=block_chunk
         )
-        vault_transfers = fetch_transfer_events(
-            rpc, vault_addr, from_block, to_block, label=vault_label, block_chunk=block_chunk
+        vault_transfer_logs = fetch_transfer_events(
+            rpc,
+            vault_addr,
+            from_block,
+            to_block,
+            label=vault_label,
+            block_chunk=block_chunk,
+            include_mints=True,
         )
+        vault_mints = [e for e in vault_transfer_logs if e.get("is_mint")]
+        vault_transfers = [e for e in vault_transfer_logs if not e.get("is_mint")]
         # A SiloVault can lend into multiple silos, and a vault Withdraw/Deposit moves vault
         # shares for the vault's *total* underlying across all of them. Attributing the raw
         # event assets to every silo entry would both double-count across silos and credit
@@ -1964,7 +2255,9 @@ def enrich_snapshot_with_flows(
         def vault_shares_to_assets(shares: int, _sa: int = vault_silo_assets, _ts: int = vault_total_supply) -> int:
             return (_sa * shares) // _ts if _ts else 0
 
-        # Add depositors that first appear via a post-snapshot deposit or transfer.
+        fee_mint_events = classify_fee_mints(vault_deposits, vault_mints)
+
+        # Add depositors that first appear via a post-snapshot deposit, transfer, or fee mint.
         existing_depositors = set(depositors.keys())
         candidate_dep: list[str] = []
         seen_dep: set[str] = set()
@@ -1980,6 +2273,8 @@ def enrich_snapshot_with_flows(
         for event in vault_transfers:
             _consider_dep(event["from"])
             _consider_dep(event["to"])
+        for event in fee_mint_events:
+            _consider_dep(event["to"])
         if candidate_dep:
             dep_types, _dep_incentives = classify_addresses(candidate_dep, rpc, mc)
             for owner in candidate_dep:
@@ -1988,6 +2283,7 @@ def enrich_snapshot_with_flows(
         matched_dep_withdraws = 0
         matched_dep_deposits = 0
         matched_dep_transfers = 0
+        matched_fee_mints = 0
         for event in vault_withdraws:
             depositor = depositors.get(event["owner"])
             if not isinstance(depositor, dict):
@@ -2023,6 +2319,12 @@ def enrich_snapshot_with_flows(
                 counterparty = event["from"] if direction == "in" else event["to"]
                 _append_transfer(depositor, event, assets, direction, counterparty)
                 matched_dep_transfers += 1
+        for event in fee_mint_events:
+            depositor = depositors.get(event["to"])
+            if not isinstance(depositor, dict):
+                continue
+            _append_fee_mint(depositor, event, vault_shares_to_assets(int(event["value"])))
+            matched_fee_mints += 1
 
         for depositor in depositors.values():
             if not isinstance(depositor, dict):
@@ -2031,13 +2333,14 @@ def enrich_snapshot_with_flows(
 
         print(
             f"[info]   [{vault_label}] matched {matched_dep_deposits} deposit(s), "
-            f"{matched_dep_withdraws} withdrawal(s), {matched_dep_transfers} transfer-side(s); "
+            f"{matched_dep_withdraws} withdrawal(s), {matched_dep_transfers} transfer-side(s), "
+            f"{matched_fee_mints} fee mint(s); "
             f"added {len(depositors) - len(existing_depositors)} new depositor(s)"
         )
 
     # eth_getLogs has no block timestamp; fetch once per unique block after every lender and
     # depositor is final (incl. mid-scan discoveries).
-    stamp_silo_flow_timestamps(silo_entry, rpc, BLOCK)
+    stamp_silo_flow_timestamps(silo_entry, rpc, BLOCK, timestamp_cache)
 
 
 def expand_vault(
@@ -2118,6 +2421,7 @@ def build_snapshot(
     withdrawals_block_chunk: int,
     withdrawals_to_block: int | None = None,
     latest_block: int | None = None,
+    timestamp_cache: dict[int, int] | None = None,
 ) -> dict[str, Any]:
     rpc = RpcClient(rpc_url, BLOCK)
     mc = Multicall(rpc, MULTICALL3, MULTICALL_BATCH)
@@ -2213,10 +2517,26 @@ def build_snapshot(
     )
     if scan_to >= scan_from:
         print(f"[info] fetching Deposit + Withdraw events from blocks {scan_from}..{scan_to} ...")
-        enrich_snapshot_with_flows(silo_entry, rpc, mc, scan_from, scan_to, withdrawals_block_chunk)
+        enrich_snapshot_with_flows(
+            silo_entry,
+            rpc,
+            mc,
+            scan_from,
+            scan_to,
+            withdrawals_block_chunk,
+            timestamp_cache,
+        )
     else:
         print(f"[info] skipping flow scan: target block {scan_to} is before {scan_from}")
-        enrich_snapshot_with_flows(silo_entry, rpc, mc, scan_from, scan_from - 1, withdrawals_block_chunk)
+        enrich_snapshot_with_flows(
+            silo_entry,
+            rpc,
+            mc,
+            scan_from,
+            scan_from - 1,
+            withdrawals_block_chunk,
+            timestamp_cache,
+        )
     silo_entry["withdrawals_scanned_to_block"] = scan_to
     return silo_entry
 
@@ -2305,7 +2625,7 @@ def _merge_flow_entry(old_entry: Any, new_entry: Any) -> Any:
         return new_entry
     if not isinstance(new_entry, dict):
         return old_entry
-    flow_lists = ("withdrawals", "deposits", "transfers", "airdrops", "borrows", "repays")
+    flow_lists = ("withdrawals", "deposits", "transfers", "airdrops", "borrows", "repays", "fee_mints")
     has_flows = any(k in old_entry for k in flow_lists) or any(k in new_entry for k in flow_lists)
     if not has_flows:
         # e.g. a silo_vault direct-lender entry: flow fields are intentionally absent.
@@ -2314,8 +2634,8 @@ def _merge_flow_entry(old_entry: Any, new_entry: Any) -> Any:
     for list_key in flow_lists:
         old_list = old_entry.get(list_key)
         new_list = new_entry.get(list_key)
-        # borrows/repays exist only for two-sided markets; skip if neither side has them so we
-        # do not materialize empty lists on one-sided silos.
+        # borrows/repays exist only for two-sided markets; fee_mints only on vault depositors.
+        # Skip if neither side has them so we do not materialize empty lists elsewhere.
         if old_list is None and new_list is None:
             continue
         merged[list_key] = _merge_event_list(old_list, new_list, list_key)
@@ -2386,6 +2706,43 @@ def _merge_silo_entry(old_silo: Any, new_silo: dict[str, Any]) -> dict[str, Any]
     return merged
 
 
+def load_existing_chain_timestamp_cache(
+    output_path: Path,
+    chain: str,
+) -> dict[int, int]:
+    """Load reusable block timestamps for every persisted silo on one chain."""
+    path = Path(output_path)
+    if not path.exists():
+        return {}
+    try:
+        root = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Existing output {path} is not valid JSON; cannot reuse timestamps: {exc}") from exc
+    if not isinstance(root, dict):
+        raise RuntimeError(f"Existing output {path} is not a JSON object; cannot reuse timestamps.")
+    chain_obj = root.get(chain)
+    if not isinstance(chain_obj, dict):
+        return {}
+    silos = chain_obj.get("silos")
+    if not isinstance(silos, dict):
+        return {}
+    cache: dict[int, int] = {}
+    conflicted: set[int] = set()
+    for silo_entry in silos.values():
+        for block_number, timestamp in _timestamp_cache_from_silo(silo_entry).items():
+            if block_number in conflicted:
+                continue
+            previous = cache.get(block_number)
+            if previous is not None and previous != timestamp:
+                cache.pop(block_number, None)
+                conflicted.add(block_number)
+                continue
+            cache[block_number] = timestamp
+    if cache:
+        print(f"[info] loaded {len(cache)} existing block timestamp(s) for chain={chain} from {path}")
+    return cache
+
+
 def write_output(
     silo_entry: dict[str, Any], chain: str, chain_id: int, silo_address: str, output_path: Path
 ) -> None:
@@ -2420,71 +2777,129 @@ def write_output(
     print(f"[ok] wrote {path}")
 
 
-def run_category(slug: str, category: dict[str, Any]) -> int:
+def run_category(slug: str, category: dict[str, Any], resume_from: int | None = None) -> int:
     """Scan every silo configured for one category and write `data/<slug>.json`.
 
-    Returns the number of silos completed for this category.
+    Returns the number of silos newly scanned in this run (skipped silos are excluded).
+    Flat silo indices are 0-based across all chains in config order.
     """
     targets = category.get("targets") or []
     output_path = category_output_path(slug, category)
     total_silos = sum(len(target.get("silos") or []) for target in targets)
+    if resume_from is not None and resume_from > total_silos:
+        raise SystemExit(
+            f"--resume-from {resume_from} is out of range for category '{slug}' "
+            f"(valid: 0..{total_silos}; {total_silos} skips all silos)"
+        )
     print(
         f"[info] ##### category '{slug}': {total_silos} silo(s) across {len(targets)} chain(s) "
         f"-> {output_path} #####"
     )
-    completed = 0
-    silo_index = 0
+    if resume_from is not None:
+        if resume_from == 0:
+            print(f"[resume] category={slug} starting at index=0 (no silos skipped)")
+        elif resume_from >= total_silos:
+            print(
+                f"[resume] category={slug} starting at index={resume_from} "
+                f"(skipping 0..{total_silos - 1} of {total_silos}; nothing left to scan)"
+            )
+        else:
+            print(
+                f"[resume] category={slug} starting at index={resume_from} "
+                f"(skipping 0..{resume_from - 1} of {total_silos})"
+            )
+
+    scanned = 0
+    skipped = 0
+    flat_index = 0
     started_at = time.monotonic()
     for target in targets:
         silos = target.get("silos") or []
         if not silos:
             print(f"[skip] category={slug} chain={target['chain']} has no configured silos")
             continue
-        rpc_url = resolve_rpc_url(str(target["chain"]))
-        # Both the eth_getLogs chunk and the chain head are per-chain: resolve them
-        # once so every silo on this chain shares them (one eth_blockNumber call).
-        chain_block_chunk = resolve_block_chunk(target)
+
+        target_start = flat_index
+        target_end = flat_index + len(silos)
+        will_scan_any = resume_from is None or resume_from < target_end
+
+        rpc_url = ""
+        chain_block_chunk = 0
         chain_events_to_block = resolve_events_to_block(target)
-        chain_latest_block = RpcClient(rpc_url, 0).eth_block_number()
-        print(
-            f"[info] chain={target['chain']} latest block={chain_latest_block} "
-            f"events_to_block={chain_events_to_block} block_chunk={chain_block_chunk} "
-            f"(shared across silos)"
-        )
-        for silo in silos:
-            silo_index += 1
-            configure_context(target, silo)
+        chain_latest_block = 0
+        chain_timestamp_cache: dict[int, int] = {}
+        if will_scan_any:
+            rpc_url = resolve_rpc_url(str(target["chain"]))
+            # Both the eth_getLogs chunk and the chain head are per-chain: resolve them
+            # once so every silo on this chain shares them (one eth_blockNumber call).
+            chain_block_chunk = resolve_block_chunk(target)
+            chain_latest_block = RpcClient(rpc_url, 0).eth_block_number()
+            chain_timestamp_cache = load_existing_chain_timestamp_cache(output_path, str(target["chain"]))
             print(
-                f"[info] ===== [{slug}] silo {silo_index}/{total_silos}: chain={CHAIN} "
+                f"[info] chain={target['chain']} latest block={chain_latest_block} "
+                f"events_to_block={chain_events_to_block} block_chunk={chain_block_chunk} "
+                f"(shared across silos)"
+            )
+        else:
+            print(
+                f"[resume] chain={target['chain']} fully skipped "
+                f"(indices {target_start}..{target_end - 1})"
+            )
+
+        for silo in silos:
+            configure_context(target, silo)
+            if resume_from is not None and flat_index < resume_from:
+                print(
+                    f"[resume] skip index={flat_index}/{total_silos} "
+                    f"chain={CHAIN} silo={SILO_ADDRESS}"
+                )
+                skipped += 1
+                flat_index += 1
+                continue
+
+            print(
+                f"[info] ===== [{slug}] silo index={flat_index}/{total_silos}: chain={CHAIN} "
                 f"silo={SILO_ADDRESS} block={BLOCK} ====="
             )
             silo_started_at = time.monotonic()
             block_range = compute_block_range(target, chain_latest_block)
             if _PROGRESS:
                 _PROGRESS.begin_silo(block_range)
-            withdrawals_to_block = chain_events_to_block
-            withdrawals_block_chunk = chain_block_chunk
             silo_entry = build_snapshot(
                 rpc_url,
-                withdrawals_to_block=withdrawals_to_block,
-                withdrawals_block_chunk=withdrawals_block_chunk,
+                withdrawals_to_block=chain_events_to_block,
+                withdrawals_block_chunk=chain_block_chunk,
                 latest_block=chain_latest_block,
+                timestamp_cache=chain_timestamp_cache,
             )
+            chain_timestamp_cache.update(_timestamp_cache_from_silo(silo_entry))
             write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS, output_path)
+            print_resume_with(
+                slug=slug,
+                next_index=flat_index + 1,
+                total_silos=total_silos,
+                chain=CHAIN,
+                silo_address=SILO_ADDRESS,
+            )
             direct = len(silo_entry["direct_lenders"])
             vaults = len(silo_entry["vaults"])
             elapsed = time.monotonic() - silo_started_at
             print(
-                f"[done] [{slug}] silo {silo_index}/{total_silos} chain={CHAIN} silo={SILO_ADDRESS} "
-                f"direct_lenders={direct} vaults={vaults} elapsed={elapsed:.1f}s"
+                f"[done] [{slug}] silo index={flat_index}/{total_silos} chain={CHAIN} "
+                f"silo={SILO_ADDRESS} direct_lenders={direct} vaults={vaults} elapsed={elapsed:.1f}s"
             )
-            completed += 1
-    if completed == 0:
+            scanned += 1
+            flat_index += 1
+
+    total_elapsed = time.monotonic() - started_at
+    if total_silos == 0:
         print(f"[done] category '{slug}': no silos configured")
     else:
-        total_elapsed = time.monotonic() - started_at
-        print(f"[done] category '{slug}': {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
-    return completed
+        print(
+            f"[done] category '{slug}': scanned={scanned} skipped={skipped} "
+            f"total={total_silos} in {total_elapsed:.1f}s"
+        )
+    return scanned
 
 
 def main() -> int:
@@ -2494,7 +2909,7 @@ def main() -> int:
     # scanning is deliberate and per-category, so we never scan everything implicitly.
     # This is the "new silo list -> new file" workflow: `./run.sh snapshot_lenders.py <slug>`.
     available = ", ".join(sorted(CATEGORIES)) or "(none)"
-    requested = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
+    requested, resume_from = parse_cli_args(sys.argv[1:])
     if not requested:
         raise SystemExit(f"No category slug provided. Specify at least one of: {available}")
     unknown = [slug for slug in requested if slug not in CATEGORIES]
@@ -2538,21 +2953,37 @@ def main() -> int:
     budget = compute_run_budget(selected_categories)
     _PROGRESS = ProgressTracker(budget)
     print(f"[info] scanning {len(selected)} categor(y/ies): {', '.join(selected)}")
+    if resume_from is not None:
+        print(f"[info] resume-from index={resume_from}")
     print(f"[info] planned work: {budget:.0f} units across run")
-    total_completed = 0
+    total_scanned = 0
     for slug in selected:
-        total_completed += run_category(slug, CATEGORIES[slug])
+        total_scanned += run_category(slug, CATEGORIES[slug], resume_from=resume_from)
 
-    if total_completed == 0:
-        print("[done] no silos configured")
-    else:
-        # Apply off-chain distributions only after every requested category has been
-        # fully merged. The cascade reads and updates Trevee, Pendle, and Stream
-        # together, and is idempotent across standalone and scanner-driven runs.
-        from apply_airdrops import apply_airdrops
+    # Cascade only when every configured silo for the selected categories is complete
+    # on disk — including runs that only skipped via --resume-from.
+    incomplete = list_incomplete_configured_silos(selected_categories)
+    if incomplete:
+        print(
+            f"[warn] skipping airdrop cascade: {len(incomplete)} configured silo(s) incomplete"
+        )
+        for category_slug, flat_index, chain, address in incomplete:
+            print(
+                f"[warn]   incomplete category={category_slug} index={flat_index} "
+                f"chain={chain} silo={address}"
+            )
+        print(f"[done] scanned={total_scanned} silo(s); cascade deferred until all silos are complete")
+        return 0
 
-        apply_airdrops()
-        print(f"[done] all categories complete: {total_completed} silo(s) total")
+    from apply_airdrops import apply_airdrops
+    from apply_vault_fees import apply_vault_fees
+
+    apply_airdrops()
+    apply_vault_fees()
+    print(
+        f"[done] all categories complete: scanned={total_scanned} silo(s); "
+        "airdrop cascade and vault fees applied"
+    )
     return 0
 
 
