@@ -2,6 +2,8 @@ import csv
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 from apply_airdrops import CATEGORY_ORDER, apply_airdrops
@@ -165,8 +167,23 @@ class ApplyAirdropsCascadeTest(unittest.TestCase):
     def test_unmatched_is_reported_and_rerun_is_idempotent(self) -> None:
         self._prepare_categories({"trevee": [("t1", ADDRESS, 10)]})
 
-        unmatched_report = self._run(3, {"trevee": ["t1"]}, address=UNMATCHED)
+        output = StringIO()
+        with redirect_stdout(output):
+            unmatched_report = self._run(3, {"trevee": ["t1"]}, address=UNMATCHED)
         self.assertEqual(unmatched_report["airdrops"][0]["unmatched"], [UNMATCHED])
+        self.assertEqual(
+            unmatched_report["airdrops"][0]["unmatched_allocations"],
+            [{"address": UNMATCHED, "amount": 3}],
+        )
+        log = output.getvalue()
+        self.assertIn("Recipients: 1 total, 0 matched, 1 unmatched", log)
+        self.assertIn(
+            "unmatched recipients were not found as direct lenders or vault depositors",
+            log,
+        )
+        self.assertIn("trevee: t1", log)
+        self.assertIn(f"address={UNMATCHED} amount=3 (raw units: 3)", log)
+        self.assertIn("no claim balance was adjusted", log)
 
         self._run(3, {"trevee": ["t1"]})
         first = {

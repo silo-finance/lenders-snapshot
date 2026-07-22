@@ -7,6 +7,7 @@
 #   ./scripts/lender-snapshot/run.sh snapshot_lenders.py pendle
 #   ./scripts/lender-snapshot/run.sh snapshot_lenders.py trevee
 #   ./scripts/lender-snapshot/run.sh snapshot_lenders.py stream
+#   ./scripts/lender-snapshot/run.sh snapshot_lenders.py stream --resume-from 4
 #   ./run.sh qa_check.py                           # runs the QA validator
 #   ./run.sh qa_check.py --verify-onchain
 #
