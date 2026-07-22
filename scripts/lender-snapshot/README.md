@@ -88,6 +88,16 @@ python3 scripts/lender-snapshot/snapshot_lenders.py stream
 # You can pass several slugs to scan more than one category in a single run:
 python3 scripts/lender-snapshot/snapshot_lenders.py stream pendle
 
+# Resume after an interrupted scan. Flat silo indexes are 0-based in config
+# order across all chains. After each successfully written silo the scanner
+# prints a hard-to-miss line:
+#   >>>>>>>>>> RESUME WITH: --resume-from N  (category=... next=N/T ...) <<<<<<<<<<
+# Copy that flag to skip indexes 0..N-1 and continue from N. Assumes the
+# category's silo list/order is unchanged since the interrupted run:
+python3 scripts/lender-snapshot/snapshot_lenders.py stream --resume-from 4
+# Docker:
+./scripts/lender-snapshot/run.sh snapshot_lenders.py stream --resume-from 4
+
 # Reapply the configured airdrops without rescanning on-chain data:
 python3 scripts/lender-snapshot/apply_airdrops.py
 
@@ -105,9 +115,20 @@ Re-running for the same Silo **merges (unions)** its flow events into the existi
 
 ## Airdrop cascade
 
+The scanner runs the airdrop cascade only after every configured silo for the
+selected categories is complete on disk (`withdrawals_scanned_to_block` at least
+the chain's `events_to_block`). An interrupted or partial scan therefore defers
+the cascade; finish the remaining silos (optionally with `--resume-from`) or run
+`apply_airdrops.py` yourself once the JSON files are complete.
+
 Configured airdrops are matched by recipient address and applied in category order:
 **Trevee → Pendle → Stream**. If an address is absent from Trevee, processing starts
 at the first later category where a compatible position exists.
+
+An `unmatched` recipient is an address present in the airdrop CSV that is not a
+direct lender or vault depositor in any target silo configured for that airdrop.
+No claim balance is adjusted for that CSV row. The application log lists the
+unmatched address, its CSV amount, and all target silos that were searched.
 
 - ETH allocations use 18-decimal WETH/scETH positions. Stream has no compatible
   ETH position, so Pendle is the final possible category.

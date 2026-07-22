@@ -18,7 +18,13 @@ or a local gitignored `.env` next to this script. They must never be committed.
 
 A category slug is required (scanning is per-category, never implicitly all):
 
+categories:
+    pendle
+    trevee
+    stream
+
     python3 scripts/lender-snapshot/snapshot_lenders.py <category-slug>
+    python3 scripts/lender-snapshot/snapshot_lenders.py stream --resume-from 4
 """
 
 from __future__ import annotations
@@ -219,6 +225,126 @@ def category_output_path(slug: str, category: dict[str, Any]) -> Path:
     """Resolve the output JSON path for a category (defaults to `data/<slug>.json`)."""
     filename = str(category.get("output") or f"{slug}.json")
     return DATA_DIR / filename
+
+
+def parse_cli_args(argv: list[str]) -> tuple[list[str], int | None]:
+    """Parse category slugs and optional --resume-from N. Reject unknown flags."""
+    categories: list[str] = []
+    resume_from: int | None = None
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg in ("-h", "--help"):
+            available = ", ".join(sorted(CATEGORIES)) or "(none)"
+            print(
+                "Usage: snapshot_lenders.py <category-slug> [category-slug ...] [--resume-from N]\n"
+                "\n"
+                "  --resume-from N  Skip silos with flat index 0..N-1 (0-based, config order)\n"
+                "                   and continue from index N. Assumes an unchanged silo list.\n"
+                f"\nAvailable categories: {available}"
+            )
+            raise SystemExit(0)
+        if arg == "--resume-from":
+            if index + 1 >= len(argv):
+                raise SystemExit("--resume-from requires a non-negative integer argument")
+            raw = argv[index + 1]
+            try:
+                resume_from = int(raw)
+            except ValueError as exc:
+                raise SystemExit(f"--resume-from expects a non-negative integer, got {raw!r}") from exc
+            if resume_from < 0:
+                raise SystemExit(f"--resume-from must be >= 0, got {resume_from}")
+            index += 2
+            continue
+        if arg.startswith("--resume-from="):
+            raw = arg.split("=", 1)[1]
+            try:
+                resume_from = int(raw)
+            except ValueError as exc:
+                raise SystemExit(f"--resume-from expects a non-negative integer, got {raw!r}") from exc
+            if resume_from < 0:
+                raise SystemExit(f"--resume-from must be >= 0, got {resume_from}")
+            index += 1
+            continue
+        if arg.startswith("-"):
+            raise SystemExit(f"Unknown flag: {arg}. Use --help for usage.")
+        categories.append(arg)
+        index += 1
+    return categories, resume_from
+
+
+def load_output_root(path: Path) -> dict[str, Any] | None:
+    """Load an existing category JSON object, or None if the file is absent."""
+    if not path.exists():
+        return None
+    try:
+        root = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Existing output {path} is not valid JSON: {exc}") from exc
+    if not isinstance(root, dict):
+        raise RuntimeError(f"Existing output {path} is not a JSON object.")
+    return root
+
+
+def silo_is_complete(
+    root: dict[str, Any] | None,
+    chain: str,
+    silo_address: str,
+    events_to_block: int,
+) -> bool:
+    """True when the silo exists on disk and was scanned at least through events_to_block."""
+    if not isinstance(root, dict):
+        return False
+    chain_obj = root.get(str(chain).lower())
+    if not isinstance(chain_obj, dict):
+        return False
+    silos = chain_obj.get("silos")
+    if not isinstance(silos, dict):
+        return False
+    silo_entry = silos.get(norm(silo_address))
+    if not isinstance(silo_entry, dict):
+        return False
+    scanned = silo_entry.get("withdrawals_scanned_to_block")
+    try:
+        scanned_to = int(scanned)
+    except (TypeError, ValueError):
+        return False
+    return scanned_to >= int(events_to_block)
+
+
+def list_incomplete_configured_silos(
+    categories: dict[str, dict[str, Any]],
+) -> list[tuple[str, int, str, str]]:
+    """Return (category, flat_index, chain, silo_address) for every incomplete configured silo."""
+    incomplete: list[tuple[str, int, str, str]] = []
+    for slug, category in categories.items():
+        root = load_output_root(category_output_path(slug, category))
+        flat_index = 0
+        for target in category.get("targets") or []:
+            chain = str(target["chain"]).lower()
+            events_to_block = resolve_events_to_block(target)
+            for silo in target.get("silos") or []:
+                address = norm(str(silo["address"]))
+                if not silo_is_complete(root, chain, address, events_to_block):
+                    incomplete.append((slug, flat_index, chain, address))
+                flat_index += 1
+    return incomplete
+
+
+def print_resume_with(
+    *,
+    slug: str,
+    next_index: int,
+    total_silos: int,
+    chain: str,
+    silo_address: str,
+) -> None:
+    """Emit a hard-to-miss checkpoint line after each successfully written silo."""
+    print(
+        f">>>>>>>>>> RESUME WITH: --resume-from {next_index}  "
+        f"(category={slug} next={next_index}/{total_silos} chain={chain} silo={silo_address}) "
+        f"<<<<<<<<<<"
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -2651,74 +2777,129 @@ def write_output(
     print(f"[ok] wrote {path}")
 
 
-def run_category(slug: str, category: dict[str, Any]) -> int:
+def run_category(slug: str, category: dict[str, Any], resume_from: int | None = None) -> int:
     """Scan every silo configured for one category and write `data/<slug>.json`.
 
-    Returns the number of silos completed for this category.
+    Returns the number of silos newly scanned in this run (skipped silos are excluded).
+    Flat silo indices are 0-based across all chains in config order.
     """
     targets = category.get("targets") or []
     output_path = category_output_path(slug, category)
     total_silos = sum(len(target.get("silos") or []) for target in targets)
+    if resume_from is not None and resume_from > total_silos:
+        raise SystemExit(
+            f"--resume-from {resume_from} is out of range for category '{slug}' "
+            f"(valid: 0..{total_silos}; {total_silos} skips all silos)"
+        )
     print(
         f"[info] ##### category '{slug}': {total_silos} silo(s) across {len(targets)} chain(s) "
         f"-> {output_path} #####"
     )
-    completed = 0
-    silo_index = 0
+    if resume_from is not None:
+        if resume_from == 0:
+            print(f"[resume] category={slug} starting at index=0 (no silos skipped)")
+        elif resume_from >= total_silos:
+            print(
+                f"[resume] category={slug} starting at index={resume_from} "
+                f"(skipping 0..{total_silos - 1} of {total_silos}; nothing left to scan)"
+            )
+        else:
+            print(
+                f"[resume] category={slug} starting at index={resume_from} "
+                f"(skipping 0..{resume_from - 1} of {total_silos})"
+            )
+
+    scanned = 0
+    skipped = 0
+    flat_index = 0
     started_at = time.monotonic()
     for target in targets:
         silos = target.get("silos") or []
         if not silos:
             print(f"[skip] category={slug} chain={target['chain']} has no configured silos")
             continue
-        rpc_url = resolve_rpc_url(str(target["chain"]))
-        # Both the eth_getLogs chunk and the chain head are per-chain: resolve them
-        # once so every silo on this chain shares them (one eth_blockNumber call).
-        chain_block_chunk = resolve_block_chunk(target)
+
+        target_start = flat_index
+        target_end = flat_index + len(silos)
+        will_scan_any = resume_from is None or resume_from < target_end
+
+        rpc_url = ""
+        chain_block_chunk = 0
         chain_events_to_block = resolve_events_to_block(target)
-        chain_latest_block = RpcClient(rpc_url, 0).eth_block_number()
-        chain_timestamp_cache = load_existing_chain_timestamp_cache(output_path, str(target["chain"]))
-        print(
-            f"[info] chain={target['chain']} latest block={chain_latest_block} "
-            f"events_to_block={chain_events_to_block} block_chunk={chain_block_chunk} "
-            f"(shared across silos)"
-        )
-        for silo in silos:
-            silo_index += 1
-            configure_context(target, silo)
+        chain_latest_block = 0
+        chain_timestamp_cache: dict[int, int] = {}
+        if will_scan_any:
+            rpc_url = resolve_rpc_url(str(target["chain"]))
+            # Both the eth_getLogs chunk and the chain head are per-chain: resolve them
+            # once so every silo on this chain shares them (one eth_blockNumber call).
+            chain_block_chunk = resolve_block_chunk(target)
+            chain_latest_block = RpcClient(rpc_url, 0).eth_block_number()
+            chain_timestamp_cache = load_existing_chain_timestamp_cache(output_path, str(target["chain"]))
             print(
-                f"[info] ===== [{slug}] silo {silo_index}/{total_silos}: chain={CHAIN} "
+                f"[info] chain={target['chain']} latest block={chain_latest_block} "
+                f"events_to_block={chain_events_to_block} block_chunk={chain_block_chunk} "
+                f"(shared across silos)"
+            )
+        else:
+            print(
+                f"[resume] chain={target['chain']} fully skipped "
+                f"(indices {target_start}..{target_end - 1})"
+            )
+
+        for silo in silos:
+            configure_context(target, silo)
+            if resume_from is not None and flat_index < resume_from:
+                print(
+                    f"[resume] skip index={flat_index}/{total_silos} "
+                    f"chain={CHAIN} silo={SILO_ADDRESS}"
+                )
+                skipped += 1
+                flat_index += 1
+                continue
+
+            print(
+                f"[info] ===== [{slug}] silo index={flat_index}/{total_silos}: chain={CHAIN} "
                 f"silo={SILO_ADDRESS} block={BLOCK} ====="
             )
             silo_started_at = time.monotonic()
             block_range = compute_block_range(target, chain_latest_block)
             if _PROGRESS:
                 _PROGRESS.begin_silo(block_range)
-            withdrawals_to_block = chain_events_to_block
-            withdrawals_block_chunk = chain_block_chunk
             silo_entry = build_snapshot(
                 rpc_url,
-                withdrawals_to_block=withdrawals_to_block,
-                withdrawals_block_chunk=withdrawals_block_chunk,
+                withdrawals_to_block=chain_events_to_block,
+                withdrawals_block_chunk=chain_block_chunk,
                 latest_block=chain_latest_block,
                 timestamp_cache=chain_timestamp_cache,
             )
             chain_timestamp_cache.update(_timestamp_cache_from_silo(silo_entry))
             write_output(silo_entry, CHAIN, CHAIN_ID, SILO_ADDRESS, output_path)
+            print_resume_with(
+                slug=slug,
+                next_index=flat_index + 1,
+                total_silos=total_silos,
+                chain=CHAIN,
+                silo_address=SILO_ADDRESS,
+            )
             direct = len(silo_entry["direct_lenders"])
             vaults = len(silo_entry["vaults"])
             elapsed = time.monotonic() - silo_started_at
             print(
-                f"[done] [{slug}] silo {silo_index}/{total_silos} chain={CHAIN} silo={SILO_ADDRESS} "
-                f"direct_lenders={direct} vaults={vaults} elapsed={elapsed:.1f}s"
+                f"[done] [{slug}] silo index={flat_index}/{total_silos} chain={CHAIN} "
+                f"silo={SILO_ADDRESS} direct_lenders={direct} vaults={vaults} elapsed={elapsed:.1f}s"
             )
-            completed += 1
-    if completed == 0:
+            scanned += 1
+            flat_index += 1
+
+    total_elapsed = time.monotonic() - started_at
+    if total_silos == 0:
         print(f"[done] category '{slug}': no silos configured")
     else:
-        total_elapsed = time.monotonic() - started_at
-        print(f"[done] category '{slug}': {completed}/{total_silos} silo(s) completed in {total_elapsed:.1f}s")
-    return completed
+        print(
+            f"[done] category '{slug}': scanned={scanned} skipped={skipped} "
+            f"total={total_silos} in {total_elapsed:.1f}s"
+        )
+    return scanned
 
 
 def main() -> int:
@@ -2728,7 +2909,7 @@ def main() -> int:
     # scanning is deliberate and per-category, so we never scan everything implicitly.
     # This is the "new silo list -> new file" workflow: `./run.sh snapshot_lenders.py <slug>`.
     available = ", ".join(sorted(CATEGORIES)) or "(none)"
-    requested = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
+    requested, resume_from = parse_cli_args(sys.argv[1:])
     if not requested:
         raise SystemExit(f"No category slug provided. Specify at least one of: {available}")
     unknown = [slug for slug in requested if slug not in CATEGORIES]
@@ -2772,26 +2953,37 @@ def main() -> int:
     budget = compute_run_budget(selected_categories)
     _PROGRESS = ProgressTracker(budget)
     print(f"[info] scanning {len(selected)} categor(y/ies): {', '.join(selected)}")
+    if resume_from is not None:
+        print(f"[info] resume-from index={resume_from}")
     print(f"[info] planned work: {budget:.0f} units across run")
-    total_completed = 0
+    total_scanned = 0
     for slug in selected:
-        total_completed += run_category(slug, CATEGORIES[slug])
+        total_scanned += run_category(slug, CATEGORIES[slug], resume_from=resume_from)
 
-    if total_completed == 0:
-        print("[done] no silos configured")
-    else:
-        # Apply off-chain distributions only after every requested category has been
-        # fully merged. The cascade reads and updates Trevee, Pendle, and Stream
-        # together, and is idempotent across standalone and scanner-driven runs.
-        from apply_airdrops import apply_airdrops
-        from apply_vault_fees import apply_vault_fees
-
-        apply_airdrops()
-        apply_vault_fees()
+    # Cascade only when every configured silo for the selected categories is complete
+    # on disk — including runs that only skipped via --resume-from.
+    incomplete = list_incomplete_configured_silos(selected_categories)
+    if incomplete:
         print(
-            f"[done] all categories complete: {total_completed} silo(s) total; "
-            "airdrop cascade and vault fees applied"
+            f"[warn] skipping airdrop cascade: {len(incomplete)} configured silo(s) incomplete"
         )
+        for category_slug, flat_index, chain, address in incomplete:
+            print(
+                f"[warn]   incomplete category={category_slug} index={flat_index} "
+                f"chain={chain} silo={address}"
+            )
+        print(f"[done] scanned={total_scanned} silo(s); cascade deferred until all silos are complete")
+        return 0
+
+    from apply_airdrops import apply_airdrops
+    from apply_vault_fees import apply_vault_fees
+
+    apply_airdrops()
+    apply_vault_fees()
+    print(
+        f"[done] all categories complete: scanned={total_scanned} silo(s); "
+        "airdrop cascade and vault fees applied"
+    )
     return 0
 
 
