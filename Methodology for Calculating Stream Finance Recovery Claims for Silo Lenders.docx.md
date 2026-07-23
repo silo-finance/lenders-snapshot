@@ -154,7 +154,7 @@ SiloDAO has submitted recovery claims through its legal counsel on behalf of len
 • Claims Export:
 
 - [Google Drive](https://docs.google.com/spreadsheets/d/1scdhb0S8wX4ztCaaKgpX4Cqj3XOyb5wC_GDenGv2Ht4/edit?gid=1007715572#gid=1007715572)  
-- Github  
+- [stream-all-claims.csv](https://github.com/silo-finance/lenders-snapshot/blob/master/csv/stream-all-claims.csv)  
 
 For Trevee-related claims, the balances shown under “[Trevee Claims](https://silo-finance.github.io/lenders-snapshot/trevee)” in our public UI are provided so affected lenders can verify their positions. Users should follow Trevee's instructions regarding participation in its recovery process; if compensation is received, Silo will assist with distributing the amounts allocated to affected Silo users according to these balances.
 

@@ -520,6 +520,12 @@ const METHODOLOGY_LINKS = [
   },
 ] as const;
 
+const STREAM_CLAIMS_EXPORT_LINK = {
+  label: "Submitted Claims Export",
+  description: "CSV of submitted Stream claim amounts",
+  url: "https://github.com/silo-finance/lenders-snapshot/blob/master/csv/stream-all-claims.csv",
+} as const;
+
 function categoryHasAirdrops(chains: ChainSnapshot[]): boolean {
   return chains.some((chain) =>
     chain.silos.some(
@@ -2367,7 +2373,10 @@ function AppHeader({
                 ))}
               </div>
               <div className="flex flex-wrap gap-x-5 gap-y-2 not-italic">
-                {METHODOLOGY_LINKS.map((link) => (
+                {[
+                  ...METHODOLOGY_LINKS,
+                  ...(slug === "stream" ? [STREAM_CLAIMS_EXPORT_LINK] : []),
+                ].map((link) => (
                   <a
                     key={link.url}
                     className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-300 transition hover:text-emerald-200"

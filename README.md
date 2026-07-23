@@ -130,4 +130,4 @@ Python tooling lives in `scripts/lender-snapshot/`.
 
 SiloDAO has submitted recovery submissions through its legal counsel on behalf of affected lenders. Users do not need to submit individual submissions. For transparency, all submitted Net Deposited Assets are publicly available through the Lender Snapshots UI and the exported balances spreadsheet:
 - Lender Snapshots UI: https://silo-finance.github.io/lenders-snapshot/
-- Balances Export: [stream-all-balances.csv](/csv/stream-all-balances.csv)
+- Submitted Claims Export: [stream-all-claims.csv](/csv/stream-all-claims.csv)
