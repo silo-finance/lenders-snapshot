@@ -507,64 +507,109 @@ function SiloMetrics({ silo }: { silo: SiloSnapshot }) {
   );
 }
 
-function DisclaimerNote({ className = "", children }: { className?: string; children: ReactNode }) {
-  return (
-    <p
-      className={`flex w-full items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-medium leading-snug text-amber-200 ${className}`}
-    >
-      <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
-      <span>{children}</span>
-    </p>
+const METHODOLOGY_LINKS = [
+  {
+    label: "Methodology Overview",
+    description: "Plain-language explanation",
+    url: "https://docs.google.com/document/d/1cbKHlkjCGiM5jcMx7LmSyxxCJkxNOVTfVcj6u6QdG38/edit?tab=t.0",
+  },
+  {
+    label: "Technical Documentation",
+    description: "GitHub",
+    url: "https://github.com/silo-finance/lenders-snapshot/tree/master/scripts/lender-snapshot",
+  },
+] as const;
+
+function categoryHasAirdrops(chains: ChainSnapshot[]): boolean {
+  return chains.some((chain) =>
+    chain.silos.some(
+      (silo) =>
+        silo.directLenders.some((lender) => lender.totalAirdrops > ZERO) ||
+        silo.vaults.some((vault) => vault.depositors.some((depositor) => depositor.totalAirdrops > ZERO)),
+    ),
   );
 }
 
-function NegativePendingDisclaimer({ silo, className = "" }: { silo: SiloSnapshot; className?: string }) {
-  if (!silo.borrowRepaySilo) {
-    return null;
+function categoryHasBorrowMarkets(chains: ChainSnapshot[]): boolean {
+  return chains.some((chain) => chain.silos.some((silo) => Boolean(silo.borrowRepaySilo)));
+}
+
+function firstBorrowSymbol(chains: ChainSnapshot[]): string {
+  for (const chain of chains) {
+    for (const silo of chain.silos) {
+      if (silo.borrowRepaySilo) {
+        return silo.borrowRepayToken?.symbol || "borrowed asset";
+      }
+    }
   }
-  const borrowSymbol = silo.borrowRepayToken?.symbol || "borrowed asset";
-  return (
-    <DisclaimerNote className={className}>
-      <span className="font-semibold text-amber-100">Note on negative net deposited assets.</span> After the {borrowSymbol}{" "}
-      depeg, sharply higher interest rates inflated collateral values, letting positions borrow far more {borrowSymbol}{" "}
-      than their snapshot-time collateral was worth. This surfaces as large negative net deposited assets — a valuation-timing
-      effect, not missing data or an under-collateralized loan.
-    </DisclaimerNote>
-  );
+  return "borrowed asset";
 }
 
-function FeeShareTransferDisclaimer({ className = "" }: { className?: string }) {
-  return (
-    <DisclaimerNote className={className}>
+function isVaultWarning(vault: VaultSnapshot): boolean {
+  return vault.status !== "ok" || !vault.indexedInSubgraph || !vault.inWithdrawQueue;
+}
+
+function siloHasAttributedVaults(silo: SiloSnapshot): boolean {
+  return silo.vaults.some((vault) => !isVaultWarning(vault));
+}
+
+function categoryDisclaimerBullets(
+  chains: ChainSnapshot[],
+  snapshotBlock: number,
+  disclosureSilo?: { silo: SiloSnapshot; chain: string },
+): ReactNode[] {
+  const bullets: ReactNode[] = [
+    <>
+      <span className="font-semibold text-amber-100">Recovery calculations</span> use chain-specific snapshot blocks
+      aligned to the same moment in time. The category reference block is{" "}
+      <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest accrued after
+      the snapshot is not included. Negative net deposited assets may reflect unaccounted post-snapshot interest or
+      interest over-accrual related to the Stream Finance incident.
+    </>,
+    <>
       <span className="font-semibold text-amber-100">Note on vault fees.</span> Silos do not mint fee shares; vaults may.
       Fee share mints are credited as received fee (and fee in when forwarded), then subtracted once at the end as fee
       compensation, clamped so that subtraction alone cannot create a negative net deposited assets balance.
-    </DisclaimerNote>
-  );
-}
-
-function FlowValuationDisclaimer({
-  className = "",
-}: {
-  className?: string;
-}) {
-  return (
-    <DisclaimerNote className={className}>
+    </>,
+    <>
       <span className="font-semibold text-amber-100">Note on flow valuations.</span> Share transfers are converted to
       assets at the exchange rate for the relevant market&rsquo;s snapshot block because transfers record only share
       amounts. Deposits, withdrawals, borrows, and repays use the actual asset amounts recorded in each transaction.
-    </DisclaimerNote>
-  );
-}
-
-function AirdropDisclaimer({ className = "" }: { className?: string }) {
-  return (
-    <DisclaimerNote className={className}>
-      <span className="font-semibold text-amber-100">Note on airdrop deductions.</span> Lenders in this category received
-      a distribution airdrop. Each recipient&rsquo;s net deposited assets shown here are reduced by the amount they received,
-      and the deduction appears as an &ldquo;airdrop&rdquo; entry in their operation history.
-    </DisclaimerNote>
-  );
+    </>,
+  ];
+  if (categoryHasAirdrops(chains)) {
+    bullets.push(
+      <>
+        <span className="font-semibold text-amber-100">Note on airdrop deductions.</span> Lenders in this category
+        received a distribution airdrop. Each recipient&rsquo;s net deposited assets shown here are reduced by the amount
+        they received, and the deduction appears as an &ldquo;airdrop&rdquo; entry in their operation history.
+      </>,
+    );
+  }
+  if (categoryHasBorrowMarkets(chains)) {
+    const borrowSymbol = firstBorrowSymbol(chains);
+    bullets.push(
+      <>
+        <span className="font-semibold text-amber-100">Note on negative net deposited assets.</span> After the{" "}
+        {borrowSymbol} depeg, sharply higher interest rates inflated collateral values, letting positions borrow far more{" "}
+        {borrowSymbol} than their snapshot-time collateral was worth. This surfaces as large negative net deposited
+        assets — a valuation-timing effect, not missing data or an under-collateralized loan.
+      </>,
+    );
+  }
+  if (disclosureSilo && siloHasAttributedVaults(disclosureSilo.silo)) {
+    const { silo, chain } = disclosureSilo;
+    bullets.push(
+      <>
+        <span className="font-semibold text-amber-100">Note on multi-silo vaults.</span> Vaults in this Silo allocated
+        funds across multiple Silos. Since withdrawals and outstanding balances cannot be attributed to individual
+        Silos, any remaining net deposited assets are assigned to{" "}
+        <span className="font-semibold text-amber-100">Silo {silo.siloId ? `#${silo.siloId}` : "#--"}</span> (
+        <AddressLink bareCopy address={silo.address} chain={chain} />) for calculation purposes only.
+      </>,
+    );
+  }
+  return bullets;
 }
 
 function scrollToSection(sectionId: string) {
@@ -2054,10 +2099,6 @@ function DepositorTable({
   );
 }
 
-function isVaultWarning(vault: VaultSnapshot): boolean {
-  return vault.status !== "ok" || !vault.indexedInSubgraph || !vault.inWithdrawQueue;
-}
-
 function siloMatchesAddress(silo: SiloSnapshot, needle: string): boolean {
   if (!needle) {
     return true;
@@ -2237,19 +2278,6 @@ function VaultCard({
       }`}
     >
       {metaSection}
-      {!hasWarning ? (
-        <p className="mt-3 inline-flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3.5 py-1.5 text-xs font-medium leading-5 text-amber-200">
-          <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            This vault allocated funds across multiple Silos. Since withdrawals and outstanding balances cannot be
-            attributed to individual Silos, any remaining net deposited assets are assigned to{" "}
-            <span className="font-semibold text-amber-100">
-              Silo {silo.siloId ? `#${silo.siloId}` : "#--"}
-            </span>{" "}
-            (<AddressLink bareCopy address={silo.address} chain={chain} />) for calculation purposes only.
-          </span>
-        </p>
-      ) : null}
       {hasWarning ? (
         <div className="mt-4 max-w-2xl space-y-2 text-sm leading-6 text-amber-100/75">
           <p>
@@ -2283,20 +2311,16 @@ function VaultCard({
   );
 }
 
-function categoryHasAirdrops(chains: ChainSnapshot[]): boolean {
-  return chains.some((chain) =>
-    chain.silos.some(
-      (silo) =>
-        silo.directLenders.some((lender) => lender.totalAirdrops > ZERO) ||
-        silo.vaults.some((vault) => vault.depositors.some((depositor) => depositor.totalAirdrops > ZERO)),
-    ),
-  );
-}
-
-function AppHeader({ subtitle }: { subtitle?: string }) {
+function AppHeader({
+  subtitle,
+  disclosureSilo,
+}: {
+  subtitle?: string;
+  disclosureSilo?: { silo: SiloSnapshot; chain: string };
+}) {
   const { slug, title, description, snapshotBlock, chains } = useActiveCategory();
-  const [descriptionOpen, setDescriptionOpen] = useState(false);
-  const hasAirdrops = categoryHasAirdrops(chains);
+  const [disclosuresOpen, setDisclosuresOpen] = useState(false);
+  const disclaimerBullets = categoryDisclaimerBullets(chains, snapshotBlock, disclosureSilo);
   return (
     <header className="border-b border-white/10 pb-4">
       <div>
@@ -2325,37 +2349,47 @@ function AppHeader({ subtitle }: { subtitle?: string }) {
             Static, no-RPC snapshot explorer for direct holders and vault depositors across chains.
           </p>
         )}
-        {subtitle ? null : (
-          <div className="mt-4 max-w-3xl">
-            <button
-              aria-expanded={descriptionOpen}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-300 transition hover:text-emerald-200"
-              onClick={() => setDescriptionOpen((open) => !open)}
-              type="button"
-            >
-              {descriptionOpen ? "Hide info about this snapshot" : "Show info about this snapshot"}
-              <ChevronIcon className={descriptionOpen ? "rotate-180 transition-transform" : "transition-transform"} />
-            </button>
-            {descriptionOpen ? (
-              <div className="mt-3 space-y-3 border-l-2 border-emerald-400/30 pl-4 text-[0.95rem] italic leading-7 text-slate-300">
+        <div className="mt-4 max-w-3xl">
+          <button
+            aria-expanded={disclosuresOpen}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-300 transition hover:text-emerald-200"
+            onClick={() => setDisclosuresOpen((open) => !open)}
+            type="button"
+          >
+            {disclosuresOpen ? "Hide Methodology and Disclosures" : "Show Methodology and Disclosures"}
+            <ChevronIcon className={disclosuresOpen ? "rotate-180 transition-transform" : "transition-transform"} />
+          </button>
+          {disclosuresOpen ? (
+            <div className="mt-3 space-y-4 border-l-2 border-emerald-400/30 pl-4">
+              <div className="space-y-3 text-[0.95rem] italic leading-7 text-slate-300">
                 {description.map((paragraph, index) => (
                   <p key={index}>{paragraph}</p>
                 ))}
               </div>
-            ) : null}
-          </div>
-        )}
-        <div className="mt-3 space-y-2">
-          <DisclaimerNote>
-            <span className="font-semibold text-amber-100">Recovery calculations</span> use chain-specific snapshot
-            blocks aligned to the same moment in time. The category reference block is{" "}
-            <span className="font-mono font-semibold text-amber-100">{snapshotBlock.toString()}</span>. Interest accrued
-            after the snapshot is not included. Negative net deposited assets may reflect unaccounted post-snapshot interest
-            or interest over-accrual related to the Stream Finance incident.
-          </DisclaimerNote>
-          <FeeShareTransferDisclaimer />
-          <FlowValuationDisclaimer />
-          {hasAirdrops ? <AirdropDisclaimer /> : null}
+              <div className="flex flex-wrap gap-x-5 gap-y-2 not-italic">
+                {METHODOLOGY_LINKS.map((link) => (
+                  <a
+                    key={link.url}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-300 transition hover:text-emerald-200"
+                    href={link.url}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    {link.label}
+                    <span aria-hidden="true">↗</span>
+                  </a>
+                ))}
+              </div>
+              <div className="flex w-full items-start gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-medium leading-snug text-amber-200 not-italic">
+                <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                <ul className="list-disc space-y-2 pl-4">
+                  {disclaimerBullets.map((bullet, index) => (
+                    <li key={index}>{bullet}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </header>
@@ -2643,7 +2677,6 @@ function SiloDetailPanel({
             <span className="text-xs uppercase tracking-[0.22em] text-slate-500">Filters</span>
             <TableRowFilterToggles filters={rowViewFilters} onToggle={toggleRowFilter} />
           </div>
-          <NegativePendingDisclaimer silo={silo} className="min-w-[12rem] flex-1" />
         </div>
       </div>
 
@@ -2850,7 +2883,13 @@ function ExplorerView() {
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
       <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
-        <AppHeader />
+        <AppHeader
+          disclosureSilo={
+            selectedSilo && selectedChain
+              ? { silo: selectedSilo, chain: selectedChain.chain }
+              : undefined
+          }
+        />
 
         <div className="min-w-0 space-y-6 pt-4 pb-8">
           <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-slate-950/30 sm:p-5">
@@ -2999,6 +3038,7 @@ function SiloOnlyView({ chain, silo }: { chain: ChainSnapshot; silo: SiloSnapsho
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
       <section className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8 xl:px-10">
         <AppHeader
+          disclosureSilo={{ silo, chain: chain.chain }}
           subtitle={`Silo-only snapshot view for ${silo.inputToken.symbol} ${
             silo.siloType === "silo_vault" ? "Vault (detached)" : `#${silo.siloId ?? "--"}`
           }.`}
@@ -3059,19 +3099,6 @@ const COMPLETED_DISTRIBUTIONS = [
   {
     label: "Trevee Backing Distribution",
     url: "https://silo-finance.github.io/trevee-lenders-snapshot",
-  },
-] as const;
-
-const METHODOLOGY_LINKS = [
-  {
-    label: "Technical",
-    description: "GitHub",
-    url: "https://github.com/silo-finance/lenders-snapshot/tree/master/scripts/lender-snapshot",
-  },
-  {
-    label: "Methodology Overview",
-    description: "Plain-language explanation",
-    url: "https://docs.google.com/document/d/1cbKHlkjCGiM5jcMx7LmSyxxCJkxNOVTfVcj6u6QdG38/edit?tab=t.0",
   },
 ] as const;
 
