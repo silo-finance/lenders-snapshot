@@ -64,7 +64,7 @@ All affected Stream, Trevee, and Pendle collateral markets were identified using
 **Step 3 – Reconstruct Lender Balances**  
 Each position is first valued at the snapshot block for its network. The calculation then accounts for activity from the next block through a fixed end block for that network, timestamp-matched to Sonic block 75700045\. Deposits, incoming transfers, loan repayments, and managed-vault fee share credits increase the claim amount. Withdrawals, outgoing transfers, new borrows, outstanding debt at the snapshot, recovery distributions already received, and fee compensation reduce it. The published claim amounts therefore reflect balances as of the end of this review window, not the snapshot block alone.
 
-Interest accrued after the snapshot is not added as a separate calculation entry. Deposits, withdrawals, borrows, and repayments use the asset amounts recorded in the relevant transactions. Peer-to-peer share transfers are different: the on-chain Transfer event records only a share quantity (no asset amount), so those shares are converted to assets manually at the snapshot-block exchange rate — not at the rate on the transfer's own block.
+Interest accrued after the snapshot is not added as a separate calculation entry. Deposits and withdrawals use the asset amounts recorded in the relevant transactions. Borrow-side xUSD amounts are valued as described in Step 4\. Peer-to-peer share transfers are different: the on-chain Transfer event records only a share quantity (no asset amount), so those shares are converted to assets manually at the snapshot-block exchange rate — not at the rate on the transfer's own block.
 
  • For a direct lender (silo collateral shares): assets \= silo.total\_assets × shares ÷ silo.collateral\_total\_supply, using the silo's total\_assets and collateral\_total\_supply stored at the snapshot block.  
  • For a Managed Vault depositor (vault shares attributed to this silo): assets \= vault.vault\_silo\_assets × shares ÷ vault.vault\_total\_supply, using that vault's snapshot position in this silo and its total share supply at the snapshot block.
@@ -72,7 +72,9 @@ Interest accrued after the snapshot is not added as a separate calculation entry
 Mint and burn transfers (from or to the zero address) are not counted as ordinary transfers; they accompany deposits and withdrawals and are already covered by those events. On Managed Vaults, a mint that does not pair with a deposit is treated as a fee share mint instead (Step 5). Incoming and outgoing transfers in the claim formula below are therefore ordinary peer share amounts converted with the snapshot-rate formulas above.
 
  **Step 4 – Borrow Adjustment**  
-Three Stream markets allowed users to borrow xUSD against their lending position. Because interest continued accruing after the Stream incident, collateral values increased significantly, allowing some users to borrow amounts exceeding their original deposits. To avoid double recovery, each user's claim amount is reduced by the outstanding xUSD debt at the snapshot and by any xUSD borrowed after the snapshot, while repayments made after the snapshot are added back. The xUSD amounts are converted into the lending asset's units on a one-to-one value basis. This treatment may produce a negative claim amount where post-incident borrowing exceeded the value of the snapshot position. The public UI provides a transparent breakdown of deposits, debt, borrows, repayments, and the resulting claim amount. 
+Three Stream markets allowed users to borrow xUSD against their lending position. Because interest continued accruing after the Stream incident, collateral values increased significantly, allowing some users to borrow amounts exceeding their original deposits. To avoid double recovery, each user's claim amount is reduced by the outstanding xUSD debt at the snapshot and by any xUSD borrowed after the snapshot, while repayments made after the snapshot are added back.
+
+xUSD amounts are valued with the Silo debt oracle configured for that market: for each initial-debt, borrow, or repay amount, the oracle's `quote` is read at the relevant block (the snapshot block for outstanding debt; the event block for later borrows and repayments). The oracle returns a value in Silo Virtual Asset units, which is treated as a USDC substitute and scaled into the lending asset's decimals for the claim ledger. Lending-side collateral (USDC or scUSD) is not re-priced and remains one-to-one. This treatment may produce a negative claim amount where post-incident borrowing exceeded the value of the snapshot position. The public UI shows each debt, borrow, and repay as `{xUSD amount} × {oracle price} = {valued amount}` in the calculation breakdown. 
 
 **Step 5 – Managed Vault Fee Share Adjustment**  
 Silos do not mint fee shares; Managed Vaults may. A vault fee mint is a share mint to a recipient with no paired deposit. Those shares may later be forwarded to another vault depositor through an ordinary peer transfer.
@@ -115,9 +117,9 @@ The Claim Amount represents the amount Silo believes Stream Finance should compe
 
 The UI displays:  
  • Net Deposited Assets – The lender's starting balance at the relevant snapshot block, before debt and later activity are applied.  
- • Debt – Outstanding xUSD debt at the snapshot block, for the markets that allowed borrowing. Borrows and repayments made after the snapshot appear in the calculation breakdown.  
+ • Debt – Outstanding xUSD debt at the snapshot block, for the markets that allowed borrowing, valued with the Silo debt oracle as described in Step 4\. Borrows and repayments made after the snapshot appear in the calculation breakdown with the same oracle pricing.  
  • Claim Amount – The final amount after all tracked adjustments through the end of the review window.  
- • Calculation Breakdown – The deposits, withdrawals, transfers, debt, borrows, repayments, managed-vault fee rows, and distributions used to derive the final claim amount, in chronological order.
+ • Calculation Breakdown – The deposits, withdrawals, transfers, debt, borrows, repayments, managed-vault fee rows, and distributions used to derive the final claim amount, in chronological order. Debt, borrow, and repay rows show the raw xUSD amount, the oracle unit price, and the valued amount used in the claim formula.
 
  
 
@@ -135,7 +137,7 @@ The repository contains the calculation scripts, the configured market list, the
 
 # 8\. Important Limitations
 
-• Share transfers are converted into asset values with the snapshot-block share-to-asset formulas in Step 3 (not the exchange rate at the transfer's block). Deposits, withdrawals, borrows, and repayments use the actual asset amounts recorded in their transactions.  
+• Share transfers are converted into asset values with the snapshot-block share-to-asset formulas in Step 3 (not the exchange rate at the transfer's block). Deposits and withdrawals use the actual asset amounts recorded in their transactions. On the three Stream borrowing markets, xUSD debt, borrows, and repayments are valued with the Silo debt oracle at the relevant block (Step 4), not one-to-one against the lending asset.  
  • Managed Vault fee share mints and fee-forwarding transfers are tagged and compensated as described in Step 5\. Accrued vault interest is still not added as its own positive operation.  
  • Claim amounts may be negative because of interest timing, post-incident borrowing, or distribution deductions. Fee compensation is clamped so that the fee adjustment alone cannot create a negative claim amount.  
  • Where a Managed Vault supplied several markets, the attribution of its remaining claim to an individual market is a calculation convention and does not change the vault's aggregate ownership.  
