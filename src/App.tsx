@@ -580,7 +580,7 @@ function categoryDisclaimerBullets(
     <>
       <span className="font-semibold text-amber-100">Note on flow valuations.</span> Share transfers are converted to
       assets at the exchange rate for the relevant market&rsquo;s snapshot block because transfers record only share
-      amounts. Deposits, withdrawals, borrows, and repays use the actual asset amounts recorded in each transaction.
+      amounts. Deposits and withdrawals use the actual asset amounts recorded in each transaction.
     </>,
   ];
   if (categoryHasAirdrops(chains)) {
@@ -594,6 +594,14 @@ function categoryDisclaimerBullets(
   }
   if (categoryHasBorrowMarkets(chains)) {
     const borrowSymbol = firstBorrowSymbol(chains);
+    bullets.push(
+      <>
+        <span className="font-semibold text-amber-100">Note on debt valuation.</span> Outstanding {borrowSymbol} debt,
+        later borrows, and repayments are valued with the Silo debt oracle at the relevant block. The oracle returns a
+        Silo Virtual Asset amount treated as a USDC substitute — not a one-to-one conversion against the lending asset.
+        The calculation breakdown shows each row as amount × price = valued amount.
+      </>,
+    );
     bullets.push(
       <>
         <span className="font-semibold text-amber-100">Note on negative net deposited assets.</span> After the{" "}
@@ -1337,6 +1345,8 @@ function PendingAssetsBreakdown({
   totalBorrows = ZERO,
   totalRepays = ZERO,
   debtAtSnapshot = ZERO,
+  debtAtSnapshotRaw = ZERO,
+  debtPrice = ZERO,
   snapshotBlock = 0,
   snapshotBlockTimestamp = 0,
   pendingAssets,
@@ -1364,6 +1374,8 @@ function PendingAssetsBreakdown({
   totalBorrows?: bigint;
   totalRepays?: bigint;
   debtAtSnapshot?: bigint;
+  debtAtSnapshotRaw?: bigint;
+  debtPrice?: bigint;
   snapshotBlock?: number;
   snapshotBlockTimestamp?: number;
   pendingAssets: bigint;
@@ -1403,6 +1415,12 @@ function PendingAssetsBreakdown({
   const pairedSymbol = borrowRepaySymbol && borrowRepaySymbol.length > 0 ? borrowRepaySymbol : symbol;
   const symbolFor = (kind: FlowKind) =>
     kind === "borrow" || kind === "repay" || kind === "debt" ? pairedSymbol : symbol;
+  // After oracle pricing, debt totals are already in main-ledger (SVA≈USDC) units.
+  const debtTotalsInMain =
+    debtPrice > ZERO ||
+    borrows.some((event) => event.price !== undefined && event.price > ZERO) ||
+    repays.some((event) => event.price !== undefined && event.price > ZERO);
+  const debtTotalSymbol = debtTotalsInMain ? symbol : pairedSymbol;
   const feeFlowKind = (kind: FeeEntry["kind"]): FlowKind => {
     if (kind === "received_fee") {
       return "received-fee";
@@ -1425,6 +1443,9 @@ function PendingAssetsBreakdown({
               assets: debtAtSnapshot,
               shares: ZERO,
               eventAssets: debtAtSnapshot,
+              ...(debtAtSnapshotRaw > ZERO && debtPrice > ZERO
+                ? { assetsRaw: debtAtSnapshotRaw, price: debtPrice }
+                : {}),
             } as WithdrawalEntry,
             kind: "debt" as FlowKind,
           },
@@ -1544,6 +1565,11 @@ function PendingAssetsBreakdown({
             const sign = credit ? "+" : "-";
             const rowSymbol = symbolFor(kind);
             const daysLabel = formatDaysSinceSnapshot(event.blockTimestamp, snapshotBlockTimestamp);
+            const pricedDebt =
+              (kind === "debt" || kind === "borrow" || kind === "repay") &&
+              event.price !== undefined &&
+              event.price > ZERO &&
+              event.assetsRaw !== undefined;
             return (
               <div
                 key={`${kind}-${event.txHash}-${event.logIndex}-${index}`}
@@ -1590,12 +1616,23 @@ function PendingAssetsBreakdown({
                       </>
                     )}
                   </span>
-                  <AmountWithSymbol
-                    className={amountClass(kind)}
-                    sign={sign}
-                    symbol={rowSymbol}
-                    value={formatUnitsFixed(event.assets, decimals)}
-                  />
+                  {pricedDebt ? (
+                    <span className={`text-right tabular-nums ${amountClass(kind)}`}>
+                      {sign}
+                      {formatUnitsFixed(event.assetsRaw!, decimals)} {rowSymbol}
+                      {" × "}
+                      {formatUnitsFixed(event.price!, decimals)}
+                      {" = "}
+                      {formatUnitsFixed(event.assets, decimals)} {symbol}
+                    </span>
+                  ) : (
+                    <AmountWithSymbol
+                      className={amountClass(kind)}
+                      sign={sign}
+                      symbol={rowSymbol}
+                      value={formatUnitsFixed(event.assets, decimals)}
+                    />
+                  )}
                 </div>
                 {event.eventAssets !== event.assets ? (
                   <div className="flex justify-between gap-3 text-[11px] text-slate-500">
@@ -1616,7 +1653,7 @@ function PendingAssetsBreakdown({
         {debtAtSnapshot > ZERO ? (
           <div className="mb-1 flex justify-between gap-3">
             <span className="text-slate-400">total initial debt</span>
-            <AmountWithSymbol className="text-amber-300" sign="-" symbol={pairedSymbol} value={formatUnitsFixed(debtAtSnapshot, decimals)} />
+            <AmountWithSymbol className="text-amber-300" sign="-" symbol={debtTotalSymbol} value={formatUnitsFixed(debtAtSnapshot, decimals)} />
           </div>
         ) : null}
         <div className="flex justify-between gap-3">
@@ -1682,7 +1719,7 @@ function PendingAssetsBreakdown({
         {totalRepays > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total repays</span>
-            <AmountWithSymbol className="text-teal-300" sign="+" symbol={pairedSymbol} value={formatUnitsFixed(totalRepays, decimals)} />
+            <AmountWithSymbol className="text-teal-300" sign="+" symbol={debtTotalSymbol} value={formatUnitsFixed(totalRepays, decimals)} />
           </div>
         ) : null}
         <div className="mt-1 flex justify-between gap-3">
@@ -1692,7 +1729,7 @@ function PendingAssetsBreakdown({
         {totalBorrows > ZERO ? (
           <div className="mt-1 flex justify-between gap-3">
             <span className="text-slate-400">total borrows</span>
-            <AmountWithSymbol className="text-amber-300" sign="-" symbol={pairedSymbol} value={formatUnitsFixed(totalBorrows, decimals)} />
+            <AmountWithSymbol className="text-amber-300" sign="-" symbol={debtTotalSymbol} value={formatUnitsFixed(totalBorrows, decimals)} />
           </div>
         ) : null}
         <div className={`mt-1 flex justify-between gap-3 ${pendingNegative ? "text-rose-300" : "text-emerald-200"}`}>
@@ -1796,7 +1833,9 @@ function HolderTable({
                   <th className="px-5 py-3 text-right font-medium">
                     <ColumnHeaderSum
                       value={`${formatUnitsRounded(tableTotals.debt, silo.inputToken.decimals, 2)} ${
-                        silo.borrowRepayToken?.symbol || silo.inputToken.symbol
+                        rows.some((row) => row.debtPrice > ZERO)
+                          ? silo.inputToken.symbol
+                          : silo.borrowRepayToken?.symbol || silo.inputToken.symbol
                       }`}
                     />
                     <SortHeader align="right" label="Debt" sortKey="debt" sortState={sortState} onClick={onSort} />
@@ -1861,7 +1900,9 @@ function HolderTable({
                             ) : (
                               <>
                                 {formatUnitsRounded(row.debtAtSnapshot, silo.inputToken.decimals, 2)}{" "}
-                                {silo.borrowRepayToken?.symbol || silo.inputToken.symbol}
+                                {row.debtPrice > ZERO
+                                  ? silo.inputToken.symbol
+                                  : silo.borrowRepayToken?.symbol || silo.inputToken.symbol}
                               </>
                             )}
                           </td>
@@ -1902,6 +1943,8 @@ function HolderTable({
                               borrowRepaySymbol={silo.borrowRepayToken?.symbol}
                               borrows={row.borrows}
                               debtAtSnapshot={row.debtAtSnapshot}
+                              debtAtSnapshotRaw={row.debtAtSnapshotRaw}
+                              debtPrice={row.debtPrice}
                               decimals={silo.inputToken.decimals}
                               deposits={row.deposits}
                               airdrops={row.airdrops}

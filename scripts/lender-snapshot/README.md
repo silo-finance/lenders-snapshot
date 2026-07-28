@@ -13,7 +13,7 @@ After the snapshot is assembled, the script also scans post-snapshot events (`sn
 - each indexed vault contract (for vault depositors), and
 - the paired borrow/repay Silo for configured two-sided markets.
 
-It records `Withdraw(...)`, `Deposit(...)`, and peer-to-peer share `Transfer(...)` events to reconcile post-snapshot position changes. For two-sided markets it also records `Borrow(...)` and `Repay(...)` events and deducts the borrower's `debt_at_snapshot`. These flows are merged into the same per-category `data/<slug>.json` consumed by the UI (`total_withdrawals`, `total_deposits`, `total_transfers_in`, `total_transfers_out`, `total_borrows`, `total_repays`, `debt_at_snapshot`, `pending_assets`, and their per-event breakdowns).
+It records `Withdraw(...)`, `Deposit(...)`, and peer-to-peer share `Transfer(...)` events to reconcile post-snapshot position changes. For two-sided markets it also records `Borrow(...)` and `Repay(...)` events and deducts the borrower's `debt_at_snapshot` (initially on a decimals-only / par basis). A later post-processor revalues those xUSD debt amounts with the Silo debt oracle (see [Debt pricing](#debt-pricing)). These flows are merged into the same per-category `data/<slug>.json` consumed by the UI (`total_withdrawals`, `total_deposits`, `total_transfers_in`, `total_transfers_out`, `total_borrows`, `total_repays`, `debt_at_snapshot`, `pending_assets`, and their per-event breakdowns).
 
 On vault contracts, mint `Transfer`s (`from == 0x0`) that do not pair 1:1 with a `Deposit` (same owner and share amount) are stored as `fee_mints[]` on the recipient depositor. They do **not** change `pending_assets` during the scan; fee tagging and compensation happen in a later post-processor (see [Vault fees](#vault-fees)).
 
@@ -29,6 +29,7 @@ For vault depositors, each `withdrawals[]` entry also keeps the raw on-chain amo
 - `snapshot_lenders.py` – main script that produces one `data/<category>.json` per category.
 - `apply_airdrops.py` – idempotent post-processor that applies configured off-chain distributions to pending balances across Trevee, Pendle, and Stream. The main scanner invokes it after all requested categories are scanned; it can also be run independently with `python3 apply_airdrops.py`.
 - `apply_vault_fees.py` – tags vault fee mints / fee-forwarding transfers and applies fee compensation. The main scanner invokes it after the airdrop cascade; it can also be run independently with `python3 apply_vault_fees.py`.
+- `apply_debt_prices.py` – post-processor for Stream two-sided markets: prices xUSD Initial Debt / Borrow / Repay via hardcoded Silo debt oracles (`quote` → Silo Virtual Asset as USDC substitute). USDC/scUSD stays 1:1. Automatically fetches only missing per-block unit quotes into durable `data/debt_oracle_quotes.json` (resume-safe; survives re-running `snapshot_lenders.py`), then applies them into `data/stream.json` once complete. Not invoked by the main scanner; run after snapshot / airdrops / fees.
 - `airdrops/` – source CSV files for configured distributions. Only the `Amount sent` column is applied.
 - `qa_check.py` – pure-JSON validator (no RPC/graph) that asserts share-sum invariants against the stored total supplies.
 - `data/` – generated per-category snapshot files (e.g. `data/stream.json`), imported by the UI.
@@ -106,6 +107,12 @@ python3 scripts/lender-snapshot/apply_airdrops.py
 # Retag vault fee mints / fee-forwarding transfers and recompute fee compensation:
 python3 scripts/lender-snapshot/apply_vault_fees.py
 
+# Price xUSD debt on Stream two-sided markets (requires archive RPC + ORACLE_BY_DEBT_SILO).
+# Fetches only missing quotes into data/debt_oracle_quotes.json, then patches stream.json:
+python3 scripts/lender-snapshot/apply_debt_prices.py
+# Docker:
+./scripts/lender-snapshot/run.sh apply_debt_prices.py
+
 # Validate the JSON invariants for all data/*.json (zero tolerance, exact wei equality):
 python3 scripts/lender-snapshot/qa_check.py
 
@@ -145,6 +152,34 @@ vault depositor in the snapshot files:
 The post-processor is idempotent (previous fee annotations are cleared before
 pass 1). The main scanner invokes it after a successful airdrop cascade; it can
 also be run standalone with `python3 apply_vault_fees.py`.
+
+## Debt pricing
+
+On Stream two-sided markets (Sonic USDC/xUSD, Sonic scUSD/xUSD, Arbitrum USDC/xUSD),
+the scanner initially stores `debt_at_snapshot`, `borrows[]`, and `repays[]` in the
+lending asset's decimals with a **par / one-to-one** assumption. Collateral (USDC /
+scUSD) stays that way. xUSD debt is then revalued by `apply_debt_prices.py`:
+
+1. Collect unique blocks that need a price: the silo `snapshot_block` for each
+   non-zero `debt_at_snapshot`, and each Borrow / Repay `block_number`.
+2. For each required `(chain, debt oracle, xUSD token, block)`, read
+   `ISiloOracle.quote(10**decimals, xUSD)` at that block. Hardcoded
+   `ORACLE_BY_DEBT_SILO` maps each debt silo to its solvency oracle and token;
+   a missing mapping is a hard error. Quotes are stored in durable
+   `data/debt_oracle_quotes.json` (only missing keys are fetched; each new quote
+   is persisted immediately so an interrupted run keeps progress).
+3. Once every required quote is present, rewrite the snapshot: keep the original
+   xUSD amount as `debt_at_snapshot_raw` / `assets_raw`, store the unit price, and
+   replace `debt_at_snapshot` / `borrows[].assets` / `repays[].assets` with the
+   valued ledger amount (oracle quote scaled from 18-dec Silo Virtual Asset into
+   the silo's `input_token.decimals`). Recompute `total_borrows`, `total_repays`,
+   and `pending_assets`.
+
+Silo Virtual Asset is treated as a **USDC substitute**; there is no second quote
+of the collateral asset. Re-running `snapshot_lenders.py` can wipe priced fields
+from `stream.json`; re-running `apply_debt_prices.py` re-applies from
+`debt_oracle_quotes.json` without RPC unless new blocks appeared. The main
+scanner does **not** invoke this step automatically.
 
 ## Airdrop cascade
 
@@ -208,7 +243,9 @@ reused to stamp the freshly scanned flow rows and shared across silos in the run
             "assets_collateral": "…",
             "total_assets": "…",
             // present for non-vault direct lenders:
-            "debt_at_snapshot": "…",      // two-sided markets only
+            "debt_at_snapshot": "…",      // two-sided; oracle-valued after apply_debt_prices
+            "debt_at_snapshot_raw": "…",  // original xUSD amount (after apply_debt_prices)
+            "debt_price": "…",            // unit oracle price in ledger units
             "total_withdrawals": "…",
             "total_deposits": "…",
             "total_transfers_in": "…",
@@ -220,8 +257,8 @@ reused to stamp the freshly scanned flow rows and shared across silos in the run
             "withdrawals": [ { "...": "..." } ],
             "deposits": [ { "...": "..." } ],
             "transfers": [ { "...": "..." } ],
-            "borrows": [ { "...": "..." } ],
-            "repays": [ { "...": "..." } ],
+            "borrows": [ { "assets": "…", "assets_raw": "…", "price": "…", "...": "..." } ],
+            "repays": [ { "assets": "…", "assets_raw": "…", "price": "…", "...": "..." } ],
             "airdrops": [ { "...": "..." } ]
           }
         },
