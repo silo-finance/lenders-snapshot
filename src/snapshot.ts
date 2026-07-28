@@ -21,6 +21,9 @@ type RawDirectLender = {
   total_repays?: RawAmount;
   // Two-sided markets only: outstanding debt at the snapshot block (maxRepay), a debit.
   debt_at_snapshot?: RawAmount;
+  // After apply_debt_prices.py: original 1:1 xUSD amount and unit oracle price (ledger units).
+  debt_at_snapshot_raw?: RawAmount;
+  debt_price?: RawAmount;
   pending_assets?: RawAmount;
   withdrawals?: RawWithdrawalEntry[];
   deposits?: RawWithdrawalEntry[];
@@ -71,6 +74,9 @@ type RawWithdrawalEntry = {
   // across all silos). `assets` is the snapshot-rate slice attributed to this silo
   // and is what actually reduces `pending_assets`.
   vault_assets?: RawAmount;
+  // After apply_debt_prices.py on Borrow/Repay: original xUSD amount and unit price.
+  assets_raw?: RawAmount;
+  price?: RawAmount;
 };
 
 type RawTransferEntry = RawWithdrawalEntry & {
@@ -134,6 +140,9 @@ export type DirectLender = {
   totalRepays: bigint;
   // Two-sided markets only (0 otherwise): outstanding debt at the snapshot block (maxRepay).
   debtAtSnapshot: bigint;
+  // Oracle-priced debt: original xUSD amount and unit price in ledger units (0 if unpriced).
+  debtAtSnapshotRaw: bigint;
+  debtPrice: bigint;
   pendingAssets: bigint;
   withdrawals: WithdrawalEntry[];
   deposits: WithdrawalEntry[];
@@ -187,6 +196,9 @@ export type WithdrawalEntry = {
   eventAssets: bigint;
   airdropPart?: number;
   airdropParts?: number;
+  // Oracle-priced Borrow/Repay: original xUSD amount and unit price (ledger units).
+  assetsRaw?: bigint;
+  price?: bigint;
 };
 
 export type TransferDirection = "in" | "out";
@@ -307,6 +319,14 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
           rawEventAssets === undefined || rawEventAssets === null || rawEventAssets === ""
             ? assets
             : toBigInt(rawEventAssets);
+        const assetsRaw =
+          entry.assets_raw === undefined || entry.assets_raw === null || entry.assets_raw === ""
+            ? undefined
+            : toBigInt(entry.assets_raw);
+        const price =
+          entry.price === undefined || entry.price === null || entry.price === ""
+            ? undefined
+            : toBigInt(entry.price);
         return {
           blockNumber: toNumber(entry.block_number, 0),
           blockTimestamp: toNumber(entry.block_timestamp, 0),
@@ -315,6 +335,8 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
           assets,
           shares,
           eventAssets,
+          ...(assetsRaw === undefined ? {} : { assetsRaw }),
+          ...(price === undefined ? {} : { price }),
           ...(entry.airdrop_part === undefined || entry.airdrop_part === null
             ? {}
             : { airdropPart: toNumber(entry.airdrop_part, 0) }),
@@ -389,6 +411,16 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
     const totalBorrows = toBigInt(entry.total_borrows);
     const totalRepays = toBigInt(entry.total_repays);
     const debtAtSnapshot = toBigInt(entry.debt_at_snapshot);
+    const debtAtSnapshotRaw =
+      entry.debt_at_snapshot_raw === undefined ||
+      entry.debt_at_snapshot_raw === null ||
+      entry.debt_at_snapshot_raw === ""
+        ? ZERO
+        : toBigInt(entry.debt_at_snapshot_raw);
+    const debtPrice =
+      entry.debt_price === undefined || entry.debt_price === null || entry.debt_price === ""
+        ? ZERO
+        : toBigInt(entry.debt_price);
     const pendingAssets =
       entry.pending_assets === undefined || entry.pending_assets === null || entry.pending_assets === ""
         ? totalAssets
@@ -408,6 +440,8 @@ function parseSilo(address: string, raw: RawSilo, chainId: number, chain: string
       totalBorrows,
       totalRepays,
       debtAtSnapshot,
+      debtAtSnapshotRaw,
+      debtPrice,
       pendingAssets,
       withdrawals: parseFlows(entry.withdrawals),
       deposits: parseFlows(entry.deposits),

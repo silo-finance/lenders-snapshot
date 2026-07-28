@@ -69,8 +69,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "341050561",
-            "debt_at_snapshot": "675851926"
+            "pending_assets": "161153648",
+            "debt_at_snapshot": "855748839",
+            "debt_at_snapshot_raw": "675851926",
+            "debt_price": "1266178"
           },
           "0x104b30eb7265707b790ec374a3f9eded8d614599": {
             "address_type": "contract_other",
@@ -132,8 +134,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "407771",
-            "debt_at_snapshot": "823721"
+            "pending_assets": "188515",
+            "debt_at_snapshot": "1042977",
+            "debt_at_snapshot_raw": "823721",
+            "debt_price": "1266178"
           },
           "0x2130fd01026867a6c8dde24ad5e64f2e2dfce196": {
             "address_type": "eoa",
@@ -180,8 +184,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "3268385248",
-            "debt_at_snapshot": "12650551531"
+            "pending_assets": "-98913257",
+            "debt_at_snapshot": "16017850036",
+            "debt_at_snapshot_raw": "12650551531",
+            "debt_price": "1266178"
           },
           "0x227f982ea2d57ce251bb5bb39a41629f818ff834": {
             "address_type": "eoa",
@@ -377,8 +383,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "34241756",
-            "debt_at_snapshot": "73034018"
+            "pending_assets": "14801708",
+            "debt_at_snapshot": "92474066",
+            "debt_at_snapshot_raw": "73034018",
+            "debt_price": "1266178"
           },
           "0x3e85eb8a90f909e84e01cc5b8a603a54effde8fd": {
             "address_type": "gnosis_safe",
@@ -392,267 +400,333 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "-907126857149",
+            "pending_assets": "-1195349794339",
             "borrows": [
               {
                 "block_number": 56055979,
                 "tx_hash": "0x110c3ab7e6ee6d009723a696815d6f55cccb4a797165078dab457da721e3e73e",
                 "log_index": 5,
-                "assets": "3100000000",
+                "assets": "3927231900",
                 "shares": "3095908988",
-                "block_timestamp": 1763756088
+                "block_timestamp": 1763756088,
+                "assets_raw": "3100000000",
+                "price": "1266849"
               },
               {
                 "block_number": 56258773,
                 "tx_hash": "0xa3f9843a91356873bc6bf1259d4d51f2b2df0ee2037459f4c2ecefd0d5aff0fc",
                 "log_index": 5,
-                "assets": "3292000000",
+                "assets": "4168801156",
                 "shares": "3287468302",
-                "block_timestamp": 1763954788
+                "block_timestamp": 1763954788,
+                "assets_raw": "3292000000",
+                "price": "1266343"
               },
               {
                 "block_number": 56574550,
                 "tx_hash": "0x772f162c257adf6cd519eb8d8e980b00526b7f4b7bdfd3eb82cc7e0bce58b7de",
                 "log_index": 5,
-                "assets": "5830000000",
+                "assets": "7380564290",
                 "shares": "5821226891",
-                "block_timestamp": 1764267652
+                "block_timestamp": 1764267652,
+                "assets_raw": "5830000000",
+                "price": "1265963"
               },
               {
                 "block_number": 57000116,
                 "tx_hash": "0x3bb4d6565eafc7bb156b224cdb64a0afd717f9535b4c186a1f549e2697afa7f8",
                 "log_index": 13,
-                "assets": "10500000000",
+                "assets": "13291278000",
                 "shares": "10482170286",
-                "block_timestamp": 1764725628
+                "block_timestamp": 1764725628,
+                "assets_raw": "10500000000",
+                "price": "1265836"
               },
               {
                 "block_number": 57328977,
                 "tx_hash": "0x385bcc55c0141ee0c05ee3b9fd3ec1541f7e22c12c5cbb19147989375d09e467",
                 "log_index": 5,
-                "assets": "9829000000",
+                "assets": "12440663590",
                 "shares": "9810915791",
-                "block_timestamp": 1765053979
+                "block_timestamp": 1765053979,
+                "assets_raw": "9829000000",
+                "price": "1265710"
               },
               {
                 "block_number": 57568620,
                 "tx_hash": "0x27b95e624d6ac4bd5bb7a20323e1d83deaa0d15c9c9496fc8fdb29e91a685a47",
                 "log_index": 5,
-                "assets": "9733000000",
+                "assets": "12321617879",
                 "shares": "9713877993",
-                "block_timestamp": 1765336776
+                "block_timestamp": 1765336776,
+                "assets_raw": "9733000000",
+                "price": "1265963"
               },
               {
                 "block_number": 57942780,
                 "tx_hash": "0x0a66fdd83cecef54063cdfa623c05844293f29164968df7d610a8dd37e9eb2ee",
                 "log_index": 5,
-                "assets": "17239000000",
+                "assets": "21821746804",
                 "shares": "17201926604",
-                "block_timestamp": 1765749495
+                "block_timestamp": 1765749495,
+                "assets_raw": "17239000000",
+                "price": "1265836"
               },
               {
                 "block_number": 58107406,
                 "tx_hash": "0x08c22da5ca8d54655eed63301a680abde9fd3c8f85f1e09f7361a0403ee9c1bd",
                 "log_index": 5,
-                "assets": "8348000000",
+                "assets": "10569319320",
                 "shares": "8329426302",
-                "block_timestamp": 1765920678
+                "block_timestamp": 1765920678,
+                "assets_raw": "8348000000",
+                "price": "1266090"
               },
               {
                 "block_number": 58383819,
                 "tx_hash": "0x9677f427394c487b8d2cf5f5e5f7ad3e08eead726c5eb19fec336563fa05cb02",
                 "log_index": 5,
-                "assets": "14391000000",
+                "assets": "18225755379",
                 "shares": "14357664285",
-                "block_timestamp": 1766183833
+                "block_timestamp": 1766183833,
+                "assets_raw": "14391000000",
+                "price": "1266469"
               },
               {
                 "block_number": 58729229,
                 "tx_hash": "0xd740cfb9790827f8d89daea115e3b6cc0d53ef1729b69513a57ed022831c12e9",
                 "log_index": 5,
-                "assets": "22487000000",
+                "assets": "28479088403",
                 "shares": "22432096096",
-                "block_timestamp": 1766530210
+                "block_timestamp": 1766530210,
+                "assets_raw": "22487000000",
+                "price": "1266469"
               },
               {
                 "block_number": 59191781,
                 "tx_hash": "0xb3bf6b2b103fc1f66813130dc3bfb8da2f00064fde8b597b2ad47c6a952ef804",
                 "log_index": 5,
-                "assets": "41294000000",
+                "assets": "52323709988",
                 "shares": "41185239499",
-                "block_timestamp": 1767032609
+                "block_timestamp": 1767032609,
+                "assets_raw": "41294000000",
+                "price": "1267102"
               },
               {
                 "block_number": 59333810,
                 "tx_hash": "0x303df596a021021763a9622573445dd6afac2df09945aacdd35066e8d71d8dff",
                 "log_index": 5,
-                "assets": "19222000000",
+                "assets": "24353812672",
                 "shares": "19169824041",
-                "block_timestamp": 1767223672
+                "block_timestamp": 1767223672,
+                "assets_raw": "19222000000",
+                "price": "1266976"
               },
               {
                 "block_number": 59534974,
                 "tx_hash": "0xe1ce28ee66555e921cfca3a5d6f976c00f5d854f86e490c8ce9c4724fe0ea58e",
                 "log_index": 5,
-                "assets": "29870000000",
+                "assets": "37829429030",
                 "shares": "29785501776",
-                "block_timestamp": 1767483892
+                "block_timestamp": 1767483892,
+                "assets_raw": "29870000000",
+                "price": "1266469"
               },
               {
                 "block_number": 59626222,
                 "tx_hash": "0xe8cf6a3d3b315e8c30c729f6cc3e4c49c1a0cbbd5e462f377f8f023cb7eae7f8",
                 "log_index": 5,
-                "assets": "12400000000",
+                "assets": "15701078400",
                 "shares": "12364358404",
-                "block_timestamp": 1767580975
+                "block_timestamp": 1767580975,
+                "assets_raw": "12400000000",
+                "price": "1266216"
               },
               {
                 "block_number": 59627697,
                 "tx_hash": "0xddc6d998abe603454ab73f8826ed3550841155c33f08b4aaba54f8a9b9e1a801",
                 "log_index": 5,
-                "assets": "277000000",
+                "assets": "350741832",
                 "shares": "276203562",
-                "block_timestamp": 1767582866
+                "block_timestamp": 1767582866,
+                "assets_raw": "277000000",
+                "price": "1266216"
               },
               {
                 "block_number": 59700333,
                 "tx_hash": "0x4221a6cf77e9190a04e180a744c4dad065fcd2713f27d3e6465eba6a6f67c06d",
                 "log_index": 5,
-                "assets": "10362000000",
+                "assets": "13123151778",
                 "shares": "10331817777",
-                "block_timestamp": 1767661058
+                "block_timestamp": 1767661058,
+                "assets_raw": "10362000000",
+                "price": "1266469"
               },
               {
                 "block_number": 59842265,
                 "tx_hash": "0x1a8ce7bf09b61623a2ca26e415dba77b869654410b267f93e2f55ea57aceef52",
                 "log_index": 5,
-                "assets": "20561000000",
+                "assets": "26032076490",
                 "shares": "20499665835",
-                "block_timestamp": 1767804427
+                "block_timestamp": 1767804427,
+                "assets_raw": "20561000000",
+                "price": "1266090"
               },
               {
                 "block_number": 59949420,
                 "tx_hash": "0x52f5435b40177f7c2164b496deca95ae000d0fad5abf340a84bc876c4bfdf63a",
                 "log_index": 8,
-                "assets": "16000000000",
+                "assets": "20277696000",
                 "shares": "15951407088",
-                "block_timestamp": 1767910460
+                "block_timestamp": 1767910460,
+                "assets_raw": "16000000000",
+                "price": "1267356"
               },
               {
                 "block_number": 60039316,
                 "tx_hash": "0x9db0a44645f40d49d32c36ece9c62fde6c6709e434f9114351dbc43027a29b89",
                 "log_index": 6,
-                "assets": "14230000000",
+                "assets": "18030861460",
                 "shares": "14186132994",
-                "block_timestamp": 1767997484
+                "block_timestamp": 1767997484,
+                "assets_raw": "14230000000",
+                "price": "1267102"
               },
               {
                 "block_number": 60115533,
                 "tx_hash": "0x11fb263a4067ea7dd5f66e4746a5b1dde22558e7521f20a180535ad1d17ce86c",
                 "log_index": 5,
-                "assets": "16480000000",
+                "assets": "20883933920",
                 "shares": "16428347688",
-                "block_timestamp": 1768093245
+                "block_timestamp": 1768093245,
+                "assets_raw": "16480000000",
+                "price": "1267229"
               },
               {
                 "block_number": 60192414,
                 "tx_hash": "0xe3c35bae42d7d3f7ba2f18fd28bfcdd47034610ca549c90fa64d2011fc95da34",
                 "log_index": 5,
-                "assets": "16725000000",
+                "assets": "21194405025",
                 "shares": "16671732231",
-                "block_timestamp": 1768184769
+                "block_timestamp": 1768184769,
+                "assets_raw": "16725000000",
+                "price": "1267229"
               },
               {
                 "block_number": 60267206,
                 "tx_hash": "0x1cd94c3b1bdfa9a73baa7f9ffef7847be338a15ce5097e15e3d5e96ebaf69231",
                 "log_index": 5,
-                "assets": "17900000000",
+                "assets": "22683399100",
                 "shares": "17842045748",
-                "block_timestamp": 1768277388
+                "block_timestamp": 1768277388,
+                "assets_raw": "17900000000",
+                "price": "1267229"
               },
               {
                 "block_number": 60412442,
                 "tx_hash": "0x223360d1bf4967160a8b588a0b735759be6bac6ab651e8787d25f842f495f703",
                 "log_index": 5,
-                "assets": "35500000000",
+                "assets": "44950668000",
                 "shares": "35381581994",
-                "block_timestamp": 1768444582
+                "block_timestamp": 1768444582,
+                "assets_raw": "35500000000",
+                "price": "1266216"
               },
               {
                 "block_number": 60538785,
                 "tx_hash": "0xf02aa5537634e441b58486a70662eea7964510a612b578cff3329af4b9db0644",
                 "log_index": 5,
-                "assets": "36500000000",
+                "assets": "46216884000",
                 "shares": "36374695198",
-                "block_timestamp": 1768601492
+                "block_timestamp": 1768601492,
+                "assets_raw": "36500000000",
+                "price": "1266216"
               },
               {
                 "block_number": 60597649,
                 "tx_hash": "0x9610991b9a67fa3eb430f8fe45c76a3cee390bdb499b51ef3625eac51dde8de1",
                 "log_index": 5,
-                "assets": "23500000000",
+                "assets": "29756076000",
                 "shares": "23417891668",
-                "block_timestamp": 1768694626
+                "block_timestamp": 1768694626,
+                "assets_raw": "23500000000",
+                "price": "1266216"
               },
               {
                 "block_number": 60670543,
                 "tx_hash": "0x1c1133f597d2459c6706ad1a5ae81cd5dd2c9a7e41758a47a5c335514db2916f",
                 "log_index": 5,
-                "assets": "26100000000",
+                "assets": "33048237600",
                 "shares": "26007085506",
-                "block_timestamp": 1768792100
+                "block_timestamp": 1768792100,
+                "assets_raw": "26100000000",
+                "price": "1266216"
               },
               {
                 "block_number": 60713694,
                 "tx_hash": "0x0c383dfedfb25af66f1b895642d08cca605fa275bbe327f37cb1a9035c5de509",
                 "log_index": 5,
-                "assets": "16200000000",
+                "assets": "20514756600",
                 "shares": "16141674955",
-                "block_timestamp": 1768849647
+                "block_timestamp": 1768849647,
+                "assets_raw": "16200000000",
+                "price": "1266343"
               },
               {
                 "block_number": 60808143,
                 "tx_hash": "0x4926389153cd443f179f82be52f68aa1b4e9af6a882693db2b9f0cc32c66c370",
                 "log_index": 5,
-                "assets": "30420000000",
+                "assets": "38541409920",
                 "shares": "30308222115",
-                "block_timestamp": 1768953127
+                "block_timestamp": 1768953127,
+                "assets_raw": "30420000000",
+                "price": "1266976"
               },
               {
                 "block_number": 60964160,
                 "tx_hash": "0x9dc66ea24788a9310a2f4029b4215fbf3e3aa610bc3b283209f9d729436f8b68",
                 "log_index": 5,
-                "assets": "60200000000",
+                "assets": "76264309800",
                 "shares": "59970519171",
-                "block_timestamp": 1769137537
+                "block_timestamp": 1769137537,
+                "assets_raw": "60200000000",
+                "price": "1266849"
               },
               {
                 "block_number": 61224581,
                 "tx_hash": "0x3ec1c38345767f98b2c808b763c39a3ae5f1ebf51c4ab284ec956f1ce1ebbeb7",
                 "log_index": 5,
-                "assets": "128700000000",
+                "assets": "163059811200",
                 "shares": "128175182702",
-                "block_timestamp": 1769468861
+                "block_timestamp": 1769468861,
+                "assets_raw": "128700000000",
+                "price": "1266976"
               },
               {
                 "block_number": 61442772,
                 "tx_hash": "0x4951e3dc1b3232cd48b40afbe5cfbd162aa804b2d6bc290d08444e1195f3ef51",
                 "log_index": 5,
-                "assets": "124500000000",
+                "assets": "157801509000",
                 "shares": "123962168968",
-                "block_timestamp": 1769730848
+                "block_timestamp": 1769730848,
+                "assets_raw": "124500000000",
+                "price": "1267482"
               },
               {
                 "block_number": 61721655,
                 "tx_hash": "0xca11ae8eb0d3bca9eac6bda29081a68f419b2843d481bab1f90767a7ea94e48e",
                 "log_index": 9,
-                "assets": "154121000000",
+                "assets": "195228615483",
                 "shares": "153412218230",
-                "block_timestamp": 1769998628
+                "block_timestamp": 1769998628,
+                "assets_raw": "154121000000",
+                "price": "1266723"
               }
             ],
-            "total_borrows": "955811000000",
-            "debt_at_snapshot": "124883713799"
+            "total_borrows": "1210792640019",
+            "debt_at_snapshot": "158125010970",
+            "debt_at_snapshot_raw": "124883713799",
+            "debt_price": "1266178"
           },
           "0x3fbb94b2e04bb2cad1686bd82fe0ef8fe54646b3": {
             "address_type": "eoa",
@@ -694,8 +768,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "44243761260",
-            "debt_at_snapshot": "87842063144"
+            "pending_assets": "20862136577",
+            "debt_at_snapshot": "111223687827",
+            "debt_at_snapshot_raw": "87842063144",
+            "debt_price": "1266178"
           },
           "0x4500720c4e0e29ab62e13e8526cce1887c789347": {
             "address_type": "eoa",
@@ -765,8 +841,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "56131058024",
-            "debt_at_snapshot": "61008618282"
+            "pending_assets": "39891906027",
+            "debt_at_snapshot": "77247770279",
+            "debt_at_snapshot_raw": "61008618282",
+            "debt_price": "1266178"
           },
           "0x52ef0e850337ecec348c41919862dbaac42f620b": {
             "address_type": "eoa",
@@ -780,8 +858,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "99041924",
-            "debt_at_snapshot": "181871268"
+            "pending_assets": "50631794",
+            "debt_at_snapshot": "230281398",
+            "debt_at_snapshot_raw": "181871268",
+            "debt_price": "1266178"
           },
           "0x54abb9f417702f25d91b1987bb56f235298af9d7": {
             "address_type": "eoa",
@@ -865,19 +945,23 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "205469603",
+            "pending_assets": "205810997",
             "repays": [
               {
                 "block_number": 61552048,
                 "tx_hash": "0xa7009adb44a02589e6141b5379476ba82723e3e026f9ca5fd270d8bb9cb65304",
                 "log_index": 5,
-                "assets": "137532053",
+                "assets": "174354197",
                 "shares": "136920483",
-                "block_timestamp": 1769852580
+                "block_timestamp": 1769852580,
+                "assets_raw": "137532053",
+                "price": "1267735"
               }
             ],
-            "total_repays": "137532053",
-            "debt_at_snapshot": "137053966"
+            "total_repays": "174354197",
+            "debt_at_snapshot": "173534716",
+            "debt_at_snapshot_raw": "137053966",
+            "debt_price": "1266178"
           },
           "0x61d93abebf959dab5720001d2c7b5e3ac8f4573f": {
             "address_type": "eoa",
@@ -905,8 +989,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "331532798",
-            "debt_at_snapshot": "177116553"
+            "pending_assets": "284388269",
+            "debt_at_snapshot": "224261082",
+            "debt_at_snapshot_raw": "177116553",
+            "debt_price": "1266178"
           },
           "0x63284c54a82ca1785a0a03fa8402efd735edb333": {
             "address_type": "eoa",
@@ -920,8 +1006,8 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "2797845539",
-            "debt_at_snapshot": "5821883418",
+            "pending_assets": "1248188255",
+            "debt_at_snapshot": "7371540702",
             "airdrops": [
               {
                 "block_number": 54144258,
@@ -932,7 +1018,9 @@
                 "shares": "0"
               }
             ],
-            "total_airdrops": "91051400"
+            "total_airdrops": "91051400",
+            "debt_at_snapshot_raw": "5821883418",
+            "debt_price": "1266178"
           },
           "0x651aa2a9bcc8be4e3b5a349be863694bd7b59f6a": {
             "address_type": "eoa",
@@ -1321,27 +1409,33 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "1072406909",
+            "pending_assets": "1072490097",
             "repays": [
               {
                 "block_number": 54479910,
                 "tx_hash": "0x8f827fb81075c7054c036c83d65a7a6d6b6e9763f28e3d4d28651b60b07b61f3",
                 "log_index": 5,
-                "assets": "122987061",
+                "assets": "155759300",
                 "shares": "122862508",
-                "block_timestamp": 1762653546
+                "block_timestamp": 1762653546,
+                "assets_raw": "122987061",
+                "price": "1266469"
               },
               {
                 "block_number": 54486751,
                 "tx_hash": "0x70c1fad2e9cdced73835b7cb1c416942a67884222de3160fb52b82d393e41808",
                 "log_index": 5,
-                "assets": "152961544",
+                "assets": "193721053",
                 "shares": "152806501",
-                "block_timestamp": 1762656683
+                "block_timestamp": 1762656683,
+                "assets_raw": "152961544",
+                "price": "1266469"
               }
             ],
-            "total_repays": "275948605",
-            "debt_at_snapshot": "275937757"
+            "total_repays": "349480353",
+            "debt_at_snapshot": "349386317",
+            "debt_at_snapshot_raw": "275937757",
+            "debt_price": "1266178"
           },
           "0x9c68a6315c76746de52c39147883b8406b514eec": {
             "address_type": "eoa",
@@ -1478,8 +1572,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "3623554",
-            "debt_at_snapshot": "7674376"
+            "pending_assets": "1580804",
+            "debt_at_snapshot": "9717126",
+            "debt_at_snapshot_raw": "7674376",
+            "debt_price": "1266178"
           },
           "0xb772a176e367245b7a22c171688b3cde545e8a60": {
             "address_type": "eoa",
@@ -1521,8 +1617,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "2463999760",
-            "debt_at_snapshot": "4878580632"
+            "pending_assets": "1165428925",
+            "debt_at_snapshot": "6177151467",
+            "debt_at_snapshot_raw": "4878580632",
+            "debt_price": "1266178"
           },
           "0xbdf62f24369b7e1ad37d0c0e25687451a0a74dc8": {
             "address_type": "eoa",
@@ -1634,8 +1732,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "169145801",
-            "debt_at_snapshot": "334629620"
+            "pending_assets": "80074759",
+            "debt_at_snapshot": "423700662",
+            "debt_at_snapshot_raw": "334629620",
+            "debt_price": "1266178"
           },
           "0xd9eba6cd776e57db63673dfb60ea0bda955c9c4d": {
             "address_type": "eoa",
@@ -1731,8 +1831,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "1214194",
-            "debt_at_snapshot": "654462"
+            "pending_assets": "1039991",
+            "debt_at_snapshot": "828665",
+            "debt_at_snapshot_raw": "654462",
+            "debt_price": "1266178"
           },
           "0xdee9034869f929e21272ffdd0d1500994b23672e": {
             "address_type": "eoa",
@@ -1907,8 +2009,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "103451432",
-            "debt_at_snapshot": "36785546"
+            "pending_assets": "93659929",
+            "debt_at_snapshot": "46577049",
+            "debt_at_snapshot_raw": "36785546",
+            "debt_price": "1266178"
           },
           "0xfb85c9b9314c45661e0d553e271efefac154c839": {
             "address_type": "eoa",
@@ -1945,15 +2049,17 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "-100",
+            "pending_assets": "-126",
             "borrows": [
               {
                 "block_number": 55994672,
                 "tx_hash": "0x14a97b3926bd9b1217ed4058efee6057f1b6dc4f5efc674eec3fbfd467c2612d",
                 "log_index": 4,
-                "assets": "100",
+                "assets": "126",
                 "shares": "100",
-                "block_timestamp": 1763719833
+                "block_timestamp": 1763719833,
+                "assets_raw": "100",
+                "price": "1266976"
               },
               {
                 "block_number": 56192981,
@@ -1961,10 +2067,12 @@
                 "log_index": 4,
                 "assets": "1",
                 "shares": "1",
-                "block_timestamp": 1763889174
+                "block_timestamp": 1763889174,
+                "assets_raw": "1",
+                "price": "1266596"
               }
             ],
-            "total_borrows": "101"
+            "total_borrows": "127"
           },
           "0xe3e56da9addc2e29532669140fb94fa7f21f6e4f": {
             "address_type": "eoa",
@@ -2286,85 +2394,103 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "111229588",
+            "pending_assets": "72913651",
             "borrows": [
               {
                 "block_number": 56195618,
                 "tx_hash": "0x6be00e5f818ae021aec22f1e5540ac3c8993b6112793022de4bcd849cc761dc3",
                 "log_index": 4,
-                "assets": "1000000",
+                "assets": "1266596",
                 "shares": "998642",
-                "block_timestamp": 1763892340
+                "block_timestamp": 1763892340,
+                "assets_raw": "1000000",
+                "price": "1266596"
               },
               {
                 "block_number": 56196566,
                 "tx_hash": "0x044141ef5f9ebe6563f4319fafa67da0744a7d2f2104175d5f5c6b8494347a0f",
                 "log_index": 4,
-                "assets": "6696000",
+                "assets": "8481126",
                 "shares": "6686901",
-                "block_timestamp": 1763893460
+                "block_timestamp": 1763893460,
+                "assets_raw": "6696000",
+                "price": "1266596"
               },
               {
                 "block_number": 56267124,
                 "tx_hash": "0xae305033d0529a6faa459a832a564fd9890acbe19661798489e32f8ae73a2460",
                 "log_index": 4,
-                "assets": "1339000000",
+                "assets": "1695633277",
                 "shares": "1337153757",
-                "block_timestamp": 1763962538
+                "block_timestamp": 1763962538,
+                "assets_raw": "1339000000",
+                "price": "1266343"
               },
               {
                 "block_number": 56275209,
                 "tx_hash": "0x5e2c7a304f89a6cd3844ade22e118e835ad1b16dcb8df2f1d40f919e34455d7f",
                 "log_index": 35,
-                "assets": "133895000000",
+                "assets": "169556995985",
                 "shares": "133710058465",
-                "block_timestamp": 1763970898
+                "block_timestamp": 1763970898,
+                "assets_raw": "133895000000",
+                "price": "1266343"
               }
             ],
-            "total_borrows": "135241696000",
+            "total_borrows": "171262376984",
             "repays": [
               {
                 "block_number": 56196215,
                 "tx_hash": "0x371e7ecaf0f29f9c73671076e6ee884ead46d9e73357aa801d72446f67400350",
                 "log_index": 3,
-                "assets": "1000000",
+                "assets": "1266596",
                 "shares": "998641",
-                "block_timestamp": 1763893061
+                "block_timestamp": 1763893061,
+                "assets_raw": "1000000",
+                "price": "1266596"
               },
               {
                 "block_number": 56197096,
                 "tx_hash": "0x8fd91f9592654e29ab4a7671e20f1668ef9177cd851a999bf6ec16fd2f9f657d",
                 "log_index": 5,
-                "assets": "6696004",
+                "assets": "8481131",
                 "shares": "6686902",
-                "block_timestamp": 1763894094
+                "block_timestamp": 1763894094,
+                "assets_raw": "6696004",
+                "price": "1266596"
               },
               {
                 "block_number": 56267455,
                 "tx_hash": "0x8b93112a854469c5a8a24ebbad306b610d8ed6dc9e006a6fd8b6097c44a5953f",
                 "log_index": 3,
-                "assets": "1339000096",
+                "assets": "1695633398",
                 "shares": "1337153704",
-                "block_timestamp": 1763962919
+                "block_timestamp": 1763962919,
+                "assets_raw": "1339000096",
+                "price": "1266343"
               },
               {
                 "block_number": 58060059,
                 "tx_hash": "0xbf986c6b28ecb1ad68955ff95c55f0dea29551dc3729a108da49e625b4a61f42",
                 "log_index": 5,
-                "assets": "133895000000",
+                "assets": "169489111220",
                 "shares": "133599074873",
-                "block_timestamp": 1765877125
+                "block_timestamp": 1765877125,
+                "assets_raw": "133895000000",
+                "price": "1265836"
               },
               {
                 "block_number": 58060300,
                 "tx_hash": "0x40940eb159c614584ba2d2ef983a4bc19c9ba9c4f9b6abc623e2a62238e3ef9f",
                 "log_index": 5,
-                "assets": "111229488",
+                "assets": "140798290",
                 "shares": "110983645",
-                "block_timestamp": 1765877428
+                "block_timestamp": 1765877428,
+                "assets_raw": "111229488",
+                "price": "1265836"
               }
             ],
-            "total_repays": "135352925588"
+            "total_repays": "171335290635"
           },
           "0x55e9877c8e66801313607396e7e563391753f800": {
             "address_type": "eoa",
@@ -2378,19 +2504,23 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "172210",
+            "pending_assets": "312096",
             "repays": [
               {
                 "block_number": 54700510,
                 "tx_hash": "0xd24c1756cddcd36445a2e70def0cc0c4b11e352747d2cf39d62b1330898e9bfd",
                 "log_index": 5,
-                "assets": "2474938701",
+                "assets": "3133806982",
                 "shares": "2472356214",
-                "block_timestamp": 1762763241
+                "block_timestamp": 1762763241,
+                "assets_raw": "2474938701",
+                "price": "1266216"
               }
             ],
-            "total_repays": "2474938701",
-            "debt_at_snapshot": "2474766491"
+            "total_repays": "3133806982",
+            "debt_at_snapshot": "3133494886",
+            "debt_at_snapshot_raw": "2474766491",
+            "debt_price": "1266178"
           },
           "0xc9cb54f65469aba8ae45c67e1355cf1ff213fe33": {
             "address_type": "eoa",
@@ -2404,19 +2534,23 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "319041",
+            "pending_assets": "935021",
             "repays": [
               {
                 "block_number": 55609278,
                 "tx_hash": "0x3634fe9608594adc9ad16d45d7bc33a146cacbd0b1a2cc37182a04e9fe1040fd",
                 "log_index": 5,
-                "assets": "1270472596",
+                "assets": "1609175508",
                 "shares": "1268916500",
-                "block_timestamp": 1763416115
+                "block_timestamp": 1763416115,
+                "assets_raw": "1270472596",
+                "price": "1266596"
               }
             ],
-            "total_repays": "1270472596",
-            "debt_at_snapshot": "1270153555"
+            "total_repays": "1609175508",
+            "debt_at_snapshot": "1608240487",
+            "debt_at_snapshot_raw": "1270153555",
+            "debt_price": "1266178"
           }
         },
         "vaults": {
@@ -369191,8 +369325,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "101015617",
-            "debt_at_snapshot": "100000449"
+            "pending_assets": "74397698",
+            "debt_at_snapshot": "126618368",
+            "debt_at_snapshot_raw": "100000449",
+            "debt_price": "1266178"
           },
           "0x1f647438fadff99c6f176d2e266db0a06b79291b": {
             "address_type": "eoa",
@@ -369206,8 +369342,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "414292",
-            "debt_at_snapshot": "1000007"
+            "pending_assets": "148113",
+            "debt_at_snapshot": "1266186",
+            "debt_at_snapshot_raw": "1000007",
+            "debt_price": "1266178"
           },
           "0x2b59f2cacceea02aead44189e4974bb0eb5cba0d": {
             "address_type": "eoa",
@@ -369241,27 +369379,33 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "243501343",
+            "pending_assets": "243490725",
             "repays": [
               {
                 "block_number": 399189922,
                 "tx_hash": "0x3d9e7230a934ea8f1c4271c19ac3d274a9a9af037d532b18e1b4f7f950427820",
                 "log_index": 5,
-                "assets": "92200000",
+                "assets": "116731008",
                 "shares": "92197815",
-                "block_timestamp": 1762879334
+                "block_timestamp": 1762879334,
+                "assets_raw": "92200000",
+                "price": "1266063"
               },
               {
                 "block_number": 399201242,
                 "tx_hash": "0xb12e2b163d981bb33901999d06ca756117a9c1613f053dca2b2111f3c3c1c7fe",
                 "log_index": 5,
-                "assets": "802205",
+                "assets": "1015642",
                 "shares": "802185",
-                "block_timestamp": 1762882158
+                "block_timestamp": 1762882158,
+                "assets_raw": "802205",
+                "price": "1266063"
               }
             ],
-            "total_repays": "93002205",
-            "debt_at_snapshot": "93001914"
+            "total_repays": "117746650",
+            "debt_at_snapshot": "117756977",
+            "debt_at_snapshot_raw": "93001914",
+            "debt_price": "1266178"
           },
           "0x38517feee7c294e22848c72aaea0a67f88888888": {
             "address_type": "eoa",
@@ -369359,19 +369503,23 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "837615",
+            "pending_assets": "838169",
             "repays": [
               {
                 "block_number": 417142282,
                 "tx_hash": "0x12a98f5c0fe9c74d7569ffddbf83d647c00f0c7d33281453fba2025d648a697b",
                 "log_index": 7,
-                "assets": "591855",
+                "assets": "749940",
                 "shares": "591816",
-                "block_timestamp": 1767362650
+                "block_timestamp": 1767362650,
+                "assets_raw": "591855",
+                "price": "1267102"
               }
             ],
-            "total_repays": "591855",
-            "debt_at_snapshot": "591829"
+            "total_repays": "749940",
+            "debt_at_snapshot": "749360",
+            "debt_at_snapshot_raw": "591829",
+            "debt_price": "1266178"
           },
           "0x6155ccab55c1d729748395f20874e15f3e5a7792": {
             "address_type": "eoa",
@@ -369410,8 +369558,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "9248037",
-            "debt_at_snapshot": "1000002"
+            "pending_assets": "8981859",
+            "debt_at_snapshot": "1266180",
+            "debt_at_snapshot_raw": "1000002",
+            "debt_price": "1266178"
           },
           "0x696997e2293b519889ea790f14d18abd104f5283": {
             "address_type": "eoa",
@@ -369551,8 +369701,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "16722215168",
-            "debt_at_snapshot": "29287127873"
+            "pending_assets": "8926626046",
+            "debt_at_snapshot": "37082716995",
+            "debt_at_snapshot_raw": "29287127873",
+            "debt_price": "1266178"
           },
           "0x9271f083323e0d803dc5d41ade34ebd6deda068f": {
             "address_type": "eoa",
@@ -369633,27 +369785,33 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "217910",
+            "pending_assets": "7638",
             "repays": [
               {
                 "block_number": 402503479,
                 "tx_hash": "0x84521347b9499a09282dab996a0ef734e7f5c97572453a70f2b49d690185935f",
                 "log_index": 6,
-                "assets": "10000",
+                "assets": "12669",
                 "shares": "9999",
-                "block_timestamp": 1763707386
+                "block_timestamp": 1763707386,
+                "assets_raw": "10000",
+                "price": "1266976"
               },
               {
                 "block_number": 402504183,
                 "tx_hash": "0x65785198fccbec052a3f0f468b6f11678ec3f82776ff011d5bd1e5d2ae80b318",
                 "log_index": 48,
-                "assets": "10",
+                "assets": "12",
                 "shares": "9",
-                "block_timestamp": 1763707562
+                "block_timestamp": 1763707562,
+                "assets_raw": "10",
+                "price": "1266976"
               }
             ],
-            "total_repays": "10010",
-            "debt_at_snapshot": "800005"
+            "total_repays": "12681",
+            "debt_at_snapshot": "1012948",
+            "debt_at_snapshot_raw": "800005",
+            "debt_price": "1266178"
           },
           "0xa6f64a650f10ad4f731bea9e69c864aa482a1ca4": {
             "address_type": "eoa",
@@ -369743,8 +369901,10 @@
             "transfers": [],
             "total_transfers_in": "0",
             "total_transfers_out": "0",
-            "pending_assets": "204047704",
-            "debt_at_snapshot": "300000909"
+            "pending_assets": "124194063",
+            "debt_at_snapshot": "379854550",
+            "debt_at_snapshot_raw": "300000909",
+            "debt_price": "1266178"
           },
           "0xc9f678d97cfe754d5cc16261727442a84878791f": {
             "address_type": "eoa",
