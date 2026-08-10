@@ -6,7 +6,7 @@ The app performs no runtime RPC, subgraph, or API calls. Snapshot data is import
 
 ## Overview
 
-This application helps lenders review balances used to prepare recovery submissions related to the Stream Finance default. It covers three snapshot categories: Stream, Trevee, and Pendle. SiloDAO uses the Stream balances to submit recovery positions on behalf of affected lenders, while Trevee and Pendle lenders should use the relevant project instructions for their recovery process.
+This application helps lenders review balances used to prepare recovery submissions related to the Stream Finance default. It covers Stream, Trevee, and Pendle snapshot categories, plus a separate **Beefy Claims** view for holders who deposited through Beefy into Silo managed vaults. SiloDAO uses the Stream balances to submit recovery positions on behalf of affected lenders, while Trevee and Pendle lenders should use the relevant project instructions for their recovery process.
 
 For each lender, the application starts with the value of their position at a fixed snapshot moment. It then accounts for later deposits, withdrawals, transfers, borrowing activity, repayments, managed-vault fee share flows, and any distributions already received. The result is shown as the **Net Deposited Assets**.
 
@@ -94,6 +94,22 @@ The generated data stores Net Deposited Assets under the internal name `pending_
 - A small number of economically immaterial contract positions do not follow the standard vault accounting model. These known cases are identified explicitly and reported as validation warnings; any change to them causes validation to fail.
 - The data collection process can be repeated to capture additional activity. Rare infrastructure gaps may still exist; the operator-level limitations and validation rules are documented in [`scripts/lender-snapshot/README.md`](scripts/lender-snapshot/README.md).
 
+## Beefy Claims
+
+Beefy routed deposits into Silo managed vaults through proxy contracts (`Beefy vault → proxy → Silo managed vault`). The Stream scanner records each proxy as a single `contract_other` vault depositor and cannot enumerate the underlying Beefy holders on-chain.
+
+Beefy provided per-proxy holder lists (CSV under [`data/beefy/`](data/beefy/)) with share amounts (`Amount` / `LP`) and each holder’s fraction of the Beefy vault (`Percent`). The `/beefy` UI attributes the proxy’s **Net Deposited Assets** from the Stream snapshot to those holders:
+
+```text
+Net Amount = holder Percent × proxy pending_assets (Stream snapshot)
+```
+
+Vault metadata shown in the UI (chain, asset symbol/decimals, managed vault name, and the proxy total) is read from [`scripts/lender-snapshot/data/stream.json`](scripts/lender-snapshot/data/stream.json). The holder tables are built only from the static CSVs — there is no separate Beefy on-chain scan in this repository.
+
+Addresses labeled `Contract` or `Safe` in the Beefy CSVs are shown as-is and are not expanded further. Nested unresolved contracts remain the responsibility of the holder list as delivered.
+
+Public UI path: `/beefy` (Methodology link on that page points at this section).
+
 ## Features
 
 - Chain and silo browsing for bundled snapshot data.
@@ -102,6 +118,7 @@ The generated data stores Net Deposited Assets under the internal name `pending_
 - Explorer links for supported chains.
 - Vault warning cards when depositors cannot be enumerated.
 - CSV export for lenders and vault depositors.
+- Beefy Claims view (`/beefy`) with address filter and attributed Net Amount per holder.
 
 ## Development
 
