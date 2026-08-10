@@ -98,13 +98,7 @@ The generated data stores Net Deposited Assets under the internal name `pending_
 
 Beefy routed deposits into Silo managed vaults through proxy contracts (`Beefy vault → proxy → Silo managed vault`). The Stream scanner records each proxy as a single `contract_other` vault depositor and cannot enumerate the underlying Beefy holders on-chain.
 
-Beefy provided per-proxy holder lists (CSV under [`data/beefy/`](data/beefy/)) with share amounts (`Amount` / `LP`) and each holder’s fraction of the Beefy vault (`Percent`). The `/beefy` UI attributes the proxy’s **Net Deposited Assets** from the Stream snapshot to those holders:
-
-```text
-Net Amount = holder Percent × proxy pending_assets (Stream snapshot)
-```
-
-Vault metadata shown in the UI (chain, asset symbol/decimals, managed vault name, and the proxy total) is read from [`scripts/lender-snapshot/data/stream.json`](scripts/lender-snapshot/data/stream.json). The holder tables are built only from the static CSVs — there is no separate Beefy on-chain scan in this repository.
+Beefy provided per-proxy holder lists (CSV under [`data/beefy/`](data/beefy/)) with asset amounts (`Amount`), LP shares (`LP`), and each holder’s fraction of the Beefy vault (`Percent`). The `/beefy` UI shows those holders with `Amount` formatted in the Silo market asset units (decimals + symbol). Vault metadata (chain, asset, managed vault name, and the proxy’s Stream **Net Deposited Assets** total) is read from [`scripts/lender-snapshot/data/stream.json`](scripts/lender-snapshot/data/stream.json) for comparison in the UI sanity checks. The holder tables are built only from the static CSVs — there is no separate Beefy on-chain scan in this repository.
 
 Addresses labeled `Contract` or `Safe` in the Beefy CSVs are shown as-is and are not expanded further. Nested unresolved contracts remain the responsibility of the holder list as delivered.
 
@@ -118,7 +112,7 @@ Public UI path: `/beefy` (Methodology link on that page points at this section).
 - Explorer links for supported chains.
 - Vault warning cards when depositors cannot be enumerated.
 - CSV export for lenders and vault depositors.
-- Beefy Claims view (`/beefy`) with address filter and attributed Net Amount per holder.
+- Beefy Claims view (`/beefy`) with address filter and formatted Amount per holder.
 
 ## Development
 

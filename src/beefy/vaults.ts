@@ -3,7 +3,7 @@ import arbUsdcCsv from "../../data/beefy/silov2_arbitrum_usdc_valamore_with_LP_0
 import avaxAusdCsv from "../../data/beefy/silov2_avalanche_ausd_valamore_with_LP_0x632F679cFe08F69892e3a0.csv?raw";
 import avaxUsdcCsv from "../../data/beefy/silov2_avalanche_usdc_mev_with_LP_0x42EeaBF997DDF03121d9FAd0331f6838915bBCFF.csv?raw";
 import avaxUsdtCsv from "../../data/beefy/silov2_avalanche_usdt_valamore_with_LP_0xf9D8C8572CABB23f8a3b75.csv?raw";
-import { mulPercent, parseBeefyCsv, type BeefyCsvRow } from "./parseCsv";
+import { parseBeefyCsv, type BeefyCsvRow } from "./parseCsv";
 
 type StreamInputToken = {
   address: string;
@@ -77,9 +77,7 @@ const VAULT_DEFS: BeefyVaultDef[] = [
   },
 ];
 
-export type BeefyHolder = BeefyCsvRow & {
-  netAmount: bigint;
-};
+export type BeefyHolder = BeefyCsvRow;
 
 export type BeefyVaultSnapshot = {
   id: string;
@@ -137,11 +135,7 @@ function lookupStreamPosition(
 
 function buildVault(def: BeefyVaultDef, root: StreamRoot): BeefyVaultSnapshot {
   const meta = lookupStreamPosition(root, def.chain, def.vaultAddress, def.proxyAddress);
-  const rows = parseBeefyCsv(def.csv);
-  const holders: BeefyHolder[] = rows.map((row) => ({
-    ...row,
-    netAmount: mulPercent(meta.totalPendingAssets, row.percentNumer, row.percentScale),
-  }));
+  const holders: BeefyHolder[] = parseBeefyCsv(def.csv);
   return {
     id: def.id,
     label: def.label,
@@ -159,5 +153,5 @@ function buildVault(def: BeefyVaultDef, root: StreamRoot): BeefyVaultSnapshot {
 
 const root = streamData as unknown as StreamRoot;
 
-/** All Beefy proxy vaults with holders and Net Amount attributed from Stream pending assets. */
+/** All Beefy proxy vaults with holders from Beefy CSVs and Stream proxy metadata. */
 export const BEEFY_VAULTS: BeefyVaultSnapshot[] = VAULT_DEFS.map((def) => buildVault(def, root));

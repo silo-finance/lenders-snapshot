@@ -57,14 +57,6 @@ export function parsePercent(raw: string): { numer: bigint; scale: number } {
   return { numer, scale: frac.length };
 }
 
-/** Multiply `amount` by a percent rational (numer / 10^scale), truncating toward zero. */
-export function mulPercent(amount: bigint, numer: bigint, scale: number): bigint {
-  if (scale <= 0) {
-    return amount * numer;
-  }
-  return (amount * numer) / 10n ** BigInt(scale);
-}
-
 function splitCsvLine(line: string): string[] {
   const cells: string[] = [];
   let current = "";

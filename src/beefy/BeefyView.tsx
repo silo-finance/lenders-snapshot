@@ -12,11 +12,11 @@ import { BEEFY_VAULTS, type BeefyHolder, type BeefyVaultSnapshot } from "./vault
 const METHODOLOGY_URL =
   "https://github.com/silo-finance/lenders-snapshot/blob/master/README.md#beefy-claims";
 
-type SortKey = "address" | "amount" | "lp" | "percent" | "contract" | "net";
+type SortKey = "address" | "amount" | "lp" | "percent" | "contract";
 type SortDirection = "asc" | "desc";
 type SortState = { key: SortKey; direction: SortDirection };
 
-const DEFAULT_SORT: SortState = { key: "net", direction: "desc" };
+const DEFAULT_SORT: SortState = { key: "amount", direction: "desc" };
 
 function beefyVaultSectionId(vaultId: string): string {
   return `beefy-vault-${vaultId}`;
@@ -93,8 +93,6 @@ function compareHolders(a: BeefyHolder, b: BeefyHolder, sort: SortState): number
     }
     case "contract":
       return a.contract.localeCompare(b.contract) * dir;
-    case "net":
-      return (a.netAmount === b.netAmount ? 0 : a.netAmount < b.netAmount ? -1 : 1) * dir;
     default:
       return 0;
   }
@@ -212,7 +210,6 @@ function formatPercentRational(numer: bigint, scale: number): string {
 type VaultTotals = {
   amount: bigint;
   lp: bigint;
-  netAmount: bigint;
   percentNumer: bigint;
   percentScale: number;
 };
@@ -220,12 +217,10 @@ type VaultTotals = {
 function sumVaultHolders(holders: BeefyHolder[]): VaultTotals {
   let amount = 0n;
   let lp = 0n;
-  let netAmount = 0n;
   let maxScale = 0;
   for (const row of holders) {
     amount += row.amount;
     lp += row.lp;
-    netAmount += row.netAmount;
     if (row.percentScale > maxScale) {
       maxScale = row.percentScale;
     }
@@ -234,7 +229,7 @@ function sumVaultHolders(holders: BeefyHolder[]): VaultTotals {
   for (const row of holders) {
     percentNumer += row.percentNumer * 10n ** BigInt(maxScale - row.percentScale);
   }
-  return { amount, lp, netAmount, percentNumer, percentScale: maxScale };
+  return { amount, lp, percentNumer, percentScale: maxScale };
 }
 
 function VaultTableTotalsFoot({ vault }: { vault: BeefyVaultSnapshot }) {
@@ -245,14 +240,13 @@ function VaultTableTotalsFoot({ vault }: { vault: BeefyVaultSnapshot }) {
         <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
           Totals (all holders)
         </th>
-        <td className="px-3 py-3 text-right font-mono font-medium text-slate-200">{totals.amount.toString()}</td>
         <td className="px-3 py-3 text-right font-mono font-medium text-slate-200">{totals.lp.toString()}</td>
         <td className="px-3 py-3 text-right font-mono font-medium text-slate-200">
           {formatPercentRational(totals.percentNumer, totals.percentScale)}
         </td>
         <td className="px-3 py-3 text-slate-600">—</td>
         <td className="px-3 py-3 text-right font-mono font-semibold text-emerald-100">
-          {formatUnitsFixed(totals.netAmount, vault.inputToken.decimals)} {vault.inputToken.symbol}
+          {formatUnitsFixed(totals.amount, vault.inputToken.decimals)} {vault.inputToken.symbol}
         </td>
       </tr>
     </tfoot>
@@ -263,8 +257,7 @@ function VaultSanityChecks({ vault }: { vault: BeefyVaultSnapshot }) {
   const totals = useMemo(() => sumVaultHolders(vault.holders), [vault.holders]);
   const percentOk = totals.percentNumer <= 10n ** BigInt(totals.percentScale);
   const proxyGtAmount = vault.totalPendingAssets > totals.amount;
-  const proxyGtNet = vault.totalPendingAssets > totals.netAmount;
-  const allOk = percentOk && proxyGtAmount && proxyGtNet;
+  const allOk = percentOk && proxyGtAmount;
 
   return (
     <div
@@ -279,13 +272,8 @@ function VaultSanityChecks({ vault }: { vault: BeefyVaultSnapshot }) {
         <li className={proxyGtAmount ? "text-emerald-200/90" : "text-amber-200"}>
           {proxyGtAmount ? "✓" : "✗"} Proxy net (
           {formatUnitsFixed(vault.totalPendingAssets, vault.inputToken.decimals)} {vault.inputToken.symbol}){" "}
-          {proxyGtAmount ? ">" : "≤"} sum(Amount) ({totals.amount.toString()})
-        </li>
-        <li className={proxyGtNet ? "text-emerald-200/90" : "text-amber-200"}>
-          {proxyGtNet ? "✓" : "✗"} Proxy net (
-          {formatUnitsFixed(vault.totalPendingAssets, vault.inputToken.decimals)} {vault.inputToken.symbol}){" "}
-          {proxyGtNet ? ">" : "≤"} sum(Net Amount) (
-          {formatUnitsFixed(totals.netAmount, vault.inputToken.decimals)} {vault.inputToken.symbol})
+          {proxyGtAmount ? ">" : "≤"} sum(Amount) (
+          {formatUnitsFixed(totals.amount, vault.inputToken.decimals)} {vault.inputToken.symbol})
         </li>
         <li className={percentOk ? "text-emerald-200/90" : "text-amber-200"}>
           {percentOk ? "✓" : "✗"} Sum(Percent) = {formatPercentRational(totals.percentNumer, totals.percentScale)}
@@ -375,15 +363,6 @@ function VaultSection({
               <th className="px-3 py-3 text-right font-medium">
                 <SortHeader
                   align="right"
-                  label="Amount"
-                  sortKey="amount"
-                  sortState={sort}
-                  onClick={(k) => setSort(nextSort(sort, k))}
-                />
-              </th>
-              <th className="px-3 py-3 text-right font-medium">
-                <SortHeader
-                  align="right"
                   label="LP"
                   sortKey="lp"
                   sortState={sort}
@@ -410,8 +389,8 @@ function VaultSection({
               <th className="px-3 py-3 text-right font-medium">
                 <SortHeader
                   align="right"
-                  label="Net Amount"
-                  sortKey="net"
+                  label="Amount"
+                  sortKey="amount"
                   sortState={sort}
                   onClick={(k) => setSort(nextSort(sort, k))}
                 />
@@ -421,7 +400,7 @@ function VaultSection({
           <tbody className="divide-y divide-white/5">
             {filtered.length === 0 ? (
               <tr>
-                <td className="px-3 py-6 text-center text-slate-500" colSpan={6}>
+                <td className="px-3 py-6 text-center text-slate-500" colSpan={5}>
                   No holders match this address filter.
                 </td>
               </tr>
@@ -432,9 +411,6 @@ function VaultSection({
                     <AddressCell address={row.address} chain={vault.chain} />
                   </td>
                   <td className="px-3 py-2.5 text-right font-mono text-slate-300">
-                    {formatShare(row.amountRaw, row.amount)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-slate-300">
                     {formatShare(row.lpRaw, row.lp)}
                   </td>
                   <td className="px-3 py-2.5 text-right font-mono text-slate-300">
@@ -442,7 +418,7 @@ function VaultSection({
                   </td>
                   <td className="px-3 py-2.5 text-slate-400">{row.contract || "—"}</td>
                   <td className="px-3 py-2.5 text-right font-mono font-medium text-emerald-100">
-                    {formatUnitsFixed(row.netAmount, vault.inputToken.decimals)} {vault.inputToken.symbol}
+                    {formatUnitsFixed(row.amount, vault.inputToken.decimals)} {vault.inputToken.symbol}
                   </td>
                 </tr>
               ))
@@ -453,8 +429,9 @@ function VaultSection({
       </div>
       <VaultSanityChecks vault={vault} />
       <p className="mt-3 text-xs text-slate-500">
-        Showing {filtered.length} of {vault.holders.length} holders. Net Amount = holder percent × proxy net deposited
-        assets from the Stream snapshot. Totals and sanity checks always use all holders (ignore the address filter).
+        Showing {filtered.length} of {vault.holders.length} holders. Amount values come from the Beefy CSV and are
+        shown in the Silo market asset units. Totals and sanity checks always use all holders (ignore the address
+        filter).
       </p>
     </section>
   );
@@ -488,8 +465,8 @@ export function BeefyView() {
           <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Beefy Claims</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
             Beefy deposited into Silo managed vaults through proxy contracts. The Stream snapshot only sees those
-            proxies; the tables below attribute each proxy&apos;s net deposited assets to Beefy vault holders using
-            share percentages provided by Beefy.
+            proxies; the tables below list Beefy vault holders from Beefy-provided CSVs, with Amount shown in the Silo
+            market asset units and compared against each proxy&apos;s Stream net deposited assets.
           </p>
         </div>
 
