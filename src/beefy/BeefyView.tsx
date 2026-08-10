@@ -444,30 +444,25 @@ export function BeefyView() {
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.20),_transparent_34rem),linear-gradient(135deg,#020617_0%,#0f172a_52%,#05150f_100%)] text-white">
       <section className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
           <a
             className="text-sm text-slate-400 transition hover:text-emerald-200"
             href={landingHomePath()}
           >
             ← Lender Snapshots
           </a>
+        </div>
+
+        <div className="mt-6">
+          <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Beefy Claims</h1>
           <a
-            className="rounded-full border border-sky-300/30 bg-sky-400/10 px-3.5 py-1.5 text-sm font-medium text-sky-100 transition hover:border-sky-300/50 hover:bg-sky-400/15"
+            className="mt-2 inline-block text-sm text-sky-200 transition hover:text-sky-100"
             href={METHODOLOGY_URL}
             rel="noopener noreferrer"
             target="_blank"
           >
             Methodology
           </a>
-        </div>
-
-        <div className="mt-6">
-          <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Beefy Claims</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-            Beefy deposited into Silo managed vaults through proxy contracts. The Stream snapshot only sees those
-            proxies; the tables below list Beefy vault holders from Beefy-provided CSVs, with Amount shown in the Silo
-            market asset units and compared against each proxy&apos;s Stream net deposited assets.
-          </p>
         </div>
 
         <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 sm:p-6">
