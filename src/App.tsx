@@ -34,6 +34,7 @@ import {
 import { SNAPSHOT_CATEGORIES, findCategory, type SnapshotCategory } from "./categories";
 import { getBlockExplorerUrl, getNetworkIconPath, getNetworkName } from "./networks";
 import { useWallet } from "./useWallet";
+import { BeefyView } from "./beefy/BeefyView";
 
 // Active snapshot category (resolved from the URL) shared with the whole view tree so
 // deeply nested components can build category-scoped URLs and read the snapshot metadata
@@ -3280,6 +3281,30 @@ function LandingView({ notFoundSlug }: { notFoundSlug?: string }) {
           </div>
         </div>
 
+        <div className="mt-8 space-y-4 rounded-[2rem] border border-rose-300/20 bg-rose-400/[0.05] p-5 shadow-xl shadow-rose-950/20 sm:p-6">
+          <div>
+            <h2 className="text-xl font-semibold text-rose-100">Beefy Claims</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+              Review attributed balances for lenders who deposited through Beefy vaults into Silo managed vaults via proxy
+              contracts. Use these balances to verify your position for Stream recovery claims.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <a
+              className="group rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-slate-950/30 transition hover:border-rose-300/40 hover:bg-white/[0.06]"
+              href={categoryHomePath("beefy")}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-lg font-semibold text-white">Beefy Claims</span>
+                <span aria-hidden="true" className="text-slate-500 transition group-hover:text-rose-200">
+                  →
+                </span>
+              </div>
+              <p className="mt-3 text-xs text-slate-400">4 Beefy proxy vaults</p>
+            </a>
+          </div>
+        </div>
+
         <div className="mt-8 space-y-4 rounded-[2rem] border border-sky-300/20 bg-sky-400/[0.05] p-5 shadow-xl shadow-sky-950/20 sm:p-6">
           <div>
             <h2 className="text-xl font-semibold text-sky-100">Methodology</h2>
@@ -3327,6 +3352,11 @@ export default function App() {
   // Root: landing page listing every snapshot category.
   if (!categorySlug) {
     return <LandingView />;
+  }
+
+  // Beefy uses a dedicated view fed by holder CSVs + Stream proxy totals (not CategoryData).
+  if (categorySlug === "beefy") {
+    return <BeefyView />;
   }
 
   const category = findCategory(categorySlug);
